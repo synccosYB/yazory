@@ -608,10 +608,12 @@ def create_app(test_config=None):
         assignment = db.session.scalar(select(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id, FamilyAssignment.family_id == family.id))
         if assignment:
             db.session.delete(assignment)
-            action = 'Revoked staff assignment: '
+            action = ('Revoked family administrator: ' if user.role == 'family_admin'
+                      else 'Revoked staff assignment: ')
         else:
             db.session.add(FamilyAssignment(staff_user_id=user.id, family_id=family.id))
-            action = 'Assigned staff member: '
+            action = ('Assigned family administrator: ' if user.role == 'family_admin'
+                      else 'Assigned staff member: ')
         audit(f'{action}{user.email}', family.id)
         db.session.commit()
         return redirect(url_for('staff'))
