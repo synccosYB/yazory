@@ -16,5 +16,10 @@
 <section data-intake-page hidden><h2>{{ _('Review') }}</h2><div id="intake-review" data-children="{{ _('Number of children') }}" data-rent="{{ _('Monthly rent or mortgage ($)') }}" data-food="{{ _('Monthly food costs ($)') }}" data-income="{{ _('Employment & income') }}" data-assistance="{{ _('Assistance') }}" data-accounts="{{ _('Provider accounts') }}" data-blank="{{ _('Not entered') }}"></div><p>{{ _('Use the step buttons to check or change details before saving.') }}</p></section>
 <div class="intake-actions"><a href="{{ '/families/' ~ family.id if family else '/families' }}">{{ _('Cancel') }}</a><span id="intake-progress" aria-live="polite"></span><button type="button" id="intake-back" class="button secondary">{{ _('Back') }}</button><button type="button" id="intake-next">{{ _('Next') }}</button><button type="submit" id="intake-save" hidden>{{ _('Save') }}</button></div>
 <noscript>{{ _('Enable JavaScript to complete the step-by-step intake.') }}</noscript>
-</form><script src="{{ url_for('static', filename='intake.js') }}" defer></script>
+</form>
+<aside class="card padded intake-totals" id="intake-totals" aria-label="{{ _('Profile totals') }}" data-existing="{{ 'yes' if family and not intake_error else 'no' }}" data-saved="{{ _('Saved profile') }}" data-unsaved="{{ _('Unsaved changes') }}" data-new="{{ _('Not saved yet') }}" data-blank="{{ _('Not entered') }}">
+<div class="totals-heading"><h2>{{ _('Profile totals') }}</h2><span id="profile-save-status" role="status"></span></div>
+<div class="totals-grid">{% for key,label in [('children','Number of children'),('costs','Monthly rent and food'),('income','Monthly income'),('help','Monthly assistance'),('gap','Remaining monthly need'),('accounts','Provider accounts')] %}<div><span>{{ _(label) }}</span><strong data-total="{{ key }}">{{ _('Not entered') }}</strong></div>{% endfor %}</div>
+<p>{{ _('Totals use entered amounts only. Save on the Review step to keep your changes.') }}</p>
+</aside><script src="{{ url_for('static', filename='intake.js') }}" defer></script>
 {% endblock %}
