@@ -195,6 +195,23 @@ A staff account already uses this email.|חשבון צוות כבר משתמש �
 Owner|בעלים|אייגנטימער
 The owner organization administrator cannot be demoted.|לא ניתן להוריד את דרגת מנהל הארגון הבעלים.|מען קען נישט אראפנעמען די ראָלע פונעם אייגנטימער ארגאניזאציע־מנהל.
 At least one organization administrator is required.|נדרש לפחות מנהל ארגון אחד.|מען דארף האבן כאטש איין ארגאניזאציע־מנהל.
+Office employee|עובד/ת משרד|אפיס־ארבעטער
+Fundraiser|מגייס/ת תרומות|געלט־זאמלער
+Fundraising workspace|מרחב גיוס תרומות|געלט־זאמלער ארבעטס פלאץ
+FUNDRAISING|גיוס תרומות|געלט זאמלען
+Assigned family supporter outreach and pledges.|מעקב פניות והתחייבויות של תומכי משפחות משובצות.|קשר מיט העלפער און צוזאגן פון צוגעטיילטע משפחות.
+Reference|מספר סימוכין|רעפערענץ
+Return to fundraising|חזרה לגיוס תרומות|צוריק צו געלט זאמלען
+Organization administrators do not use family assignments.|מנהלי ארגון אינם משתמשים בשיבוצי משפחות.|ארגאניזאציע־מנהלים ניצן נישט קיין משפחה צוטיילונגען.
+You do not have permission for this action.|אין לך הרשאה לפעולה זו.|איר האט נישט קיין רשות פאר דעם.
+Documents|מסמכים|דאקומענטן
+No documents uploaded.|לא הועלו מסמכים.|קיין דאקומענטן זענען נישט ארויפגעלייגט.
+PDF, PNG, or JPEG document|מסמך PDF, PNG או JPEG|א PDF, PNG, אדער JPEG דאקומענט
+Upload document|העלאת מסמך|ארויפלייגן דאקומענט
+Delete|מחיקה|אויסמעקן
+Choose a PDF, PNG, or JPEG document.|בחרו מסמך PDF, PNG או JPEG.|קלויבט א PDF, PNG, אדער JPEG דאקומענט.
+Document must be between 1 byte and 8 MB.|המסמך חייב להיות בגודל שבין בית אחד ל־8 MB.|דער דאקומענט מוז זיין צווישן 1 בייט און 8 MB.
+The document filename extension does not match its contents.|סיומת שם המסמך אינה תואמת לתוכנו.|דער דאקומענט נאמען־ענדונג שטימט נישט מיט זיין אינהאלט.
 '''
 CATALOG = {row.split('|')[0]:dict(zip(('he','yi'),row.split('|')[1:])) for row in _ROWS.strip().splitlines()}
 
@@ -206,13 +223,13 @@ AUDIT_PREFIXES = {
         'he': 'עודכן תפקיד הצוות עבור ',
         'yi': 'מען האט געטוישט די שטאב ראלע פאר ',
     },
-    'Assigned family administrator: ': {
-        'he': 'הוקצה מנהל משפחה: ',
-        'yi': 'צוגעטיילט א משפחה אדמיניסטראטאר: ',
+    'Assigned staff member: ': {
+        'he': 'הוקצה איש צוות: ',
+        'yi': 'צוגעטיילט א שטאב מיטגליד: ',
     },
-    'Revoked family administrator: ': {
-        'he': 'בוטלה הקצאת מנהל משפחה: ',
-        'yi': 'אוועקגענומען א משפחה אדמיניסטראטאר: ',
+    'Revoked staff assignment: ': {
+        'he': 'בוטל שיבוץ איש צוות: ',
+        'yi': 'אוועקגענומען א שטאב צוטיילונג: ',
     },
 }
 
