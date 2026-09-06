@@ -15,6 +15,8 @@ from werkzeug.utils import secure_filename
 from translations import LANGUAGES, translate, translate_audit
 
 from intake import validate_intake, intake_for_form
+from budget_report import household_report
+import child_budget
 
 db = SQLAlchemy()
 
@@ -41,6 +43,11 @@ class HouseholdIntake(db.Model):
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
     data = db.Column(db.JSON, nullable=False, default=dict)
     family = db.relationship('Family', backref=db.backref('intake_record', uselist=False))
+
+
+class HouseholdBudget(db.Model):
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
+    data = db.Column(db.JSON, nullable=False, default=dict)
 
 
 class StaffUser(db.Model):
@@ -401,6 +408,34 @@ def create_app(test_config=None):
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
         return render_template('family.html', title=family.name, family=family, activity=activity, pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged'))
 
+    @app.route('/families/<int:family_id>/expense-report', methods=['GET', 'POST'])
+    def family_expense_report(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        record = db.session.get(HouseholdBudget, family_id)
+        data = record.data if record else {}
+        error = None
+        if request.method == 'POST':
+            try:
+                data = child_budget.parse(request.form, family.children)
+            except ValueError as exc:
+                error = str(exc)
+            else:
+                if record is None:
+                    record = HouseholdBudget(family_id=family_id)
+                    db.session.add(record)
+                record.data = data
+                for child in family.children:
+                    child.age = data['children'][str(child.id)]['age']
+                audit('Updated household expense plan', family_id)
+                db.session.commit()
+                flash('Profile updated.')
+                return redirect(url_for('family_expense_report', family_id=family_id))
+        report = child_budget.calculate(data, family.intake_record.data if family.intake_record else {}, family.children)
+        return render_template('expense_report.html', title='Monthly expense report', family=family,
+            report=report, budget=data, categories=child_budget.CATEGORIES, components=child_budget.COMPONENTS,
+            bands=child_budget.BANDS, error=error), 400 if error else 200
+
     @app.post('/families/<int:family_id>/status')
     def family_status(family_id):
         require_organization_admin()
@@ -423,7 +458,7 @@ def create_app(test_config=None):
             if not 0 <= age <= 30: raise ValueError()
         except ValueError:
             abort(400, 'Age must be between 0 and 30.')
-        db.session.add(Child(family_id=family_id, name=field('name', True), age=age, grade=field('grade', limit=80), school=field('school', True), tuition_contact=field('tuition_contact', limit=300)))
+        db.session.add(Child(family_id=family_id, name=field('name', True), age=age, grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300)))
         audit('Added child and school details', family_id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
