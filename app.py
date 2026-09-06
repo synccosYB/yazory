@@ -14,6 +14,8 @@ from werkzeug.utils import secure_filename
 
 from translations import LANGUAGES, translate, translate_audit
 
+from intake import validate_intake, intake_for_form
+
 db = SQLAlchemy()
 
 class Family(db.Model):
@@ -34,6 +36,12 @@ class Family(db.Model):
     expenses = db.relationship('Expense', backref='family', lazy=True)
     documents = db.relationship('Document', backref='family', lazy=True, cascade='all, delete-orphan')
     assignments = db.relationship('FamilyAssignment', backref='family', lazy=True, cascade='all, delete-orphan')
+
+class HouseholdIntake(db.Model):
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
+    data = db.Column(db.JSON, nullable=False, default=dict)
+    family = db.relationship('Family', backref=db.backref('intake_record', uselist=False))
+
 
 class StaffUser(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -322,13 +330,41 @@ def create_app(test_config=None):
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
         return render_template('families.html', title='Families', families=db.session.scalars(statement).all(), query=query)
 
+    def intake_form(family, title, error=None):
+        values = dict(request.form) if error else ({key: getattr(family, key) for key in
+            ('name','spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances')} if family else {})
+        budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
+        if error:
+            budget.update(request.form)
+            import json
+            for group in ('accounts', 'assistance'):
+                try:
+                    entries = json.loads(request.form.get(group + '_json', '[]'))
+                    budget[group] = entries if isinstance(entries, list) else []
+                except ValueError:
+                    budget[group] = []
+        return render_template('family_form.html', family=family, title=title, values=values, budget=budget, intake_error=error)
+
+    def save_intake(family, data):
+        if data is not None:
+            record = db.session.get(HouseholdIntake, family.id)
+            if record is None:
+                record = HouseholdIntake(family_id=family.id)
+                db.session.add(record)
+            record.data = data
+
     @app.route('/families/new', methods=['GET', 'POST'])
     def new_family():
         require_capability(('organization_admin', 'office_employee'))
         if request.method == 'POST':
+            try:
+                intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
+            except ValueError as exc:
+                return intake_form(None, 'New family intake', str(exc)), 400
             family = Family(name=field('name', True), **{k: field(k, limit=300 if k=='address' else 80 if k=='phone' else 160) for k in ['spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
+            save_intake(family, intake_data)
             # An office intake never creates an unassigned household.
             if not organization_admin():
                 db.session.add(FamilyAssignment(staff_user_id=current_user().id, family_id=family.id))
@@ -336,20 +372,25 @@ def create_app(test_config=None):
             db.session.commit()
             flash('Family intake saved.')
             return redirect(url_for('family_detail', family_id=family.id))
-        return render_template('family_form.html', title='New family intake', family=None)
+        return intake_form(None, 'New family intake')
 
     @app.route('/families/<int:family_id>/edit', methods=['GET', 'POST'])
     def edit_family(family_id):
         require_capability(('family_admin', 'office_employee'))
         family = accessible_family_or_404(family_id)
         if request.method == 'POST':
+            try:
+                intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
+            except ValueError as exc:
+                return intake_form(family, 'Edit family profile', str(exc)), 400
             for key in ['name','spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=5000 if key=='circumstances' else 300 if key=='address' else 80 if key=='phone' else 160))
+            save_intake(family, intake_data)
             audit('Updated family profile', family.id)
             db.session.commit()
             flash('Profile updated.')
             return redirect(url_for('family_detail', family_id=family.id))
-        return render_template('family_form.html', title='Edit family profile', family=family)
+        return intake_form(family, 'Edit family profile')
 
     @app.get('/families/<int:family_id>')
     def family_detail(family_id):

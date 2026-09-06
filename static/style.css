@@ -32,3 +32,32 @@ th{text-align:start;background:#f0f2f5}table{text-align:start}
 [dir=rtl] .eyebrow,[dir=rtl] .nav-label,[dir=rtl] th{letter-spacing:0}
 [dir=rtl] h1{letter-spacing:0}[dir=rtl] .brand{direction:ltr}
 @media(max-width:750px){.sidebar{position:static;padding:10px 16px;width:100%}.brand{margin:0 auto;padding:4px;width:110px;border-radius:5px}.brand img{height:75px}.sidebar nav{margin-top:8px}.sidebar nav a{padding:8px}.workspace{margin-inline-start:0}header{height:auto;min-height:65px;flex-wrap:wrap;padding:10px 18px}.header-actions{gap:8px;flex-wrap:wrap}.language-switch a{padding:6px 10px}main{padding:20px 16px}.metrics article{padding:14px}.page-heading h1{font-size:23px}}
+
+/* Compact desktop pages; retain natural flow at small sizes and browser zoom. */
+[hidden]{display:none!important}
+header{min-height:64px;height:auto;padding-block:10px}.header-actions{flex-wrap:wrap}
+main{padding:16px 24px}.page-heading{margin-bottom:12px}h1{font-size:25px;margin:4px 0}
+.padded{padding:16px}.card{margin-bottom:12px}.section-heading{padding:14px}
+.metrics{gap:12px;margin-bottom:14px}.metrics article{padding:12px}.metrics strong{font-size:26px;margin:4px 0}
+label{margin:6px 0}input,select,textarea{padding:8px;margin-top:3px}
+th,td{padding:10px 12px}.form-actions{margin-top:12px}.overview-grid{gap:14px}
+footer{padding:6px 24px 10px}.brand-caption{margin-bottom:14px}.sidebar nav a{padding:10px 12px}
+.intake-steps{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 14px}
+.intake-steps button{background:white;color:var(--ink);border-color:var(--line);padding:6px 9px;white-space:normal}
+.intake-steps button.selected{background:var(--green);color:white}
+.intake-wizard h2{margin-bottom:8px}.intake-wizard p{margin:4px 0 10px}
+.intake-actions{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line);padding-top:12px;margin-top:14px}
+.intake-actions>a{margin-inline-end:auto}.intake-actions button:disabled,.repeat-controls button:disabled{opacity:.45;cursor:default}
+.repeat-toolbar,.repeat-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.repeat-toolbar{justify-content:space-between;margin-top:8px}.repeat-toolbar h3{margin:0}
+.repeat-controls{margin-top:10px}.repeat-controls button{padding:5px 9px}
+.intake-repeater{border-top:1px solid var(--line);margin-top:10px;padding-top:8px}
+#intake-review{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+#intake-review>div{border-bottom:1px solid var(--line);padding:10px;display:flex;justify-content:space-between;gap:15px}
+.page-panels{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}.page-panels button{padding:6px 12px;background:white;color:var(--ink);border-color:var(--line)}
+.page-panels button.selected{background:var(--green);color:white}
+.table-pager{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:8px 12px}.table-pager button{padding:5px 9px}
+body[data-page-tabs] .padded:has(details[open])>table,body[data-page-tabs] .padded:has(details[open])>.table-wrap,body[data-page-tabs] .padded:has(details[open])>.table-pager{display:none}
+body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
+@media(min-width:1101px){.mission{padding:12px 20px}.mission h2{font-size:19px;margin:5px 0}.mission p{font-size:12px}.attention-item{padding:9px 0}}
+@media(max-width:750px){main{padding:12px}.intake-actions{flex-wrap:wrap}.intake-actions>a{margin-inline-end:0}.intake-steps button{padding:6px}.intake-wizard .form-grid{grid-template-columns:1fr}#intake-review{grid-template-columns:1fr}}

@@ -76,3 +76,31 @@ Tests cover page rendering, intake-to-payment transitions, cent-accurate money v
 English, Hebrew, and heimish Yiddish use the same Jinja templates, CSS components, and approved helping-hands logo (`static/yazory-logo.png`). A language switcher appears on every page and remembers the choice in the session, including sign-in/sign-out. Hebrew and Yiddish use RTL via logical CSS properties; amounts and contact fields retain readable LTR formatting. Switching preserves the current page and filters. Stored names, notes, audit records, amounts, and internal status values are never machine-translated or rewritten.
 
 `translations.py` owns interface translations. Add new labels there in both languages and render them with `_()`; do not create language-specific page copies or stylesheets. Navy, gold, and cream theme values are shared across all languages. The supplied logo is copied unchanged from the approved brand asset. Existing activity descriptions and staff-entered content retain their original language.
+
+## Sequential intake and compact pages
+
+New and edited family intake uses seven short steps in English, Hebrew and
+Yiddish. New forms do not prefill providers, account numbers, income, benefits or
+household amounts. Account numbers remain text to preserve leading zeros.
+Budget amounts are monthly USD, stored as integer cents; unknown and zero are
+separate values. Utility, grocery, mosdos and other accounts are added one at a
+time. Assistance supports food stamps and additional named monthly sources.
+Authorized staff revisit the same steps through Edit profile. Fundraisers cannot
+access this confidential intake or budget information.
+
+Before running this version against an existing PostgreSQL database, run:
+
+```bash
+APP_ENV=production python -m flask --app app init-db
+```
+
+This uses the existing additive initialization command to create the new
+`household_intake` table and preserves existing tables and records. Back up the
+database using the hosting provider before schema changes. Do not copy demo data
+into the operational database.
+
+Desktop pages use compact spacing, profile tabs and viewport-sized table pages.
+Small screens and zoom retain content access rather than clipping fields. Future
+features must use short steps, tabs or pagination instead of growing a desktop
+page vertically. All development belongs in GitHub; Replit is for shell-based
+synchronization, running and deployment only. Never use Replit Agent to develop.

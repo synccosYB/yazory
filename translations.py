@@ -247,3 +247,73 @@ def translate_audit(text):
         if text.startswith(prefix):
             return translations.get(language, prefix) + text[len(prefix):]
     return translate(text)
+
+# Shared sequential intake and compact navigation labels.
+_INTAKE_ROWS = '''
+Intake steps|שלבי קליטה|די טריט ביים ארייננעמען
+Household|משק הבית|די משפחה
+Community|קהילה|די קהילה
+Children & budget|ילדים ותקציב|קינדער און הוצאות
+Employment & income|תעסוקה והכנסות|ארבעט און הכנסות
+Assistance|סיוע|הילף
+Provider accounts|חשבונות ספקים|קאונטס ביי די פירמעס
+Review|בדיקה|איבערקוקן
+Back|הקודם|צוריק
+Next|הבא|ווייטער
+Number of children|מספר ילדים|וויפיל קינדער
+Monthly rent or mortgage ($)|שכירות או משכנתה לחודש ($)|חודש׳ליכע רענט אדער מארטגעדזש ($)
+Monthly food costs ($)|הוצאות מזון לחודש ($)|חודש׳ליכע הוצאות פאר עסן ($)
+Enter monthly amounts in dollars. Leave unknown amounts blank.|יש להזין סכומים חודשיים בדולרים. סכומים שאינם ידועים יש להשאיר ריקים.|לייגט אריין חודש׳ליכע סכומים אין דאלאר. וואס מען ווייסט נישט לאזט ליידיג.
+His employment / occupation|תעסוקת הבעל|זיין ארבעט
+Her employment / occupation|תעסוקת האישה|איר ארבעט
+His employer|מעסיק הבעל|ביי וועמען ער ארבעט
+Her employer|מעסיק האישה|ביי וועמען זי ארבעט
+His monthly income ($)|הכנסת הבעל לחודש ($)|זיין חודש׳ליכע הכנסה ($)
+Her monthly income ($)|הכנסת האישה לחודש ($)|איר חודש׳ליכע הכנסה ($)
+Other monthly income ($)|הכנסה חודשית נוספת ($)|אנדערע חודש׳ליכע הכנסות ($)
+Receiving food stamps?|מקבלים תלושי מזון?|באקומען זיי פוד סטעמפס?
+Monthly food stamps ($)|סכום תלושי מזון לחודש ($)|חודש׳ליכע פוד סטעמפס ($)
+Choose…|בחרו…|קלויבט אויס…
+Yes|כן|יא
+No|לא|ניין
+Other assistance|סיוע נוסף|אנדערע הילף
+Accounts|חשבונות|קאונטס
+Add assistance|הוספת סיוע|צולייגן הילף
+Add account|הוספת חשבון|צולייגן א קאונט
+No entries yet. Add only what applies.|אין רשומות עדיין. הוסיפו רק את הנדרש.|נאך גארנישט אריינגעלייגט. לייגט צו נאר וואס איז שייך.
+Account type|סוג חשבון|סארט קאונט
+Utility company|חברת שירותים|יוטיליטי פירמע
+Grocery store|חנות מכולת|גראסערי
+Mosdos / school|מוסד לימודים|מוסד
+Organization / provider name|שם הארגון או הספק|נאמען פון דער ארגאניזאציע אדער פירמע
+Monthly assistance ($)|סכום הסיוע לחודש ($)|חודש׳ליכע הילף ($)
+Account number|מספר חשבון|קאונט נומער
+Contact phone|טלפון ליצירת קשר|טעלעפאן פאר קשר
+Child / account holder|ילד או בעל החשבון|קינד אדער בעל הקאונט
+Previous entry|רשומה קודמת|פריערדיגע איינטראג
+Next entry|רשומה הבאה|קומענדיגע איינטראג
+Remove entry|הסרת רשומה|אראפנעמען די איינטראג
+Add your own utility companies, grocery stores and mosdos. No providers are prefilled.|הוסיפו חברות שירותים, חנויות מכולת ומוסדות לפי הצורך. אין ספקים שמולאו מראש.|לייגט צו אייערע יוטיליטי פירמעס, גראסעריס און מוסדות. קיין נעמען זענען נישט פאראויס אנגעפילט.
+Use the step buttons to check or change details before saving.|השתמשו בכפתורי השלבים לבדיקה או לשינוי לפני השמירה.|נוצט די קנעפלעך פון די טריט צו איבערקוקן אדער טוישן פארן אפהיטן.
+Enable JavaScript to complete the step-by-step intake.|יש להפעיל JavaScript להשלמת הקליטה בשלבים.|מען דארף אנצינדן JavaScript צו אויספילן די טריט.
+Intake text is too long.|הטקסט בטופס ארוך מדי.|דער טעקסט איז צו לאנג.
+Number of children must be between 0 and 50.|מספר הילדים חייב להיות בין 0 ל־50.|די צאל קינדער מוז זיין צווישן 0 און 50.
+Choose Yes or No for food stamps.|בחרו כן או לא עבור תלושי מזון.|קלויבט יא אדער ניין פאר פוד סטעמפס.
+Enter the monthly food stamp amount.|הזינו את סכום תלושי המזון החודשי.|לייגט אריין דעם חודש׳ליכן סכום פוד סטעמפס.
+Invalid account or assistance entry.|רשומת חשבון או סיוע אינה תקינה.|די איינטראג פאר קאונט אדער הילף איז נישט ריכטיג.
+Enter the provider or organization name.|הזינו את שם הספק או הארגון.|לייגט אריין דעם נאמען פון דער פירמע אדער ארגאניזאציע.
+Enter the monthly assistance amount.|הזינו את סכום הסיוע החודשי.|לייגט אריין דעם חודש׳ליכן סכום הילף.
+Choose an account type.|בחרו סוג חשבון.|קלויבט אויס א סארט קאונט.
+Profile sections|חלקי הפרופיל|די טיילן פון די פרטים
+Household budget & accounts|תקציב המשפחה וחשבונות|הוצאות און קאונטס פון דער משפחה
+Review or update income, assistance and provider accounts in the intake steps.|בדקו או עדכנו הכנסות, סיוע וחשבונות בשלבי הקליטה.|קוקט איבער אדער טוישט הכנסות, הילף און קאונטס אין די טריט.
+'''
+for _row in _INTAKE_ROWS.strip().splitlines():
+    _en, _he, _yi = _row.split('|')
+    CATALOG[_en] = {'he': _he, 'yi': _yi}
+
+CATALOG.update({
+ 'Receiving other assistance?': {'he':'מקבלים סיוע נוסף?', 'yi':'באקומען זיי נאך אנדערע הילף?'},
+ 'Choose Yes or No for other assistance.': {'he':'בחרו כן או לא עבור סיוע נוסף.', 'yi':'קלויבט יא אדער ניין פאר אנדערע הילף.'},
+ 'Add the assistance source and monthly amount.': {'he':'הוסיפו את מקור הסיוע והסכום החודשי.', 'yi':'לייגט צו פון וועמען די הילף קומט און דעם חודש׳ליכן סכום.'}
+})

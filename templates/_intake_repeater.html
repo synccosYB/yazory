@@ -1,0 +1,10 @@
+<div class="intake-repeater" data-group="{{ group }}">
+<input type="hidden" name="{{ group }}_json" value="[]">
+<div class="repeat-toolbar"><h3>{{ _('Other assistance') if group=='assistance' else _('Accounts') }}</h3><button type="button" data-add>{{ _('Add assistance') if group=='assistance' else _('Add account') }}</button></div>
+<p data-empty>{{ _('No entries yet. Add only what applies.') }}</p>
+<div data-editor hidden><div class="form-grid">
+{% if group=='accounts' %}<label>{{ _('Account type') }}<select data-entry="kind"><option value="">{{ _('Choose…') }}</option>{% for code,label in [('utility','Utility company'),('grocery','Grocery store'),('mosdos','Mosdos / school'),('other','Other')] %}<option value="{{ code }}">{{ _(label) }}</option>{% endfor %}</select></label>{% endif %}
+<label>{{ _('Organization / provider name') }}<input data-entry="provider" maxlength="300"></label>
+{% if group=='assistance' %}<label>{{ _('Monthly assistance ($)') }}<input data-entry="amount" type="number" min="0" max="1000000" step="0.01"></label>{% else %}<label>{{ _('Account number') }}<input data-entry="account" maxlength="300" dir="ltr"></label><label>{{ _('Contact phone') }}<input data-entry="phone" maxlength="300" dir="ltr"></label><label>{{ _('Child / account holder') }}<input data-entry="child" maxlength="300"></label>{% endif %}
+</div><div class="repeat-controls"><button type="button" data-prev class="button secondary">{{ _('Previous entry') }}</button><span data-count aria-live="polite"></span><button type="button" data-next class="button secondary">{{ _('Next entry') }}</button><button type="button" data-remove class="button secondary">{{ _('Remove entry') }}</button></div></div>
+</div>
