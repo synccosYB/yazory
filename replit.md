@@ -3,6 +3,9 @@
 ## Project
 Yazory supports households facing illness by coordinating family/community pledges and daily expenses. Preserve the Python/Flask stack and existing structure.
 
+## Permanent language and brand requirement
+Every future screen, feature, system message, letter, and receipt must ship together in English, Hebrew, and the current heimish Yiddish, using the approved Yazory helping-hands logo and the shared navy, gold, and cream design system. English must remain left-to-right; Hebrew and Yiddish must remain right-to-left. Keep the current Yiddish wording unless the user explicitly approves revisions. Never present a receipt template or generated receipt as proof that payment occurred; it is documentation only and must be clearly labeled accordingly.
+
 ## Start
 Pull GitHub `main`. Press Run, which executes `pip install -r requirements.txt && python app.py`. Python 3.11+, port 5000, entry point `app.py`. No frontend build required. Templates are in `templates/`; CSS is in `static/style.css`.
 

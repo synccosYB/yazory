@@ -1,6 +1,6 @@
 entrypoint = "app.py"
-modules = ["python-3.11"]
-run = "pip install -r requirements.txt && python app.py"
+modules = ["python-3.11", "postgresql-16"]
+run = "pip install -r requirements.txt && DATABASE_URL=sqlite:///yazory-demo.db python app.py"
 
 [[ports]]
 localPort = 5000
@@ -9,3 +9,32 @@ externalPort = 80
 [deployment]
 build = ["sh", "-c", "pip install -r requirements.txt"]
 run = ["sh", "-c", "APP_ENV=production gunicorn --bind 0.0.0.0:5000 'app:create_app()'"]
+deploymentTarget = "autoscale"
+
+[nix]
+packages = ["postgresql"]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "DATABASE_URL=sqlite:///yazory-demo.db python app.py"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
