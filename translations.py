@@ -175,8 +175,50 @@ Family intake saved.|קליטת המשפחה נשמרה.|די נייע משפח�
 Profile updated.|הפרופיל עודכן.|די פרטים זענען אפגעהיטן.
 Email or password is incorrect.|הדוא״ל או הסיסמה שגויים.|דער אימעיל אדער פעסווארד איז נישט ריכטיג.
 Choose language|בחירת שפה|אויסקלויבן א שפראך
+STAFF ADMINISTRATION|ניהול צוות|פארוואלטן שטאב
+Staff & assignments|צוות ושיבוצים|שטאב און צוטיילונגען
+Organization administrators control accounts and explicit family access.|מנהלי ארגון מנהלים חשבונות והרשאות מפורשות למשפחות.|ארגאניזאציע־מנהלים פירן חשבונות און קלארע צוטריט צו משפחות.
+Add staff account|הוספת חשבון צוות|צולייגן א שטאב־חשבון
+Create staff account|יצירת חשבון צוות|שאפן שטאב־חשבון
+Staff accounts|חשבונות צוות|שטאב־חשבונות
+Role|תפקיד|ראָלע
+Organization administrator|מנהל ארגון|ארגאניזאציע־מנהל
+Family administrator|מנהל משפחות|משפחה־מנהל
+Assign / revoke family|שיבוץ / ביטול משפחה|צוטיילן / אוועקנעמען משפחה
+No family assignments.|אין שיבוצים למשפחות.|נישטא קיין צוטיילונגען צו משפחות.
+Staff account created.|חשבון הצוות נוצר.|דער שטאב־חשבון איז געשאפן.
+Organization administrator access is required.|נדרשת הרשאת מנהל ארגון.|מען דארף צוטריט פון אן ארגאניזאציע־מנהל.
+You are not assigned to this family.|אינך משובץ למשפחה זו.|איר זענט נישט צוגעטיילט צו דער משפחה.
+Only family administrators can receive family assignments.|רק מנהלי משפחות יכולים לקבל שיבוץ למשפחות.|נאר משפחה־מנהלים קענען באקומען צוטיילונגען צו משפחות.
+Choose a valid role and a password of at least 12 characters.|בחרו תפקיד תקין וסיסמה של 12 תווים לפחות.|קלויבט א גילטיגע ראָלע און א פעסווארד פון כאטש 12 אותיות.
+A staff account already uses this email.|חשבון צוות כבר משתמש בדוא״ל זה.|א שטאב־חשבון נוצט שוין דעם אימעיל.
+Owner|בעלים|אייגנטימער
+The owner organization administrator cannot be demoted.|לא ניתן להוריד את דרגת מנהל הארגון הבעלים.|מען קען נישט אראפנעמען די ראָלע פונעם אייגנטימער ארגאניזאציע־מנהל.
+At least one organization administrator is required.|נדרש לפחות מנהל ארגון אחד.|מען דארף האבן כאטש איין ארגאניזאציע־מנהל.
 '''
 CATALOG = {row.split('|')[0]:dict(zip(('he','yi'),row.split('|')[1:])) for row in _ROWS.strip().splitlines()}
 
 def translate(text):
     return CATALOG.get(text, {}).get(session.get('language', 'en'), text)
+
+AUDIT_PREFIXES = {
+    'Updated staff role for ': {
+        'he': 'עודכן תפקיד הצוות עבור ',
+        'yi': 'מען האט געטוישט די שטאב ראלע פאר ',
+    },
+    'Assigned family administrator: ': {
+        'he': 'הוקצה מנהל משפחה: ',
+        'yi': 'צוגעטיילט א משפחה אדמיניסטראטאר: ',
+    },
+    'Revoked family administrator: ': {
+        'he': 'בוטלה הקצאת מנהל משפחה: ',
+        'yi': 'אוועקגענומען א משפחה אדמיניסטראטאר: ',
+    },
+}
+
+def translate_audit(text):
+    language = session.get('language', 'en')
+    for prefix, translations in AUDIT_PREFIXES.items():
+        if text.startswith(prefix):
+            return translations.get(language, prefix) + text[len(prefix):]
+    return translate(text)
