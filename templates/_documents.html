@@ -1,0 +1,17 @@
+{% from 'macros.html' import token %}
+<section class="card padded">
+  <h2>{{ _("Documents") }}</h2>
+  {% for document in family.documents %}
+  <div class="activity-row">
+    <a href="{{ url_for('download_document', document_id=document.id) }}">{{ document.filename }}</a>
+    <form method="post" action="{{ url_for('delete_document', document_id=document.id) }}">
+      {{ token(csrf) }}<button class="small secondary">{{ _("Delete") }}</button>
+    </form>
+  </div>
+  {% else %}<p>{{ _("No documents uploaded.") }}</p>{% endfor %}
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('add_document', family_id=family.id) }}">
+    {{ token(csrf) }}
+    <label>{{ _("PDF, PNG, or JPEG document") }}<input type="file" name="document" accept=".pdf,.png,.jpg,.jpeg" required></label>
+    <button>{{ _("Upload document") }}</button>
+  </form>
+</section>
