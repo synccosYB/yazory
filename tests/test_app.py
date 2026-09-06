@@ -79,6 +79,12 @@ def test_production_requires_configuration(monkeypatch):
     monkeypatch.delenv('ADMIN_PASSWORD_HASH',raising=False)
     with pytest.raises(RuntimeError,match='Production requires'):
         create_app()
+    monkeypatch.setenv('ADMIN_EMAIL','owner@example.test')
+    monkeypatch.setenv('ADMIN_PASSWORD_HASH','plaintext-is-not-a-hash')
+    monkeypatch.setenv('SESSION_SECRET','x'*32)
+    monkeypatch.setenv('DATABASE_URL','postgresql://example.invalid/yazory')
+    with pytest.raises(RuntimeError,match='valid Werkzeug'):
+        create_app()
 
 def test_demo_rejects_shared_database(monkeypatch):
     monkeypatch.delenv('APP_ENV',raising=False)
