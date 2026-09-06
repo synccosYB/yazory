@@ -27,6 +27,7 @@ Open http://localhost:5000. Local demo data is stored in `instance/yazory-demo.d
 - Case workflow: Intake → Under review → Active or Declined. Active cases can be paused or closed; closed/declined cases can return to review.
 - Expense requests: category, payee, budget month, amount, and notes. Organization expenses can be assigned to a case.
 - Expense workflow: Requested → Approved or Declined; Approved → Paid or Voided. Only active cases can be approved/paid. A payment reference is mandatory to mark Paid. Terminal expense states cannot be changed.
+- Individual staff accounts have either `organization_admin` or `family_admin` roles. Organization administrators manage cases, workflows, staff accounts, and explicit family assignments. Family administrators can see and manage profiles, children, supporter contacts, and expense requests only for families explicitly assigned to them; they cannot approve expenses, transition cases, administer users, or assign themselves.
 - Overview, unified expense approval queue, family search, and actor/timestamp activity history.
 
 Pledges are commitments, not collected revenue. Payment recording does not transfer money. Monthly overview totals use expense budget month; they are not bank reconciliation or cash-basis accounting reports.
@@ -38,8 +39,8 @@ Deployment intentionally refuses to start without all of these Replit Secrets:
 | Secret | Purpose |
 | --- | --- |
 | `DATABASE_URL` | Persistent PostgreSQL connection, separate from demo |
-| `ADMIN_EMAIL` | Initial staff sign-in identity |
-| `ADMIN_PASSWORD_HASH` | Werkzeug password hash, never the plaintext password |
+| `ADMIN_EMAIL` | Bootstrap owner organization-administrator identity |
+| `ADMIN_PASSWORD_HASH` | Bootstrap owner Werkzeug password hash, never the plaintext password |
 | `SESSION_SECRET` | Stable random secret, at least 32 characters |
 
 Generate a session secret privately with `python -c "import secrets; print(secrets.token_hex(32))"`.
@@ -57,7 +58,7 @@ APP_ENV=production flask --app 'app:create_app()' init-db
 
 The publishing command in `.replit` sets `APP_ENV=production` and runs Gunicorn on port 5000. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL. Schema creation is explicit and nondestructive; future schema changes will require versioned migrations.
 
-This is an initial application, not a completed production launch. Before real operational use, complete individual staff accounts and roles (including separation of requesters and approvers), password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. Current authentication is a single bootstrap staff account. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
+The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
 
 Not yet implemented: automated donation collection, receipts, bank reconciliation, document uploads, invitations, email/SMS delivery, full bookkeeping, recurring expense generation, or automated backups. No production publishing or external financial actions are performed by this repository setup.
 

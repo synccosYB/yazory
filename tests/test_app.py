@@ -1,5 +1,5 @@
 import pytest
-from app import create_app, db, Family, Expense, Contact, Audit
+from app import create_app, db, Family, Expense, Contact, Audit, StaffUser, FamilyAssignment
 from werkzeug.security import generate_password_hash
 
 @pytest.fixture
@@ -116,3 +116,83 @@ def test_language_keeps_user_content(client):
     client.get('/language/yi')
     post(client,'/families/new',{'name':'Original family name'})
     assert 'Original family name' in client.get('/families').text
+
+def test_roles_assignments_and_bootstrap_isolation(monkeypatch):
+    """Roles are enforced from the database, including after an assignment is revoked."""
+    for key in ['APP_ENV','DATABASE_URL','ADMIN_EMAIL','ADMIN_PASSWORD_HASH','SESSION_SECRET']:
+        monkeypatch.delenv(key, raising=False)
+    owner_hash = generate_password_hash('owner-password-123')
+    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI':'sqlite://',
+                      'SECRET_KEY':'test-only', 'DEMO':False,
+                      'ADMIN_EMAIL':'owner@example.test', 'ADMIN_PASSWORD_HASH':owner_hash})
+    with app.app_context():
+        db.create_all()
+    monkeypatch.setattr('time.sleep', lambda _: None)
+    owner = app.test_client()
+    owner.get('/login')
+    with owner.session_transaction() as s: csrf = s['csrf']
+    assert owner.post('/login', data={'csrf':csrf, 'email':'owner@example.test',
+                                      'password':'owner-password-123'}).status_code == 302
+    assert post(owner, '/families/new', {'name':'Assigned family'}).status_code == 302
+    assert post(owner, '/families/new', {'name':'Private family'}).status_code == 302
+    with app.app_context():
+        assigned = db.session.scalar(db.select(Family).where(Family.name == 'Assigned family'))
+        private = db.session.scalar(db.select(Family).where(Family.name == 'Private family'))
+        # Repeated bootstrap checks preserve records and do not duplicate the owner.
+        assert len(db.session.scalars(db.select(StaffUser.id)).all()) == 1
+    assert post(owner, '/staff', {'email':'family@example.test', 'password':'family-password-123',
+                                  'role':'family_admin'}).status_code == 302
+    with app.app_context():
+        family_admin = db.session.scalar(db.select(StaffUser).where(StaffUser.email == 'family@example.test'))
+    assert post(owner, f'/staff/{family_admin.id}/assignments', {'family_id':assigned.id}).status_code == 302
+    with app.app_context():
+        owner_user = db.session.scalar(db.select(StaffUser).where(StaffUser.email == 'owner@example.test'))
+    assert post(owner, f'/staff/{owner_user.id}/role', {'role':'family_admin'}).status_code == 400
+    with app.app_context():
+        assert db.session.get(StaffUser, owner_user.id).role == 'organization_admin'
+    staff = app.test_client()
+    staff.get('/login')
+    with staff.session_transaction() as s: csrf = s['csrf']
+    assert staff.post('/login', data={'csrf':csrf, 'email':'family@example.test',
+                                      'password':'family-password-123'}).status_code == 302
+    assert staff.get(f'/families/{assigned.id}').status_code == 200
+    assert staff.get(f'/families/{private.id}').status_code == 403
+    assert staff.get('/activity').status_code == 403
+    assert staff.get('/settings').status_code == 403
+    assert staff.get('/staff').status_code == 403
+    assert post(staff, f'/families/{private.id}/contacts',
+                {'name':'Denied','relationship':'Sibling','status':'Pledged','monthly':'1'}).status_code == 403
+    assert post(staff, f'/families/{assigned.id}/status', {'status':'Under review'}).status_code == 403
+    assert post(staff, '/staff', {'email':'nope@example.test','password':'password-password','role':'organization_admin'}).status_code == 403
+    assert post(staff, f'/families/{assigned.id}/children',
+                {'name':'Allowed','age':'8','school':'School'}).status_code == 302
+    assert post(staff, f'/families/{assigned.id}/expenses',
+                {'category':'Groceries','payee':'Allowed shop','amount':'10','month':'2026-09'}).status_code == 302
+    with app.app_context():
+        allowed_contact = Contact(family_id=assigned.id, name='Allowed contact', relationship='Sibling')
+        private_contact = Contact(family_id=private.id, name='Private contact', relationship='Sibling')
+        private_expense = Expense(family_id=private.id, category='Groceries', payee='Private shop',
+                                  amount_cents=1000, month='2026-09')
+        db.session.add_all([allowed_contact, private_contact, private_expense])
+        db.session.commit()
+        private_contact_id = private_contact.id
+        private_expense_id = private_expense.id
+    assert post(staff, f'/contacts/{private_contact_id}',
+                {'status':'Contacted','monthly':'0'}).status_code == 403
+    assert post(staff, f'/expenses/{private_expense_id}/status',
+                {'status':'Approved'}).status_code == 403
+    expense_page = staff.get('/expenses').text
+    assert 'Allowed shop' in expense_page
+    assert 'Private shop' not in expense_page
+    assert 'Staff & assignments' not in staff.get('/').text
+    assert 'Sign out' in staff.get('/').text
+    owner.get('/language/he')
+    assert 'הוקצה מנהל משפחה:' in owner.get(f'/families/{assigned.id}').text
+    owner.get('/language/yi')
+    assert 'צוגעטיילט א משפחה אדמיניסטראטאר:' in owner.get(f'/families/{assigned.id}').text
+    assert post(owner, f'/staff/{family_admin.id}/assignments', {'family_id':assigned.id}).status_code == 302
+    assert staff.get(f'/families/{assigned.id}').status_code == 403
+    with app.app_context():
+        assert db.session.scalar(db.select(FamilyAssignment.id).where(
+            FamilyAssignment.staff_user_id == family_admin.id,
+            FamilyAssignment.family_id == assigned.id)) is None
