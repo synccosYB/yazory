@@ -2,13 +2,15 @@ import os
 import secrets
 import hmac
 import re
+from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import select, func, UniqueConstraint
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 from translations import LANGUAGES, translate, translate_audit
 
@@ -30,6 +32,7 @@ class Family(db.Model):
     children = db.relationship('Child', backref='family', lazy=True)
     contacts = db.relationship('Contact', backref='family', lazy=True)
     expenses = db.relationship('Expense', backref='family', lazy=True)
+    documents = db.relationship('Document', backref='family', lazy=True, cascade='all, delete-orphan')
     assignments = db.relationship('FamilyAssignment', backref='family', lazy=True, cascade='all, delete-orphan')
 
 class StaffUser(db.Model):
@@ -74,6 +77,14 @@ class Expense(db.Model):
     status = db.Column(db.String(30), default='Requested', nullable=False)
     payment_reference = db.Column(db.String(200), default='')
 
+class Document(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, index=True)
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(100), nullable=False)
+    data = db.Column(db.LargeBinary, nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
 class Audit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -109,7 +120,7 @@ def create_app(test_config=None):
     demo = not password_hash
     if production and (demo or len(secret) < 32 or not admin_email or not database.startswith('postgresql+psycopg://') or not valid_werkzeug_password_hash(password_hash)):
         raise RuntimeError('Production requires PostgreSQL DATABASE_URL, ADMIN_EMAIL, a valid Werkzeug ADMIN_PASSWORD_HASH and SESSION_SECRET (32+ characters).')
-    app.config.update(SECRET_KEY=secret or secrets.token_hex(32), SQLALCHEMY_DATABASE_URI=database, SQLALCHEMY_TRACK_MODIFICATIONS=False, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=production, PERMANENT_SESSION_LIFETIME=timedelta(minutes=30), MAX_CONTENT_LENGTH=64*1024, DEMO=demo, ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash)
+    app.config.update(SECRET_KEY=secret or secrets.token_hex(32), SQLALCHEMY_DATABASE_URI=database, SQLALCHEMY_TRACK_MODIFICATIONS=False, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=production, PERMANENT_SESSION_LIFETIME=timedelta(minutes=30), MAX_CONTENT_LENGTH=10*1024*1024, DEMO=demo, ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash)
     if test_config:
         app.config.update(test_config)
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
@@ -150,6 +161,21 @@ def create_app(test_config=None):
     def organization_admin():
         return app.config['DEMO'] or (current_user() and current_user().role == 'organization_admin')
 
+    STAFF_ROLES = ('organization_admin', 'family_admin', 'office_employee', 'fundraiser')
+
+    def has_role(*roles):
+        return organization_admin() or bool(current_user() and current_user().role in roles)
+
+    def can_manage_household():
+        return has_role('family_admin', 'office_employee')
+
+    def can_manage_supporters():
+        return has_role('family_admin', 'fundraiser')
+
+    def require_capability(allowed, message='You do not have permission for this action.'):
+        if not has_role(*allowed):
+            abort(403, message)
+
     def require_organization_admin():
         if not organization_admin():
             abort(403, 'Organization administrator access is required.')
@@ -162,17 +188,17 @@ def create_app(test_config=None):
             FamilyAssignment.staff_user_id == user.id, FamilyAssignment.family_id == family_id)))
 
     def accessible_family_or_404(family_id):
-        family = db.get_or_404(Family, family_id)
-        if not can_access_family(family.id):
+        # Check assignment before loading household data for non-administrators.
+        if not can_access_family(family_id):
             abort(403, 'You are not assigned to this family.')
-        return family
+        return db.get_or_404(Family, family_id)
 
     @app.context_processor
     def common():
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         user = current_user()
-        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=CATEGORIES, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin())
+        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=CATEGORIES, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
 
     @app.before_request
     def security():
@@ -266,6 +292,10 @@ def create_app(test_config=None):
 
     @app.get('/')
     def dashboard():
+        if current_user() and current_user().role == 'fundraiser':
+            return redirect(url_for('fundraising'))
+        if current_user() and current_user().role == 'office_employee':
+            return redirect(url_for('families'))
         statement = select(Family).order_by(Family.id.desc())
         if not organization_admin():
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
@@ -283,6 +313,7 @@ def create_app(test_config=None):
 
     @app.get('/families')
     def families():
+        require_capability(('family_admin', 'office_employee'))
         query = request.args.get('q', '').strip()[:160]
         statement = select(Family).order_by(Family.id.desc())
         if query:
@@ -293,11 +324,14 @@ def create_app(test_config=None):
 
     @app.route('/families/new', methods=['GET', 'POST'])
     def new_family():
-        require_organization_admin()
+        require_capability(('organization_admin', 'office_employee'))
         if request.method == 'POST':
             family = Family(name=field('name', True), **{k: field(k, limit=300 if k=='address' else 80 if k=='phone' else 160) for k in ['spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
+            # An office intake never creates an unassigned household.
+            if not organization_admin():
+                db.session.add(FamilyAssignment(staff_user_id=current_user().id, family_id=family.id))
             audit('Created family intake', family.id)
             db.session.commit()
             flash('Family intake saved.')
@@ -306,6 +340,7 @@ def create_app(test_config=None):
 
     @app.route('/families/<int:family_id>/edit', methods=['GET', 'POST'])
     def edit_family(family_id):
+        require_capability(('family_admin', 'office_employee'))
         family = accessible_family_or_404(family_id)
         if request.method == 'POST':
             for key in ['name','spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances']:
@@ -318,7 +353,10 @@ def create_app(test_config=None):
 
     @app.get('/families/<int:family_id>')
     def family_detail(family_id):
+        require_capability(('family_admin', 'office_employee'))
         family = accessible_family_or_404(family_id)
+        if current_user() and current_user().role == 'office_employee':
+            return render_template('family_office_with_documents.html', title=family.name, family=family)
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
         return render_template('family.html', title=family.name, family=family, activity=activity, pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged'))
 
@@ -337,6 +375,7 @@ def create_app(test_config=None):
 
     @app.post('/families/<int:family_id>/children')
     def add_child(family_id):
+        require_capability(('family_admin', 'office_employee'))
         accessible_family_or_404(family_id)
         try:
             age = int(field('age', True))
@@ -350,7 +389,11 @@ def create_app(test_config=None):
 
     @app.post('/families/<int:family_id>/contacts')
     def add_contact(family_id):
-        accessible_family_or_404(family_id)
+        require_capability(('family_admin', 'fundraiser'))
+        if not can_access_family(family_id):
+            abort(403, 'You are not assigned to this family.')
+        if db.session.get(Family, family_id) is None:
+            abort(404)
         relationship = field('relationship', True)
         status = field('status', True)
         if relationship not in RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
@@ -358,12 +401,15 @@ def create_app(test_config=None):
         db.session.add(Contact(family_id=family_id, name=field('name', True), relationship=relationship, phone=field('phone', limit=80), monthly_cents=pledge, status=status))
         audit('Added donor network contact', family_id)
         db.session.commit()
-        return redirect(url_for('family_detail', family_id=family_id))
+        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=family_id))
 
     @app.post('/contacts/<int:contact_id>')
     def update_contact(contact_id):
-        contact = db.get_or_404(Contact, contact_id)
-        if not can_access_family(contact.family_id):
+        require_capability(('family_admin', 'fundraiser'))
+        # Scope the query to an assigned family rather than exposing a contact row.
+        contact = db.session.scalar(select(Contact).where(Contact.id == contact_id, Contact.family_id.in_(
+            select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))) if not organization_admin() else db.get_or_404(Contact, contact_id)
+        if contact is None:
             abort(403, 'You are not assigned to this family.')
         status = field('status', True)
         if status not in CONTACT_STATUSES: abort(400)
@@ -371,10 +417,68 @@ def create_app(test_config=None):
         contact.monthly_cents = amount('monthly', allow_zero=status!='Pledged')
         audit(f'Updated donor pledge: {status}', contact.family_id)
         db.session.commit()
-        return redirect(url_for('family_detail', family_id=contact.family_id))
+        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+
+    def accessible_document_or_403(document_id):
+        if organization_admin():
+            return db.get_or_404(Document, document_id)
+        document = db.session.scalar(select(Document).where(
+            Document.id == document_id,
+            Document.family_id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id))))
+        if document is None:
+            abort(403, 'You are not assigned to this family.')
+        return document
+
+    @app.post('/families/<int:family_id>/documents')
+    def add_document(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        upload = request.files.get('document')
+        filename = secure_filename(upload.filename or '') if upload else ''
+        if not upload or not filename:
+            abort(400, 'Choose a PDF, PNG, or JPEG document.')
+        data = upload.read()
+        if not data or len(data) > 8 * 1024 * 1024:
+            abort(400, 'Document must be between 1 byte and 8 MB.')
+        extension = os.path.splitext(filename)[1].lower()
+        if data.startswith(b'%PDF-'):
+            detected_type, allowed_extensions = 'application/pdf', {'.pdf'}
+        elif data.startswith(b'\x89PNG\r\n\x1a\n'):
+            detected_type, allowed_extensions = 'image/png', {'.png'}
+        elif data.startswith(b'\xff\xd8\xff'):
+            detected_type, allowed_extensions = 'image/jpeg', {'.jpg', '.jpeg'}
+        else:
+            abort(400, 'Choose a PDF, PNG, or JPEG document.')
+        if extension not in allowed_extensions:
+            abort(400, 'The document filename extension does not match its contents.')
+        db.session.add(Document(family_id=family.id, filename=filename,
+                                content_type=detected_type, data=data))
+        audit('Added family document', family.id)
+        db.session.commit()
+        return redirect(url_for('family_detail', family_id=family.id))
+
+    @app.get('/documents/<int:document_id>')
+    def download_document(document_id):
+        require_capability(('family_admin', 'office_employee'))
+        document = accessible_document_or_403(document_id)
+        return send_file(BytesIO(document.data), mimetype=document.content_type,
+                         as_attachment=True, download_name=document.filename,
+                         max_age=0)
+
+    @app.post('/documents/<int:document_id>/delete')
+    def delete_document(document_id):
+        require_capability(('family_admin', 'office_employee'))
+        document = accessible_document_or_403(document_id)
+        family_id = document.family_id
+        db.session.delete(document)
+        audit('Deleted family document', family_id)
+        db.session.commit()
+        return redirect(url_for('family_detail', family_id=family_id))
 
     @app.post('/families/<int:family_id>/expenses')
     def add_expense(family_id):
+        require_capability(('family_admin', 'office_employee'))
         family = accessible_family_or_404(family_id)
         if family.status in ('Closed', 'Declined'): abort(400, 'Reopen the case before requesting an expense.')
         category = field('category', True)
@@ -389,8 +493,38 @@ def create_app(test_config=None):
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
 
+    @app.get('/fundraising')
+    def fundraising():
+        require_capability(('fundraiser',))
+        statement = select(Family.id.label('id'), Family.name.label('name')).order_by(Family.id.desc())
+        if not organization_admin():
+            statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id)))
+        families = db.session.execute(statement).all()
+        pledged = {
+            family.id: db.session.scalar(select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(
+                Contact.family_id == family.id, Contact.status == 'Pledged'))
+            for family in families
+        }
+        return render_template('fundraising.html', title='Fundraising workspace', families=families, pledged=pledged)
+
+    @app.get('/fundraising/<int:family_id>')
+    def fundraising_detail(family_id):
+        require_capability(('fundraiser',))
+        if not can_access_family(family_id):
+            abort(403, 'You are not assigned to this family.')
+        family = db.session.execute(select(Family.id.label('id'), Family.name.label('name')).where(
+            Family.id == family_id)).one_or_none()
+        if family is None:
+            abort(404)
+        contacts = db.session.scalars(select(Contact).where(Contact.family_id == family.id).order_by(Contact.id)).all()
+        pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged')
+        return render_template('fundraising_detail.html', title='Fundraising workspace', family=family,
+                               contacts=contacts, pledged=pledged)
+
     @app.get('/expenses')
     def expenses():
+        require_capability(('family_admin', 'office_employee'))
         status = request.args.get('status', '')
         statement = select(Expense).order_by(Expense.id.desc())
         if status:
@@ -402,8 +536,8 @@ def create_app(test_config=None):
 
     @app.post('/expenses/<int:expense_id>/status')
     def expense_status(expense_id):
-        expense = db.get_or_404(Expense, expense_id)
         require_organization_admin()
+        expense = db.get_or_404(Expense, expense_id)
         status = field('status', True)
         if status not in EXPENSE_TRANSITIONS[expense.status]: abort(400, 'This expense transition is not allowed.')
         if status in ('Approved','Paid') and expense.family.status != 'Active': abort(400, 'Only active cases can have expenses approved or paid.')
@@ -427,7 +561,7 @@ def create_app(test_config=None):
             email = field('email', True, 254).lower()
             role = field('role', True, 30)
             password = request.form.get('password', '')
-            if role not in ('organization_admin', 'family_admin') or not 12 <= len(password) <= 256:
+            if role not in STAFF_ROLES or not 12 <= len(password) <= 256:
                 abort(400, 'Choose a valid role and a password of at least 12 characters.')
             if db.session.scalar(select(StaffUser.id).where(StaffUser.email == email)):
                 abort(400, 'A staff account already uses this email.')
@@ -448,7 +582,7 @@ def create_app(test_config=None):
         require_organization_admin()
         user = db.get_or_404(StaffUser, user_id)
         role = field('role', True, 30)
-        if role not in ('organization_admin', 'family_admin'):
+        if role not in STAFF_ROLES:
             abort(400)
         if user.email == app.config['ADMIN_EMAIL'].strip().lower() and role != 'organization_admin':
             abort(400, 'The owner organization administrator cannot be demoted.')
@@ -458,6 +592,8 @@ def create_app(test_config=None):
             if admin_count <= 1:
                 abort(400, 'At least one organization administrator is required.')
         user.role = role
+        if role == 'organization_admin':
+            db.session.execute(db.delete(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id))
         audit(f'Updated staff role for {user.email}')
         db.session.commit()
         return redirect(url_for('staff'))
@@ -467,15 +603,15 @@ def create_app(test_config=None):
         require_organization_admin()
         user = db.get_or_404(StaffUser, user_id)
         family = db.get_or_404(Family, request.form.get('family_id', type=int))
-        if user.role != 'family_admin':
-            abort(400, 'Only family administrators can receive family assignments.')
+        if user.role == 'organization_admin':
+            abort(400, 'Organization administrators do not use family assignments.')
         assignment = db.session.scalar(select(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id, FamilyAssignment.family_id == family.id))
         if assignment:
             db.session.delete(assignment)
-            action = 'Revoked family administrator: '
+            action = 'Revoked staff assignment: '
         else:
             db.session.add(FamilyAssignment(staff_user_id=user.id, family_id=family.id))
-            action = 'Assigned family administrator: '
+            action = 'Assigned staff member: '
         audit(f'{action}{user.email}', family.id)
         db.session.commit()
         return redirect(url_for('staff'))
