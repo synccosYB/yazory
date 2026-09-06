@@ -1,0 +1,11 @@
+entrypoint = "app.py"
+modules = ["python-3.11"]
+run = "pip install -r requirements.txt && python app.py"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+build = ["sh", "-c", "pip install -r requirements.txt"]
+run = ["sh", "-c", "APP_ENV=production gunicorn --bind 0.0.0.0:5000 'app:create_app()'"]
