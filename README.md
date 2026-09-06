@@ -69,3 +69,9 @@ python -m pytest -q
 ```
 
 Tests cover page rendering, intake-to-payment transitions, cent-accurate money validation, CSRF, escaping, staff login/logout, and production configuration guards.
+
+## Shared language and brand system
+
+English, Hebrew, and heimish Yiddish use the same Jinja templates, CSS components, and approved helping-hands logo (`static/yazory-logo.png`). A language switcher appears on every page and remembers the choice in the session, including sign-in/sign-out. Hebrew and Yiddish use RTL via logical CSS properties; amounts and contact fields retain readable LTR formatting. Switching preserves the current page and filters. Stored names, notes, audit records, amounts, and internal status values are never machine-translated or rewritten.
+
+`translations.py` owns interface translations. Add new labels there in both languages and render them with `_()`; do not create language-specific page copies or stylesheets. Navy, gold, and cream theme values are shared across all languages. The supplied logo is copied unchanged from the approved brand asset. Existing activity descriptions and staff-entered content retain their original language.

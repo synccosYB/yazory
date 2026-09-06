@@ -9,6 +9,8 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import select, func
 from werkzeug.security import check_password_hash
 
+from translations import LANGUAGES, translate
+
 db = SQLAlchemy()
 
 class Family(db.Model):
@@ -90,6 +92,7 @@ def create_app(test_config=None):
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
         raise RuntimeError('Demo mode must use a local SQLite database, never a shared production database.')
     db.init_app(app)
+    app.jinja_env.globals['_'] = translate
 
     @app.template_filter('money')
     def money(cents):
@@ -99,11 +102,11 @@ def create_app(test_config=None):
     def common():
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
-        return dict(csrf=session['csrf'], demo=app.config['DEMO'], categories=CATEGORIES, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'))
+        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=CATEGORIES, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'))
 
     @app.before_request
     def security():
-        if request.endpoint in ('static', 'health'):
+        if request.endpoint in ('static', 'health', 'set_language'):
             return
         if request.method == 'POST' and not hmac.compare_digest(session.get('csrf', ''), request.form.get('csrf', '')):
             abort(400, 'Your form expired. Reload the page and try again.')
@@ -141,6 +144,19 @@ def create_app(test_config=None):
         except (InvalidOperation, ValueError):
             abort(400, 'Enter a valid amount with up to two decimal places, no greater than $1,000,000.')
 
+    @app.get('/language/<language>')
+    def set_language(language):
+        if language not in LANGUAGES:
+            abort(404)
+        session['language'] = language
+        # Only known local application routes may be used as the return path.
+        from urllib.parse import urlsplit
+        target = request.args.get('next', '/')
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc or not target.startswith('/') or target.startswith('//') or '\\' in target:
+            target = '/'
+        return redirect(target)
+
     @app.get('/health')
     def health():
         db.session.execute(select(1))
@@ -154,7 +170,9 @@ def create_app(test_config=None):
             time.sleep(1)
             email = field('email', True)
             if email.lower() == app.config['ADMIN_EMAIL'].lower() and check_password_hash(app.config['ADMIN_PASSWORD_HASH'], request.form.get('password', '')):
+                language = session.get('language', 'en')
                 session.clear()
+                session['language'] = language
                 session['user'] = email
                 session.permanent = True
                 return redirect(url_for('dashboard'))
@@ -163,7 +181,9 @@ def create_app(test_config=None):
 
     @app.post('/logout')
     def logout():
+        language = session.get('language', 'en')
         session.clear()
+        session['language'] = language
         return redirect(url_for('login'))
 
     @app.get('/')

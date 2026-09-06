@@ -86,3 +86,33 @@ def test_demo_rejects_shared_database(monkeypatch):
     monkeypatch.setenv('DATABASE_URL','postgresql://example.invalid/yazory')
     with pytest.raises(RuntimeError,match='Demo mode'):
         create_app()
+
+@pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','לוח בקרה'),('yi','rtl','איבערבליק')])
+def test_shared_language_screens(client,language,direction,label):
+    result=client.get(f'/language/{language}?next=/expenses%3Fstatus%3DRequested')
+    assert result.status_code==302
+    assert result.location=='/expenses?status=Requested'
+    for path in ['/','/families','/families/new','/families/1','/families/1/edit','/expenses','/activity','/login']:
+        page=client.get(path)
+        assert page.status_code==200
+        assert f'lang="{language}" dir="{direction}"' in page.text
+        assert label in page.text
+        assert '/static/style.css' in page.text
+        assert '/static/yazory-logo.png' in page.text
+        for code in ['en','he','yi']:
+            assert f'/language/{code}?' in page.text
+    # Translations are labels, never database workflow values.
+    page=client.get('/expenses').text
+    assert 'value="Approved"' in page
+    assert post(client,'/expenses/1/status',{'status':'Approved'}).status_code==302
+
+def test_language_redirect_safety(client):
+    for target in ['https://example.com','//example.com','/\\example.com']:
+        response=client.get('/language/he',query_string={'next':target})
+        assert response.location=='/'
+    assert client.get('/language/unknown').status_code==404
+
+def test_language_keeps_user_content(client):
+    client.get('/language/yi')
+    post(client,'/families/new',{'name':'Original family name'})
+    assert 'Original family name' in client.get('/families').text
