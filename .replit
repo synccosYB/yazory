@@ -12,7 +12,7 @@ run = ["sh", "-c", "APP_ENV=production gunicorn --bind 0.0.0.0:5000 'app:create_
 deploymentTarget = "autoscale"
 
 [nix]
-packages = ["postgresql", "psmisc"]
+packages = ["postgresql", "psmisc", "iproute2"]
 channel = "stable-25_05"
 
 [workflows]
