@@ -195,9 +195,9 @@ def test_roles_assignments_and_bootstrap_isolation(monkeypatch):
     assert 'Staff & assignments' not in staff.get('/').text
     assert 'Sign out' in staff.get('/').text
     owner.get('/language/he')
-    assert 'הוקצה איש צוות:' in owner.get(f'/families/{assigned.id}').text
+    assert 'הוקצה מנהל משפחה:' in owner.get(f'/families/{assigned.id}').text
     owner.get('/language/yi')
-    assert 'צוגעטיילט א שטאב מיטגליד:' in owner.get(f'/families/{assigned.id}').text
+    assert 'צוגעטיילט א משפחה אדמיניסטראטאר:' in owner.get(f'/families/{assigned.id}').text
     assert post(owner, f'/staff/{family_admin.id}/assignments', {'family_id':assigned.id}).status_code == 302
     assert staff.get(f'/families/{assigned.id}').status_code == 403
     with app.app_context():
