@@ -365,3 +365,73 @@ CATALOG.update({
  'Remaining monthly need': {'he':'צורך חודשי שנותר', 'yi':'וויפיל עס פעלט נאך א חודש'},
  'Totals use entered amounts only. Save on the Review step to keep your changes.': {'he':'הסכומים מבוססים רק על הנתונים שהוזנו. שמרו בשלב הסקירה כדי לשמור את השינויים.', 'yi':'די סך הכל רעכנט נאר די אריינגעלייגטע סכומים. דריקט אויפן אפהיטן קנעפל ביים איבערקוקן צו האלטן די ענדערונגען.'}
 })
+
+CATALOG.update({
+ 'Monthly bill ($)': {'he':'סכום החשבון החודשי ($)', 'yi':'וויפיל איז דער ביל א חודש ($)'},
+ 'Monthly provider bills': {'he':'סך חשבונות הספקים לחודש', 'yi':'סך הכל בילס ביי די פירמעס א חודש'},
+ 'Provider bills are shown separately from rent and food to avoid counting the same expense twice. Leave unknown amounts blank.': {'he':'חשבונות הספקים מוצגים בנפרד משכירות ומזון כדי למנוע ספירה כפולה. השאירו סכומים לא ידועים ריקים.', 'yi':'די בילס ביי די פירמעס ווערן געוויזן באזונדער פון רענט און עסן, כדי נישט צו רעכענען די זעלבע הוצאה צוויי מאל. אויב מען ווייסט נישט דעם סכום, לאזט ליידיג.'}
+})
+
+_REPORT_ROWS = '''
+Monthly expense report|דוח הוצאות חודשי|חודש׳ליכער הוצאות באריכט
+Current saved monthly budget|התקציב החודשי השמור כעת|דער אפגעהיטענער חודש׳ליכער חשבון
+Monthly expenses|הוצאות חודשיות|חודש׳ליכע הוצאות
+Expenses above income|הוצאות מעבר להכנסה|וויפיל די הוצאות זענען מער פון די הכנסות
+Expense breakdown|פירוט ההוצאות|פירוט פון די הוצאות
+Income & assistance|הכנסות וסיוע|הכנסות און הילף
+Monthly shortfall|החוסר החודשי|וויפיל עס פעלט א חודש
+Monthly surplus|יתרה חודשית|וויפיל עס בלייבט איבער א חודש
+Assistance applied to expenses|סיוע שנזקף להוצאות|הילף וואס דעקט די הוצאות
+Source|מקור|פון וואו
+Count this bill|אופן חישוב החשבון|ווי צו רעכענען דעם ביל
+Add to monthly expenses|להוסיף להוצאות החודשיות|צולייגן צו די חודש׳ליכע הוצאות
+Already included in food|כבר נכלל במזון|שוין אריינגערעכנט אין עסן
+Already included in rent|כבר נכלל בשכירות|שוין אריינגערעכנט אין רענט
+Choose how to count this bill|בחרו כיצד לחשב חשבון זה|קלויבט ווי צו רעכענען דעם ביל
+Choose whether each bill is additional or already included in rent or food. Unclassified bills are excluded from totals.|בחרו אם כל חשבון הוא הוצאה נוספת או כבר נכלל בשכירות או במזון. חשבונות שלא סווגו אינם נכללים בסכום.|קלויבט צי דער ביל איז א באזונדערע הוצאה אדער שוין אריינגערעכנט אין רענט אדער עסן. אן דעם ווערט דער ביל נישט מיטגערעכנט.
+Bills already included in rent or food are listed but not added again.|חשבונות שכבר נכללים בשכירות או במזון מוצגים אך אינם נספרים שוב.|בילס וואס זענען שוין אריינגערעכנט אין רענט אדער עסן ווערן נישט נאכאמאל צוגערעכנט.
+Incomplete budget: totals use known amounts only. Enter missing amounts and classify each bill before relying on the shortfall.|התקציב אינו מלא: הסכומים מבוססים רק על נתונים ידועים. יש להשלים סכומים ולסווג כל חשבון לפני הסתמכות על החוסר.|דער חשבון איז נאך נישט פולשטענדיג. נאר די באקאנטע סכומים זענען מיטגערעכנט. פילט אויס די פעלנדע סכומים און קלויבט ווי צו רעכענען יעדן ביל, כדי צו וויסן וויפיל עס פעלט.
+Remaining need equals expenses minus income and applicable assistance. Food stamps offset food costs only. Pledges and expense requests are not added to this budget.|הצורך שנותר הוא ההוצאות פחות ההכנסה והסיוע שניתן לנצל. תלושי מזון מקוזזים רק מהוצאות מזון. התחייבויות לתרומה ובקשות תשלום אינן מתווספות לתקציב זה.|וואס עס פעלט איז די הוצאות ווייניגער די הכנסות און די הילף וואס מען קען נוצן. פוד סטעמפס רעכענען זיך נאר קעגן עסן. צוגעזאגטע נדבות און בקשות פאר צאלונגען ווערן נישט צוגערעכנט אין דעם חשבון.
+'''
+for _row in _REPORT_ROWS.strip().splitlines():
+    _en, _he, _yi = _row.split('|')
+    CATALOG[_en] = {'he': _he, 'yi': _yi}
+
+_CHILD_BUDGET_ROWS = '''
+Housing|דיור|וואוינונג
+Property taxes|ארנונה ומסי נכס|פראפערטי טעקס
+Phone and internet|טלפון ואינטרנט|טעלעפאן און אינטערנעט
+Groceries and household supplies|מזון ומוצרי בית|גראסערי און זאכן פארן שטוב
+Childcare|טיפול בילדים|בעיביסיטינג
+Insurance|ביטוח|אינשורענס
+Medical|רפואה|רפואישע הוצאות
+Clothing|ביגוד|קליידער
+Home upkeep|תחזוקת הבית|אויפהאלטן די וואוינונג
+Debt payments|החזרי חובות|אפצאלן חובות
+Children’s additional needs|צרכים נוספים של הילדים|נאך הוצאות פאר די קינדער
+Shabbos, Yom Tov and simchos|שבת, יום טוב ושמחות|שבת, יום טוב און שמחות
+Other necessities|צרכים חיוניים אחרים|אנדערע נויטיגע הוצאות
+Actual household total|סך ההוצאה בפועל למשפחה|דער גאנצער אמת׳ער סכום פאר די משפחה
+Saved household bills|חשבונות משפחתיים שמורים|אפגעהיטענע בילס פון די משפחה
+Child estimate|אומדן לילדים|געשאצטע הוצאה פאר די קינדער
+Save budget|שמירת תקציב|היט אפ דעם חשבון
+Period|תקופה|צייט
+Monthly|חודשי|חודש׳ליך
+Annual|שנתי|יערליך
+Age-group rates|תעריפים לפי גיל|סכומים לויט די יארגאנג
+Cost per child|עלות לכל ילד|וויפיל יעדעס קינד קאסט
+Age|גיל|עלטער
+Birth date|תאריך לידה|געבורטס דאטום
+Child-specific monthly amount|סכום חודשי מותאם לילד|א באזונדערער חודש׳ליכער סכום פאר דעם קינד
+Add children in the family profile to calculate their costs.|הוסיפו ילדים בפרופיל המשפחה לחישוב העלויות.|לייגט צו די קינדער אין די פרטים פון די משפחה צו רעכענען זייערע הוצאות.
+Invalid budget period.|תקופת תקציב לא תקינה.|די צייט פארן חשבון איז נישט ריכטיג.
+Enter a valid birth date.|הזינו תאריך לידה תקין.|לייגט אריין א ריכטיגע געבורטס דאטום.
+Updated household expense plan|תוכנית הוצאות המשפחה עודכנה|דער הוצאות חשבון פון די משפחה איז אפגעהיטן
+Incomplete plan: enter missing amounts, classify bills and check child records. Totals include known amounts only.|התוכנית אינה מלאה: השלימו סכומים, סווגו חשבונות ובדקו את פרטי הילדים. הסכומים כוללים רק מידע ידוע.|דער חשבון איז נאך נישט פול. פילט אויס די סכומים, צייכנט אן ווי צו רעכענען די בילס און קוקט איבער די פרטים פון די קינדער. נאר באקאנטע סכומים זענען מיטגערעכנט.
+Actual totals replace saved bills and child estimates for that category. Include the whole household; enter zero for no expense. Annual amounts are divided by 12.|סכומים בפועל מחליפים חשבונות שמורים ואומדני ילדים באותה קטגוריה. כללו את כל המשפחה; הזינו אפס כשאין הוצאה. סכומים שנתיים מחולקים ב־12.|די אמת׳ע סכומים נעמען איבער די בילס און שאצונגען פאר די זעלבע סארט הוצאה. רעכנט אריין די גאנצע משפחה. אויב עס איז נישט דא קיין הוצאה, שרייבט נול. יערליכע סכומים ווערן צעטיילט אויף 12.
+Enter your organization’s monthly planning rates. Blank means unknown. These are estimates, not verified bills. Shared housing and adult costs belong in household totals.|הזינו תעריפי תכנון חודשיים של הארגון. שדה ריק פירושו לא ידוע. אלו אומדנים ולא חשבונות מאומתים. דיור משותף והוצאות מבוגרים נכללים בסכומי המשפחה.|לייגט אריין די חודש׳ליכע סכומים וואס דער ארגון רעכנט פאר יעדן יארגאנג. ליידיג מיינט אז מען ווייסט נישט. דאס זענען שאצונגען, נישט באשטעטיגטע בילס. וואוינונג און הוצאות פון די עלטערן גייען אין דעם גאנצן משפחה חשבון.
+Child cost equals the sum of age-group rates, with child-specific amounts replacing those rates. Birth date updates age automatically; otherwise keep the entered age current. Camp and seasonal costs should be entered as annual cost divided by 12.|עלות הילד היא סכום תעריפי הגיל, כאשר סכומים אישיים מחליפים את התעריף. תאריך לידה מעדכן גיל אוטומטית; אחרת יש לעדכן את הגיל ידנית. הזינו קייטנה והוצאות עונתיות כעלות שנתית חלקי 12.|די הוצאה פאר יעדעס קינד איז צוזאמען אלע סכומים פון זיין יארגאנג. א באזונדערער סכום פאר דעם קינד נעמט איבער דעם כלליות׳דיגן סכום. מיט א געבורטס דאטום ווערט דער עלטער אליין באנייט, אנדערש דארף מען עס אליין פאררעכטן. קעמפ און סעזאן הוצאות רעכנט מען די יערליכע סומע צעטיילט אויף 12.
+'''
+for _row in _CHILD_BUDGET_ROWS.strip().splitlines():
+    _en, _he, _yi = _row.split('|')
+    CATALOG[_en] = {'he': _he, 'yi': _yi}

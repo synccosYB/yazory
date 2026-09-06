@@ -26,11 +26,17 @@ if(totals){
  function updateTotals(dirty=false){
   repeaters.forEach(r=>r.sync());
   const val=key=>form.elements[key].value;
-  const costs=sum(['rent','food'].map(k=>cents(val(k))));
+  const accounts=JSON.parse(form.elements.accounts_json.value||'[]');
+  const bills=sum(accounts.map(r=>cents(r.monthly_bill)));
+  document.getElementById('provider-bills-total').textContent=bills===null?totals.dataset.blank:money.format(bills/100);
+  const costs=sum([...['rent','food'].map(k=>cents(val(k))),...accounts.filter(r=>r.budget_treatment==='additional').map(r=>cents(r.monthly_bill))]);
   const income=sum(['his_income','her_income','other_income'].map(k=>cents(val(k))));
   const assistance=JSON.parse(form.elements.assistance_json.value||'[]');
-  const help=sum([val('foodstamps')==='yes'?cents(val('foodstamps_amount')):val('foodstamps')==='no'?0:null,...(val('other_assistance')==='yes'?assistance.map(r=>cents(r.amount)):val('other_assistance')==='no'?[0]:[])]);
-  const values={children:val('children_count')||totals.dataset.blank,costs,income,help,gap:costs===null?null:Math.max(0,costs-(income??0)-(help??0)),accounts:JSON.parse(form.elements.accounts_json.value||'[]').length};
+  const help=sum([val('foodstamps')==='yes'?cents(val('foodstamps_amount')):val('foodstamps')==='no'?0:null,...(val('other_assistance')!=='no'?assistance.map(r=>cents(r.amount)):val('other_assistance')==='no'?[0]:[])]);
+  const foodCosts=(cents(val('food'))??0)+accounts.filter(r=>r.kind==='grocery'&&r.budget_treatment==='additional').reduce((n,r)=>n+(cents(r.monthly_bill)??0),0);
+  const stamps=val('foodstamps')==='yes'?(cents(val('foodstamps_amount'))??0):0;
+  const usableHelp=(help??0)-stamps+Math.min(stamps,foodCosts);
+  const values={children:val('children_count')||totals.dataset.blank,costs,income,help,gap:costs===null?null:Math.max(0,costs-(income??0)-usableHelp),accounts:JSON.parse(form.elements.accounts_json.value||'[]').length};
   totals.querySelectorAll('[data-total]').forEach(el=>{const key=el.dataset.total,v=values[key];el.textContent=['children','accounts'].includes(key)?v:v===null?totals.dataset.blank:money.format(v/100);});
   if(dirty)totals.dataset.dirty='yes';
   status.textContent=totals.dataset.dirty==='yes'?totals.dataset.unsaved:totals.dataset.existing==='yes'?totals.dataset.saved:totals.dataset.new;

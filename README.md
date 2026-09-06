@@ -116,3 +116,50 @@ Small screens and zoom retain content access rather than clipping fields. Future
 features must use short steps, tabs or pagination instead of growing a desktop
 page vertically. All development belongs in GitHub; Replit is for shell-based
 synchronization, running and deployment only. Never use Replit Agent to develop.
+
+### Provider monthly bills
+
+Provider accounts accept an optional monthly bill in dollars, stored as integer
+cents in the existing HouseholdIntake JSON. No database migration is required;
+existing accounts display a blank amount until entered. Deploy the Python,
+template, translation and JavaScript changes together. Each bill can be classified as additional or already included in rent/food;
+only additional bills increase monthly expense totals. Unclassified bills are
+excluded and flagged in the report. Existing
+household access restrictions apply to these amounts.
+
+### Monthly household expense report
+
+Open Monthly expense report from a family profile. The report reads the current
+saved intake budget, with expense, income/assistance, and shortfall panels. It is
+a monthly budget snapshot, not a historical payment ledger. Known figures are
+totaled with an incomplete-data notice until missing amounts and bill treatments
+are entered. Food stamps offset food costs only; donation pledges and expense
+requests are not counted as additional budget income or expenses.
+
+No database migration is required. Deploy the added budget_report.py module,
+report template, and updated app/intake/static/translation files together.
+Existing provider records remain editable with blank treatment until reviewed.
+The report uses the same family assignment and staff role checks as the profile.
+
+### Household expense plan and age-based child costs
+
+Every family profile links to a 16-category expense plan. The plan stores integer
+cents in the new `household_budget` table, separate from intake, so editing either
+form preserves the other. Before deploying, back up the database and run
+`APP_ENV=production python -m flask --app app init-db` with the deployment's existing
+environment. This additive table creation preserves existing household records.
+
+Rates start blank and are entered per family for ages 0–2, 3–5, 6–9, 10–13, 14–17,
+and 18–30. These are organization planning assumptions, not external cost standards.
+Each child's monthly estimate sums eight age-band components; a child-specific
+amount, including zero, replaces the corresponding band rate. An optional birth
+date recalculates age on each report view; otherwise staff maintain the saved age.
+Infants can be added without a school. Household totals cover shared housing and
+adult expenses. Actual category totals replace saved bills and child estimates;
+without an actual total, saved intake bills take precedence over child estimates.
+Annual amounts are divided by twelve and rounded to the nearest cent. Provider
+bill classification remains required; unclassified bills are flagged and excluded.
+Income and assistance come from intake; food stamps only offset food costs.
+Missing values remain unknown and are flagged, including incomplete child records.
+Figures refresh after Save budget. The plan does not approve or create payments.
+Access uses the existing family assignment checks and excludes fundraisers.

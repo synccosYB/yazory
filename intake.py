@@ -48,7 +48,7 @@ def validate_intake(form):
         for entry in entries:
             if not isinstance(entry, dict):
                 raise ValueError('Invalid account or assistance entry.')
-            allowed = ('provider', 'amount') if group == 'assistance' else ('kind', 'provider', 'account', 'phone', 'child')
+            allowed = ('provider', 'amount') if group == 'assistance' else ('kind', 'provider', 'account', 'phone', 'child', 'monthly_bill', 'budget_treatment')
             cleaned = {}
             for key in allowed:
                 value = entry.get(key, '')
@@ -65,6 +65,10 @@ def validate_intake(form):
                     raise ValueError('Enter the monthly assistance amount.')
             elif cleaned['kind'] not in ('utility', 'grocery', 'mosdos', 'other'):
                 raise ValueError('Choose an account type.')
+            if group == 'accounts':
+                cleaned['monthly_bill'] = money(cleaned['monthly_bill'])
+                if cleaned['budget_treatment'] not in ('', 'additional', 'food', 'rent'):
+                    raise ValueError('Choose how to count this bill')
             result.append(cleaned)
         if group == 'assistance':
             if data['other_assistance'] == 'no':
@@ -79,5 +83,6 @@ def intake_for_form(data):
     data = dict(data or {})
     for key in MONEY_FIELDS:
         data[key] = '' if data.get(key) is None else f'{data[key] / 100:.2f}'
+    data['accounts'] = [dict(row, monthly_bill='' if row.get('monthly_bill') is None else f"{row['monthly_bill'] / 100:.2f}") for row in data.get('accounts', [])]
     data['assistance'] = [dict(row, amount='' if row.get('amount') is None else f"{row['amount'] / 100:.2f}") for row in data.get('assistance', [])]
     return data
