@@ -1,6 +1,7 @@
 import os
 import secrets
 import hmac
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
@@ -86,6 +87,14 @@ CATEGORIES = ['Tuition', 'Groceries', 'Butcher', 'Rent / mortgage', 'Utilities',
 RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
 CONTACT_STATUSES = ['To contact', 'Contacted', 'Pledged', 'Paused', 'Declined']
 
+def valid_werkzeug_password_hash(value):
+    if not value or any(character.isspace() for character in value):
+        return False
+    return bool(
+        re.fullmatch(r'scrypt:\d+:\d+:\d+\$[^$]+\$[^$]+', value)
+        or re.fullmatch(r'pbkdf2:[^:$]+:\d+\$[^$]+\$[^$]+', value)
+    )
+
 def create_app(test_config=None):
     app = Flask(__name__)
     production = os.getenv('APP_ENV') == 'production'
@@ -98,8 +107,8 @@ def create_app(test_config=None):
     password_hash = os.getenv('ADMIN_PASSWORD_HASH', '')
     admin_email = os.getenv('ADMIN_EMAIL', '')
     demo = not password_hash
-    if production and (demo or len(secret) < 32 or not admin_email or not database.startswith('postgresql+psycopg://')):
-        raise RuntimeError('Production requires PostgreSQL DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD_HASH and SESSION_SECRET (32+ characters).')
+    if production and (demo or len(secret) < 32 or not admin_email or not database.startswith('postgresql+psycopg://') or not valid_werkzeug_password_hash(password_hash)):
+        raise RuntimeError('Production requires PostgreSQL DATABASE_URL, ADMIN_EMAIL, a valid Werkzeug ADMIN_PASSWORD_HASH and SESSION_SECRET (32+ characters).')
     app.config.update(SECRET_KEY=secret or secrets.token_hex(32), SQLALCHEMY_DATABASE_URI=database, SQLALCHEMY_TRACK_MODIFICATIONS=False, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=production, PERMANENT_SESSION_LIFETIME=timedelta(minutes=30), MAX_CONTENT_LENGTH=64*1024, DEMO=demo, ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash)
     if test_config:
         app.config.update(test_config)
@@ -119,15 +128,17 @@ def create_app(test_config=None):
             return
         email = app.config.get('ADMIN_EMAIL', '').strip().lower()
         password_hash = app.config.get('ADMIN_PASSWORD_HASH', '')
-        if not email or not password_hash:
+        if not email or not valid_werkzeug_password_hash(password_hash):
             return
         owner = db.session.scalar(select(StaffUser).where(StaffUser.email == email))
         if owner is None:
             db.session.add(StaffUser(email=email, password_hash=password_hash, role='organization_admin'))
             db.session.commit()
-        elif owner.role != 'organization_admin':
-            # The configured bootstrap identity is always the organization owner.
+        elif owner.role != 'organization_admin' or not hmac.compare_digest(owner.password_hash, password_hash):
+            # The configured bootstrap identity is always the organization owner;
+            # updating the secure hash also supports deliberate owner password rotation.
             owner.role = 'organization_admin'
+            owner.password_hash = password_hash
             db.session.commit()
 
     def current_user():
