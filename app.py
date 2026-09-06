@@ -220,24 +220,35 @@ def create_app(test_config=None):
     def child_bands():
         values = setting('child_estimate_bands', DEFAULT_CHILD_BANDS)
         try:
-            valid = all(isinstance(x, dict) and 0 <= int(x['min_age']) <= int(x['max_age']) <= 30
-                        and 0 <= int(x['amount_cents']) <= 100000000 for x in values)
+            valid = valid_child_bands(values)
         except (KeyError, TypeError, ValueError):
             valid = False
         return values if valid else DEFAULT_CHILD_BANDS
 
+    def valid_child_bands(values):
+        if not isinstance(values, list) or not values:
+            return False
+        spans = []
+        for item in values:
+            if not isinstance(item, dict):
+                return False
+            low, high, cents = int(item['min_age']), int(item['max_age']), int(item['amount_cents'])
+            if not 0 <= low <= high <= 30 or not 0 <= cents <= 100000000:
+                return False
+            spans.append((low, high))
+        spans.sort()
+        return all(previous[1] < following[0] for previous, following in zip(spans, spans[1:]))
+
     def budget_totals(family):
-        """Saved monthly income, entered household bills, and estimates are separate."""
-        data = family.intake_record.data if family.intake_record else {}
-        income = sum(data.get(k) or 0 for k in ('his_income', 'her_income', 'other_income', 'foodstamps_amount'))
-        income += sum(int(row.get('amount') or 0) for row in data.get('assistance', []))
-        bills = sum(data.get(k) or 0 for k in ('rent', 'food'))
-        estimates = sum(next((int(b['amount_cents']) for b in child_bands()
-                              if int(b['min_age']) <= child.age <= int(b['max_age'])), 0)
-                        for child in family.children)
-        # No actual per-child amounts currently exist in intake; estimates are not added twice.
-        return {'income': income, 'bills': bills, 'child_estimates': estimates,
-                'actual_children': 0, 'shortfall': max(0, bills + estimates - income)}
+        """One authoritative calculation shared by every budget-facing screen."""
+        intake = family.intake_record.data if family.intake_record else {}
+        record = db.session.get(HouseholdBudget, family.id)
+        report = child_budget.calculate(record.data if record else {}, intake, family.children, child_bands())
+        return {'income': report['earnings'] + report['usable_help'],
+                'bills': report['household_bills'],
+                'child_estimates': report['child_estimates'],
+                'actual_children': report['actual_child_amounts'],
+                'shortfall': report['gap'], 'costs': report['costs'], 'report': report}
 
     def require_capability(allowed, message='You do not have permission for this action.'):
         if not has_role(*allowed):
@@ -491,7 +502,8 @@ def create_app(test_config=None):
                 db.session.commit()
                 flash('Profile updated.')
                 return redirect(url_for('family_expense_report', family_id=family_id))
-        report = child_budget.calculate(data, family.intake_record.data if family.intake_record else {}, family.children)
+        report = child_budget.calculate(data, family.intake_record.data if family.intake_record else {},
+                                        family.children, child_bands())
         return render_template('expense_report.html', title='Monthly expense report', family=family,
             report=report, budget=data, categories=child_budget.CATEGORIES, components=child_budget.COMPONENTS,
             bands=child_budget.BANDS, error=error), 400 if error else 200
@@ -781,8 +793,7 @@ def create_app(test_config=None):
             if not categories or len(categories) > len(DEFAULT_CATEGORIES) or any(x not in DEFAULT_CATEGORIES for x in categories):
                 abort(400, 'Choose valid expense categories.')
             try:
-                valid_bands = bool(bands) and all(isinstance(x, dict) and 0 <= int(x['min_age']) <= int(x['max_age']) <= 30
-                    and 0 <= int(x['amount_cents']) <= 100000000 for x in bands)
+                valid_bands = valid_child_bands(bands)
             except (KeyError, TypeError, ValueError):
                 valid_bands = False
             if not valid_bands:
