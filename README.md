@@ -104,3 +104,52 @@ Small screens and zoom retain content access rather than clipping fields. Future
 features must use short steps, tabs or pagination instead of growing a desktop
 page vertically. All development belongs in GitHub; Replit is for shell-based
 synchronization, running and deployment only. Never use Replit Agent to develop.
+
+## ABCharity campaign donations
+
+Each family can link one ABCharity campaign. Organization administrators configure
+connections; assigned family administrators and fundraisers can read and sync
+receipts and link imported donors to existing circle-of-support contacts. Office
+employees and unassigned users cannot open donation pages. Fundraisers never see
+expense comparisons. Pledges and expense approvals remain unchanged.
+
+Deployment (additive schema; existing records preserved):
+
+1. Install `requirements.txt`, then run `APP_ENV=production python -m flask --app app:create_app init-db`
+   against the existing production database before restarting the app.
+2. Create the family campaign in ABCharity. Copy that campaign's API key into a
+   server secret such as `ABCHARITY_KEY_FAMILY_1`. Never commit a key or put it in a
+   client-side setting. Raw keys and percent-encoded keys are both accepted.
+3. From the family profile, open **ABCharity donations → Campaign connection**.
+   Enter the campaign's numeric ID, label, actual currency and the secret's NAME.
+   Currency is declared by the administrator: the supplied API documentation does
+   not specify the campaign-info response schema, so it cannot be inferred safely.
+   Save to validate the donation response and import. An empty valid response
+   confirms the key works but cannot establish campaign ID membership until the
+   first receipt arrives. Every receipt must match the configured campaign ID.
+4. Use **Sync donations** anytime. For unattended imports, configure the hosting
+   scheduler to run `APP_ENV=production python -m flask --app app:create_app sync-abcharity`
+   every 15 minutes with the same database and secrets. Do not run a scheduler
+   inside each autoscaling web worker. No schedule is installed by this code.
+
+Imports use unique campaign/donation IDs and refresh changed receipt values in a
+single transaction. An invalid receipt, mismatched campaign ID, duplicate ID in a
+response, incomplete response or 100,000-result cap rejects the entire import.
+The last successful sync stays visible alongside a safe error; failures never
+include credential URLs. Concurrent collisions roll back and can be retried.
+Full reconciliation retains receipts absent from a later API response because
+the documentation supplies no deletion/refund status. Investigate such changes
+with ABCharity; do not treat this ledger as a bank balance. Large campaigns may
+need a longer web-worker timeout or the scheduled CLI command.
+
+Donors match by normalized email within a campaign; without email, each receipt
+has a distinct donor record. Staff can link to a same-family supporter without
+changing pledges or inventing relationship data. Anonymous donor identity and
+notes are hidden on donation screens. Subscription means only that the API
+marks the receipt as a subscription; no active mandate, next charge, failed
+payment, subscription management, campaign creation or write API is provided.
+Amounts are stored as integer cents and displayed in the configured currency;
+only USD campaigns show net receipts less the family's recorded paid expenses.
+API behavior is covered by mocked fixtures based on the documentation; live
+family campaign credentials must be verified during setup. The Yomim Noraim key
+supplied during planning is deliberately not embedded or linked to a family.
