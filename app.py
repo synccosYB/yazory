@@ -93,6 +93,42 @@ class Document(db.Model):
     data = db.Column(db.LargeBinary, nullable=False)
     uploaded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
+class CharityCampaign(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, unique=True)
+    external_id = db.Column(db.String(100), nullable=False, unique=True)
+    key_env = db.Column(db.String(100), nullable=False, unique=True)
+    label = db.Column(db.String(160), nullable=False)
+    currency = db.Column(db.String(3), nullable=False)
+    last_sync = db.Column(db.DateTime)
+    last_error = db.Column(db.String(300))
+
+class CharityDonor(db.Model):
+    __table_args__ = (UniqueConstraint('campaign_id', 'identity'),)
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('charity_campaign.id'), nullable=False)
+    identity = db.Column(db.String(300), nullable=False)
+    name = db.Column(db.String(300), nullable=False)
+    email = db.Column(db.String(300), nullable=False)
+    phone = db.Column(db.String(100), nullable=False)
+    address = db.Column(db.Text, nullable=False)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'))
+
+class CharityDonation(db.Model):
+    __table_args__ = (UniqueConstraint('campaign_id', 'external_id'),)
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('charity_campaign.id'), nullable=False)
+    external_id = db.Column(db.String(100), nullable=False)
+    donor_id = db.Column(db.Integer, db.ForeignKey('charity_donor.id'), nullable=False)
+    donor = db.relationship('CharityDonor')
+    amount_cents = db.Column(db.BigInteger, nullable=False)
+    net_cents = db.Column(db.BigInteger, nullable=False)
+    donation_time = db.Column(db.DateTime, nullable=False)
+    anonymous = db.Column(db.Boolean, nullable=False)
+    subscription = db.Column(db.Boolean, nullable=False)
+    team = db.Column(db.String(300), nullable=False)
+    notes = db.Column(db.Text, nullable=False)
+
 class Audit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -658,6 +694,11 @@ def create_app(test_config=None):
         audit(f'{action}{user.email}', family.id)
         db.session.commit()
         return redirect(url_for('staff'))
+
+    from abcharity import register_abcharity
+    register_abcharity(app, db, CharityCampaign, CharityDonor, CharityDonation,
+                      Family, Contact, Expense, require_capability,
+                      require_organization_admin, accessible_family_or_404, audit)
 
     @app.errorhandler(400)
     @app.errorhandler(403)

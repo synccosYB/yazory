@@ -329,3 +329,46 @@ CATALOG.update({
  'Remaining monthly need': {'he':'צורך חודשי שנותר', 'yi':'וויפיל עס פעלט נאך א חודש'},
  'Totals use entered amounts only. Save on the Review step to keep your changes.': {'he':'הסכומים מבוססים רק על הנתונים שהוזנו. שמרו בשלב הסקירה כדי לשמור את השינויים.', 'yi':'די סך הכל רעכנט נאר די אריינגעלייגטע סכומים. דריקט אויפן אפהיטן קנעפל ביים איבערקוקן צו האלטן די ענדערונגען.'}
 })
+
+_ABCHARITY_ROWS = '''
+ABCharity donations|תרומות ABCharity|ABCharity נדבות
+Back|חזרה|צוריק
+Last synced|סנכרון אחרון|לעצט אפדעיטעד
+Not synced yet|טרם סונכרן|נאך נישט אפדעיטעד
+Sync donations|סנכרון תרומות|אפדעיטן די נדבות
+Received before fees|התקבל לפני עמלות|איינגעקומען פאר די פיס
+Net received|התקבל לאחר עמלות|איינגעקומען נאך די פיס
+Net less recorded paid expenses|נטו פחות הוצאות ששולמו ונרשמו|נעץ נאך די פארשריבענע באצאלטע הוצאות
+All-time imported receipts. This is not a bank balance or a monthly pledge total.|כל התרומות שיובאו. הסכום אינו יתרת בנק או סך התחייבויות חודשיות.|אלע אריינגעברענגטע נדבות. דאס איז נישט דער באנק באלאנס אדער די חודש׳ליכע צוזאגן.
+Date|תאריך|דאטום
+Donor|תורם|נדבן
+Details|פרטים|פרטים
+Anonymous|בעילום שם|אן א נאמען
+Subscription receipt|תרומה בהוראת קבע|נדבה פון א רעגולערע צאלונג
+Team|צוות|גרופע
+Linked supporter|תומך מקושר|צוגעבונדענער העלפער
+Not linked|לא מקושר|נישט צוגעבונדן
+No donations imported yet.|טרם יובאו תרומות.|נאך נישט אריינגעברענגט קיין נדבות.
+Donation pages|עמודי תרומות|בלאט פון נדבות
+Previous|הקודם|פריערדיגער
+Next|הבא|קומענדיגער
+No campaign connected to this family.|לא חובר קמפיין למשפחה זו.|נאך נישט צוגעבונדן קיין קאמפיין צו דער משפחה.
+Campaign connection|חיבור קמפיין|פארבינדן א קאמפיין
+Create the campaign in ABCharity first. Store its API key in the named server setting.|צרו תחילה את הקמפיין ב־ABCharity. שמרו את מפתח ה־API בהגדרת השרת ששמה מוזן כאן.|מאכט קודם דעם קאמפיין אין ABCharity. היט אפ דעם API שליסל אין דער סערווער הגדרה מיט דעם נאמען.
+Campaign name|שם הקמפיין|קאמפיין נאמען
+ABCharity campaign ID|מזהה קמפיין ABCharity|ABCharity קאמפיין נומער
+Currency|מטבע|וואלוטע
+API key setting name|שם הגדרת מפתח API|נאמען פון דער API שליסל הגדרה
+Connect and import|חיבור וייבוא|פארבינדן און אריינברענגען
+Live donation imports are unavailable in demo mode.|ייבוא תרומות אמיתיות אינו זמין במצב הדגמה.|מען קען נישט אריינברענגען עכטע נדבות אין דעמא.
+ABCharity could not be synced. Check the campaign ID, key setting and API response.|סנכרון ABCharity נכשל. בדקו את מזהה הקמפיין, הגדרת המפתח ותגובת ה־API.|ABCharity האט זיך נישט אפדעיטעד. קוקט איבער דעם קאמפיין נומער, די שליסל הגדרה און דעם API ענטפער.
+Enter a valid campaign ID, name, currency and key setting.|הזינו מזהה קמפיין, שם, מטבע והגדרת מפתח תקינים.|לייגט אריין א ריכטיגן קאמפיין נומער, נאמען, וואלוטע און שליסל הגדרה.
+The linked campaign ID and currency cannot be changed.|לא ניתן לשנות את מזהה הקמפיין והמטבע לאחר החיבור.|מען קען נישט טוישן דעם צוגעבונדענעם קאמפיין נומער און וואלוטע.
+Campaign connected and donations imported.|הקמפיין חובר והתרומות יובאו.|דער קאמפיין איז צוגעבונדן און די נדבות זענען אריינגעברענגט.
+Donations synced.|התרומות סונכרנו.|די נדבות זענען אפדעיטעד.
+Imported ABCharity donations|יובאו תרומות ABCharity|אריינגעברענגט ABCharity נדבות
+Linked ABCharity donor to supporter|תורם ABCharity קושר לתומך|צוגעבונדן דעם ABCharity נדבן צום העלפער
+'''
+for _row in _ABCHARITY_ROWS.strip().splitlines():
+    _en, _he, _yi = _row.split('|')
+    CATALOG.setdefault(_en, {'he': _he, 'yi': _yi})
