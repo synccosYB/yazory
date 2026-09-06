@@ -42,6 +42,10 @@ class HouseholdIntake(db.Model):
     data = db.Column(db.JSON, nullable=False, default=dict)
     family = db.relationship('Family', backref=db.backref('intake_record', uselist=False))
 
+class OrganizationSetting(db.Model):
+    key = db.Column(db.String(80), primary_key=True)
+    value = db.Column(db.JSON, nullable=False)
+
 
 class StaffUser(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -73,6 +77,20 @@ class Contact(db.Model):
     phone = db.Column(db.String(80), default='')
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
     status = db.Column(db.String(30), default='To contact', nullable=False)
+    receipts = db.relationship('Receipt', backref='contact', lazy=True)
+
+class Receipt(db.Model):
+    """A manual record of money reported received; it never collects money."""
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=False, index=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, index=True)
+    amount_cents = db.Column(db.Integer, nullable=False)
+    received_on = db.Column(db.Date, nullable=False,
+                            default=lambda: datetime.now(timezone.utc).date())
+    reference = db.Column(db.String(200), default='')
+    note = db.Column(db.Text, default='')
+    recorded_by = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True)
+    recorder = db.relationship('StaffUser', foreign_keys=[recorded_by])
 
 class Expense(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -102,7 +120,11 @@ class Audit(db.Model):
 
 FAMILY_TRANSITIONS = {'Intake': ['Under review'], 'Under review': ['Intake', 'Active', 'Declined'], 'Active': ['Paused', 'Closed'], 'Paused': ['Active', 'Closed'], 'Closed': ['Under review'], 'Declined': ['Under review']}
 EXPENSE_TRANSITIONS = {'Requested': ['Approved', 'Declined'], 'Approved': ['Paid', 'Voided'], 'Paid': [], 'Declined': [], 'Voided': []}
-CATEGORIES = ['Tuition', 'Groceries', 'Butcher', 'Rent / mortgage', 'Utilities', 'Transportation', 'Organization expense', 'Other']
+DEFAULT_CATEGORIES = ['Tuition', 'Groceries', 'Butcher', 'Rent / mortgage', 'Utilities', 'Transportation', 'Organization expense', 'Other']
+DEFAULT_CHILD_BANDS = [{'min_age': 0, 'max_age': 5, 'amount_cents': 0},
+                       {'min_age': 6, 'max_age': 12, 'amount_cents': 0},
+                       {'min_age': 13, 'max_age': 30, 'amount_cents': 0}]
+CATEGORIES = DEFAULT_CATEGORIES
 RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
 CONTACT_STATUSES = ['To contact', 'Contacted', 'Pledged', 'Paused', 'Declined']
 
@@ -180,6 +202,36 @@ def create_app(test_config=None):
     def can_manage_supporters():
         return has_role('family_admin', 'fundraiser')
 
+    def setting(key, default):
+        row = db.session.get(OrganizationSetting, key)
+        return row.value if row and isinstance(row.value, type(default)) else default
+
+    def expense_categories():
+        values = setting('expense_categories', DEFAULT_CATEGORIES)
+        return values if values and all(isinstance(x, str) and x in DEFAULT_CATEGORIES for x in values) else DEFAULT_CATEGORIES
+
+    def child_bands():
+        values = setting('child_estimate_bands', DEFAULT_CHILD_BANDS)
+        try:
+            valid = all(isinstance(x, dict) and 0 <= int(x['min_age']) <= int(x['max_age']) <= 30
+                        and 0 <= int(x['amount_cents']) <= 100000000 for x in values)
+        except (KeyError, TypeError, ValueError):
+            valid = False
+        return values if valid else DEFAULT_CHILD_BANDS
+
+    def budget_totals(family):
+        """Saved monthly income, entered household bills, and estimates are separate."""
+        data = family.intake_record.data if family.intake_record else {}
+        income = sum(data.get(k) or 0 for k in ('his_income', 'her_income', 'other_income', 'foodstamps_amount'))
+        income += sum(int(row.get('amount') or 0) for row in data.get('assistance', []))
+        bills = sum(data.get(k) or 0 for k in ('rent', 'food'))
+        estimates = sum(next((int(b['amount_cents']) for b in child_bands()
+                              if int(b['min_age']) <= child.age <= int(b['max_age'])), 0)
+                        for child in family.children)
+        # No actual per-child amounts currently exist in intake; estimates are not added twice.
+        return {'income': income, 'bills': bills, 'child_estimates': estimates,
+                'actual_children': 0, 'shortfall': max(0, bills + estimates - income)}
+
     def require_capability(allowed, message='You do not have permission for this action.'):
         if not has_role(*allowed):
             abort(403, message)
@@ -206,7 +258,7 @@ def create_app(test_config=None):
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         user = current_user()
-        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=CATEGORIES, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
+        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=expense_categories(), relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
 
     @app.before_request
     def security():
@@ -302,8 +354,6 @@ def create_app(test_config=None):
     def dashboard():
         if current_user() and current_user().role == 'fundraiser':
             return redirect(url_for('fundraising'))
-        if current_user() and current_user().role == 'office_employee':
-            return redirect(url_for('families'))
         statement = select(Family).order_by(Family.id.desc())
         if not organization_admin():
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
@@ -311,13 +361,16 @@ def create_app(test_config=None):
         family_ids = [family.id for family in families]
         month = datetime.now().strftime('%Y-%m')
         expenses = db.session.scalars(select(Expense).where(Expense.month == month, Expense.family_id.in_(family_ids))).all()
-        pledged = db.session.scalar(select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(Contact.status == 'Pledged', Contact.family_id.in_(select(Family.id).where(Family.status == 'Active', Family.id.in_(family_ids)))))
+        network_visible = organization_admin() or bool(current_user() and current_user().role in ('family_admin', 'fundraiser'))
+        pledged = db.session.scalar(select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(Contact.status == 'Pledged', Contact.family_id.in_(select(Family.id).where(Family.status == 'Active', Family.id.in_(family_ids))))) if network_visible else 0
         requested_statement = select(Expense).where(Expense.status == 'Requested').order_by(Expense.id.desc())
         if not organization_admin():
             requested_statement = requested_statement.where(Expense.family_id.in_(
                 select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
         requested = db.session.scalars(requested_statement).all()
-        return render_template('dashboard.html', title='Overview', families=families, active=sum(f.status=='Active' for f in families), pledged=pledged, approved=sum(e.amount_cents for e in expenses if e.status in ('Approved','Paid')), paid=sum(e.amount_cents for e in expenses if e.status=='Paid'), requested=requested)
+        received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.family_id.in_(family_ids))) if family_ids and network_visible else 0
+        return render_template('dashboard.html', title='Overview', families=families, active=sum(f.status=='Active' for f in families), pledged=pledged, received=received, network_visible=network_visible, shortfall=sum(budget_totals(f)['shortfall'] for f in families), approved=sum(e.amount_cents for e in expenses if e.status in ('Approved','Paid')), paid=sum(e.amount_cents for e in expenses if e.status=='Paid'), requested=requested)
 
     @app.get('/families')
     def families():
@@ -329,6 +382,11 @@ def create_app(test_config=None):
         if not organization_admin():
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
         return render_template('families.html', title='Families', families=db.session.scalars(statement).all(), query=query)
+
+    @app.get('/cases')
+    def cases():
+        """Modern case-directory URL; the established families URL remains valid."""
+        return families()
 
     def intake_form(family, title, error=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
@@ -399,7 +457,9 @@ def create_app(test_config=None):
         if current_user() and current_user().role == 'office_employee':
             return render_template('family_office_with_documents.html', title=family.name, family=family)
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
-        return render_template('family.html', title=family.name, family=family, activity=activity, pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged'))
+        return render_template('family.html', title=family.name, family=family, activity=activity,
+                               budget=budget_totals(family),
+                               pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged'))
 
     @app.post('/families/<int:family_id>/status')
     def family_status(family_id):
@@ -523,7 +583,7 @@ def create_app(test_config=None):
         family = accessible_family_or_404(family_id)
         if family.status in ('Closed', 'Declined'): abort(400, 'Reopen the case before requesting an expense.')
         category = field('category', True)
-        if category not in CATEGORIES: abort(400)
+        if category not in expense_categories(): abort(400)
         month = field('month', True, 7)
         try:
             if datetime.strptime(month, '%Y-%m').strftime('%Y-%m') != month: raise ValueError()
@@ -536,7 +596,7 @@ def create_app(test_config=None):
 
     @app.get('/fundraising')
     def fundraising():
-        require_capability(('fundraiser',))
+        require_capability(('fundraiser', 'family_admin'))
         statement = select(Family.id.label('id'), Family.name.label('name')).order_by(Family.id.desc())
         if not organization_admin():
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
@@ -547,11 +607,21 @@ def create_app(test_config=None):
                 Contact.family_id == family.id, Contact.status == 'Pledged'))
             for family in families
         }
-        return render_template('fundraising.html', title='Fundraising workspace', families=families, pledged=pledged)
+        received = {family.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.family_id == family.id)) for family in families}
+        # Fundraisers receive no target/shortfall: even an aggregate may disclose
+        # confidential household budget information. Authorized family/admin users
+        # may use the saved shortfall as an internal planning target.
+        show_targets = not (current_user() and current_user().role == 'fundraiser')
+        targets = ({family.id: budget_totals(db.session.get(Family, family.id))['shortfall'] for family in families}
+                   if show_targets else {})
+        return render_template('fundraising.html', title='Fundraising workspace', families=families,
+                               pledged=pledged, received=received, targets=targets,
+                               show_targets=show_targets)
 
     @app.get('/fundraising/<int:family_id>')
     def fundraising_detail(family_id):
-        require_capability(('fundraiser',))
+        require_capability(('fundraiser', 'family_admin'))
         if not can_access_family(family_id):
             abort(403, 'You are not assigned to this family.')
         family = db.session.execute(select(Family.id.label('id'), Family.name.label('name')).where(
@@ -562,6 +632,142 @@ def create_app(test_config=None):
         pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged')
         return render_template('fundraising_detail.html', title='Fundraising workspace', family=family,
                                contacts=contacts, pledged=pledged)
+
+    def scoped_contacts_statement():
+        statement = select(Contact).order_by(Contact.id.desc())
+        if not organization_admin():
+            statement = statement.where(Contact.family_id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id)))
+        return statement
+
+    @app.get('/collections')
+    def collections():
+        # Office employees intentionally do not receive donor or receipt information.
+        require_capability(('family_admin', 'fundraiser'))
+        month = request.args.get('month', datetime.now().strftime('%Y-%m'))
+        try:
+            if datetime.strptime(month, '%Y-%m').strftime('%Y-%m') != month:
+                raise ValueError()
+        except ValueError:
+            abort(400, 'Enter a valid month.')
+        month_start = datetime.strptime(month + '-01', '%Y-%m-%d').date()
+        month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        contacts = db.session.scalars(scoped_contacts_statement()).all()
+        family_ids = [contact.family_id for contact in contacts]
+        receipts = db.session.scalars(select(Receipt).where(
+            Receipt.family_id.in_(family_ids),
+            Receipt.received_on >= month_start, Receipt.received_on < month_end
+        ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if family_ids else []
+        received_by_contact = {}
+        for receipt in receipts:
+            received_by_contact[receipt.contact_id] = received_by_contact.get(receipt.contact_id, 0) + receipt.amount_cents
+        lifetime_by_contact = {contact.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.contact_id == contact.id)) for contact in contacts}
+        return render_template('collections.html', title='Collections', contacts=contacts,
+                               receipts=receipts, received_by_contact=received_by_contact,
+                               lifetime_by_contact=lifetime_by_contact, month=month)
+
+    @app.post('/collections/receipts')
+    def record_receipt():
+        require_capability(('family_admin', 'fundraiser'))
+        contact_id = request.form.get('contact_id', type=int)
+        if not contact_id:
+            abort(400, 'Choose a supporter.')
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        received_on = field('received_on', True, 10)
+        try:
+            received_date = datetime.strptime(received_on, '%Y-%m-%d').date()
+        except ValueError:
+            abort(400, 'Enter a valid received date.')
+        receipt = Receipt(contact_id=contact.id, family_id=contact.family_id,
+                          amount_cents=amount('amount'), received_on=received_date,
+                          reference=field('reference', limit=200),
+                          note=field('note', limit=5000),
+                          recorded_by=current_user().id if current_user() else None)
+        db.session.add(receipt)
+        audit('Recorded manual receipt', contact.family_id)
+        db.session.commit()
+        flash('Manual receipt recorded.')
+        return redirect(url_for('collections', month=received_date.strftime('%Y-%m')))
+
+    @app.get('/supporters')
+    def supporters():
+        require_capability(('family_admin', 'fundraiser'))
+        query = request.args.get('q', '').strip()[:160]
+        statement = scoped_contacts_statement()
+        if query:
+            statement = statement.where(Contact.name.icontains(query, autoescape=True))
+        contacts = db.session.scalars(statement).all()
+        totals = {c.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.contact_id == c.id)) for c in contacts}
+        return render_template('supporters.html', title='Supporters', contacts=contacts,
+                               received=totals, query=query)
+
+    @app.get('/approvals')
+    def approvals():
+        require_organization_admin()
+        expenses = db.session.scalars(select(Expense).where(Expense.status == 'Requested').order_by(Expense.id.desc())).all()
+        return render_template('approvals.html', title='Approvals', expenses=expenses)
+
+    @app.get('/reports')
+    def reports():
+        require_organization_admin()
+        families = db.session.scalars(select(Family).order_by(Family.name)).all()
+        rows = []
+        for family in families:
+            totals = budget_totals(family)
+            pledged = sum(c.monthly_cents for c in family.contacts if c.status == 'Pledged')
+            received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(Receipt.family_id == family.id))
+            approved = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
+                Expense.family_id == family.id, Expense.status == 'Approved',
+                Expense.category != 'Organization expense'))
+            paid = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
+                Expense.family_id == family.id, Expense.status == 'Paid',
+                Expense.category != 'Organization expense'))
+            org_costs = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
+                Expense.family_id == family.id, Expense.category == 'Organization expense',
+                Expense.status == 'Paid'))
+            rows.append(dict(family=family, **totals, pledged=pledged, received=received,
+                             approved=approved, paid=paid, organization_costs=org_costs))
+        return render_template('reports.html', title='Reports', rows=rows)
+
+    @app.route('/controls', methods=['GET', 'POST'])
+    def controls():
+        require_organization_admin()
+        if request.method == 'POST':
+            import json
+            categories = [x.strip() for x in request.form.get('categories', '').splitlines() if x.strip()]
+            try:
+                bands = json.loads(request.form.get('child_bands', '[]'))
+            except ValueError:
+                abort(400, 'Enter valid child estimate settings.')
+            if not categories or len(categories) > len(DEFAULT_CATEGORIES) or any(x not in DEFAULT_CATEGORIES for x in categories):
+                abort(400, 'Choose valid expense categories.')
+            try:
+                valid_bands = bool(bands) and all(isinstance(x, dict) and 0 <= int(x['min_age']) <= int(x['max_age']) <= 30
+                    and 0 <= int(x['amount_cents']) <= 100000000 for x in bands)
+            except (KeyError, TypeError, ValueError):
+                valid_bands = False
+            if not valid_bands:
+                abort(400, 'Enter valid child estimate settings.')
+            for key, value in [('expense_categories', categories), ('child_estimate_bands', bands)]:
+                row = db.session.get(OrganizationSetting, key)
+                if row: row.value = value
+                else: db.session.add(OrganizationSetting(key=key, value=value))
+            audit('Updated organization controls')
+            db.session.commit()
+            flash('Controls saved.')
+            return redirect(url_for('controls'))
+        import json
+        return render_template('controls.html', title='Controls', categories=expense_categories(),
+                               bands_json=json.dumps(child_bands(), indent=2))
+
+    @app.get('/people-access')
+    def people_access():
+        require_organization_admin()
+        return staff()
 
     @app.get('/expenses')
     def expenses():
@@ -616,7 +822,7 @@ def create_app(test_config=None):
     @app.get('/settings')
     def settings():
         require_organization_admin()
-        return redirect(url_for('staff'))
+        return redirect(url_for('controls'))
 
     @app.post('/staff/<int:user_id>/role')
     def staff_role(user_id):
@@ -671,6 +877,12 @@ def create_app(test_config=None):
         db.create_all()
         ensure_bootstrap_owner()
         print('Database initialized. Existing records preserved.')
+
+    @app.cli.command('migrate-db')
+    def migrate_db():
+        """Add tables absent from a legacy deployment; never drop or rewrite data."""
+        db.create_all()
+        print('Database migration completed. Existing records preserved.')
 
     with app.app_context():
         if app.config['DEMO']:

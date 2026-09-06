@@ -319,6 +319,42 @@ CATALOG.update({
 })
 
 CATALOG.update({
+  'Collections': {'he':'גבייה', 'yi':'געלט אייננעמען'},
+  'COLLECTION RECORDS': {'he':'רישומי גבייה', 'yi':'פארשרייבונגען פון געלט'},
+  'Monthly commitments and manually recorded receipts. A pledge is never a receipt, and Yazory does not move money.': {'he':'התחייבויות חודשיות וקבלות שנרשמו ידנית. התחייבות אינה קבלה, ויעזורי אינה מעבירה כסף.', 'yi':'חודש׳ליכע צוזאגן און ידנית פארשריבענע קבלות. א צוזאג איז קיינמאל נישט קיין קבלה, און יעזורי שיקט נישט קיין געלט.'},
+  'View': {'he':'הצגה', 'yi':'ווייזן'},
+  'Monthly due commitments': {'he':'התחייבויות חודשיות לתשלום', 'yi':'חודש׳ליכע צוזאגן וואס קומען'},
+  'Follow up manually where a pledged commitment has no recorded receipt.': {'he':'בצעו מעקב ידני כאשר להתחייבות אין קבלה שנרשמה.', 'yi':'מאכט ידנית נאכפאלגן ווען א צוזאג האט נישט קיין פארשריבענע קבלה.'},
+  'Monthly pledge': {'he':'התחייבות חודשית', 'yi':'חודש׳ליכער צוזאג'},
+  'Received to date': {'he':'התקבל עד כה', 'yi':'אריינגעקומען ביז יעצט'},
+  'Follow-up status': {'he':'מצב מעקב', 'yi':'מצב פון נאכפאלגן'},
+  'Manual follow-up': {'he':'מעקב ידני', 'yi':'ידנית נאכפאלגן'},
+  'Recorded': {'he':'נרשם', 'yi':'פארשריבן'},
+  'No assigned supporters or commitments for this month.': {'he':'אין תומכים או התחייבויות משויכים לחודש זה.', 'yi':'נישטא קיין צוגעטיילטע העלפער אדער צוזאגן פאר דעם חודש.'},
+  'Record manual receipt': {'he':'רישום קבלה ידני', 'yi':'ידנית פארשרייבן א קבלה'},
+  'This documents a receipt reported or handled outside Yazory; it does not move money.': {'he':'זה מתעד קבלה שדווחה או טופלה מחוץ ליעזורי; הוא אינו מעביר כסף.', 'yi':'דאס פארשרייבט א קבלה וואס מען האט געמאלדן אדער באהאנדלט אויסער יעזורי; עס שיקט נישט קיין געלט.'},
+  'Received on': {'he':'תאריך קבלה', 'yi':'דאטום באקומען'},
+  'Record receipt': {'he':'רישום קבלה', 'yi':'פארשרייבן קבלה'},
+  'Receipt history': {'he':'היסטוריית קבלות', 'yi':'היסטאריע פון קבלות'},
+  'Manual records only; they are not bank reconciliation.': {'he':'רישומים ידניים בלבד; אין מדובר בהתאמת בנק.', 'yi':'נאר ידנית פארשרייבונגען; דאס איז נישט קיין באנק־אויסגלייך.'},
+  'No manual receipts recorded for this month.': {'he':'לא נרשמו קבלות ידניות לחודש זה.', 'yi':'נישטא קיין ידנית פארשריבענע קבלות פאר דעם חודש.'},
+  'Manual receipt recorded.': {'he':'הקבלה הידנית נרשמה.', 'yi':'די ידנית קבלה איז פארשריבן.'},
+  'Choose a supporter.': {'he':'בחרו תומך.', 'yi':'קלויבט אויס א העלפער.'},
+  'Enter a valid received date.': {'he':'הזינו תאריך קבלה תקין.', 'yi':'לייגט אריין א גילטיגע דאטום ווען עס איז באקומען געווארן.'}
+})
+
+CATALOG.update({
+ 'Cases':{'he':'תיקים','yi':'משפחה־תיקים'}, 'Supporters':{'he':'תומכים','yi':'העלפער'}, 'Fundraising':{'he':'גיוס תרומות','yi':'געלט זאמלען'}, 'Expenses':{'he':'הוצאות','yi':'הוצאות'}, 'Approvals':{'he':'אישורים','yi':'באשטעטיגונגען'}, 'Reports':{'he':'דוחות','yi':'באריכטן'}, 'People & access':{'he':'אנשים והרשאות','yi':'מענטשן און רשות'}, 'Controls':{'he':'הגדרות בקרה','yi':'קאנטראָלס'},
+ 'SUPPORTER NETWORK':{'he':'רשת תומכים','yi':'נעץ פון העלפער'}, 'Assigned supporter relationships, pledges, receipts, and follow-up.':{'he':'קשרי תומכים משויכים, התחייבויות, קבלות ומעקב.','yi':'צוגעטיילטע העלפער, צוזאגן, קבלות און נאכפאלגן.'}, 'Search supporters':{'he':'חיפוש תומכים','yi':'זוכן העלפער'}, 'No supporters found.':{'he':'לא נמצאו תומכים.','yi':'נישט געפונען קיין העלפער.'},
+ 'APPROVAL QUEUE':{'he':'תור אישורים','yi':'ריי פאר באשטעטיגונגען'}, 'Requested expenses awaiting an organization administrator decision.':{'he':'בקשות הוצאה הממתינות להחלטת מנהל ארגון.','yi':'געבעטן הוצאות וואס ווארטן אויף א באשלוס פון ארגאניזאציע־מנהל.'},
+ 'SAVED DATA REPORT':{'he':'דוח נתונים שמורים','yi':'באריכט פון אפגעהיטענע דאטא'}, 'Saved-data totals only; blank intake values are not invented.':{'he':'סיכומי נתונים שמורים בלבד; ערכי קליטה ריקים אינם מומצאים.','yi':'נאר סך הכל פון אפגעהיטענע דאטא; ליידיגע ארייננעמען־ווערדן ווערן נישט אויסגעטראכט.'}, 'Household bills':{'he':'חשבונות משק הבית','yi':'חשבונות פון דער משפחה'}, 'Child estimates':{'he':'אומדני ילדים','yi':'שאצונגען פאר קינדער'}, 'Shortfall':{'he':'חסר','yi':'וויפיל עס פעלט'}, 'Received':{'he':'התקבל','yi':'באקומען'}, 'Organization costs':{'he':'עלויות הארגון','yi':'קאסטן פון ארגאניזאציע'}, 'No saved cases.':{'he':'אין תיקים שמורים.','yi':'נישטא קיין אפגעהיטענע תיקים.'},
+ 'ORGANIZATION CONTROLS':{'he':'הגדרות הארגון','yi':'ארגאניזאציע קאנטראָלס'}, 'Configure categories and monthly child estimates used in saved profile totals.':{'he':'הגדירו קטגוריות ואומדני ילדים חודשיים המשמשים בסיכומי פרופילים שמורים.','yi':'שטעלט איין קאטעגאריעס און חודש׳ליכע קינדער־שאצונגען וואס ווערן גענוצט אין אפגעהיטענע פרטים.'}, 'Expense categories (one per line)':{'he':'קטגוריות הוצאה (אחת בשורה)','yi':'הוצאה קאטעגאריעס (איינער א שורה)'}, 'Child estimate age bands (JSON; amounts are cents)':{'he':'טווחי גיל לאומדן ילדים (JSON; סכומים בסנטים)','yi':'עלטער־גרופעס פאר קינדער שאצונגען (JSON; סכומים זענען סענט)'}, 'Save controls':{'he':'שמירת הגדרות','yi':'אפהיטן קאנטראָלס'}, 'Controls saved.':{'he':'ההגדרות נשמרו.','yi':'די קאנטראָלס זענען אפגעהיטן.'},
+ 'Monthly shortfall':{'he':'חסר חודשי','yi':'חודש׳ליכער חסר'}, 'Saved intake and configured estimates':{'he':'קליטה שמורה ואומדנים שהוגדרו','yi':'אפגעהיטענע ארייננעמען און איינגעשטעלטע שאצונגען'}, 'Manual receipts':{'he':'קבלות ידניות','yi':'ידנית קבלות'}, 'Recorded manually; not money moved':{'he':'נרשם ידנית; לא הועבר כסף','yi':'ידנית פארשריבן; קיין געלט נישט געשיקט'}, 'Support target':{'he':'יעד תמיכה','yi':'ציל פון הילף'}, 'ABCharity':{'he':'ABCharity','yi':'ABCharity'}, 'Not connected. External actions are unavailable.':{'he':'לא מחובר. פעולות חיצוניות אינן זמינות.','yi':'נישט פארבונדן. דרויסנדיגע פעולות זענען נישט פאראן.'},
+ 'Total monthly income':{'he':'סך הכנסה חודשית','yi':'סך חודש׳ליכע הכנסה'}, 'Monthly household bills':{'he':'חשבונות בית חודשיים','yi':'חודש׳ליכע חשבונות פון שטוב'}, 'Child age-based estimates':{'he':'אומדנים לפי גיל הילד','yi':'שאצונגען לויטן עלטער פון קינד'}, '(estimate)':{'he':'(אומדן)','yi':'(שאצונג)'}, 'Actual child amounts entered':{'he':'סכומי ילדים בפועל שהוזנו','yi':'פאקטישע קינדער סכומים אריינגעלייגט'}, 'Total shortfall':{'he':'סך החסר','yi':'סך הכל וואס עס פעלט'}, 'Child estimates are shown separately and are not double counted with actual entered amounts.':{'he':'אומדני ילדים מוצגים בנפרד ואינם נספרים פעמיים עם סכומים בפועל שהוזנו.','yi':'קינדער שאצונגען ווערן געוויזן באזונדער און נישט צוויי מאל מיט פאקטישע אריינגעלייגטע סכומים.'}
+ ,'Received this month':{'he':'התקבל החודש','yi':'באקומען דעם חודש'}, 'Lifetime received':{'he':'התקבל לאורך הזמן','yi':'באקומען במשך הזמן'}, 'Approved outstanding':{'he':'מאושר שטרם שולם','yi':'באשטעטיגט און נאך נישט באצאלט'}, 'Paid support':{'he':'סיוע ששולם','yi':'באצאלטע הילף'}, 'Paid organization costs':{'he':'עלויות ארגון ששולמו','yi':'באצאלטע ארגאניזאציע קאסטן'}, 'Enter valid child estimate settings.':{'he':'הזינו הגדרות אומדן ילדים תקינות.','yi':'לייגט אריין גילטיגע קינדער־שאצונג קאנטראָלס.'}, 'Choose valid expense categories.':{'he':'בחרו קטגוריות הוצאה תקינות.','yi':'קלויבט אויס גילטיגע הוצאה קאטעגאריעס.'}
+})
+
+CATALOG.update({
  'Profile totals': {'he':'סיכום המשפחה', 'yi':'סך הכל פון די משפחה'},
  'Saved profile': {'he':'הפרופיל נשמר', 'yi':'די פרטים זענען אפגעהיטן'},
  'Unsaved changes': {'he':'שינויים שלא נשמרו', 'yi':'די ענדערונגען זענען נאך נישט אפגעהיטן'},
