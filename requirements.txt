@@ -4,3 +4,4 @@ psycopg[binary]==3.3.5
 gunicorn==26.2.0
 sqlalchemy
 werkzeug
+pytest==9.1.1
