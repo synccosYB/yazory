@@ -70,6 +70,9 @@ In-laws|מחותנים|שווער און שוויגער
 Affiliated rabbi|רב המשפחה|דער רב פון דער משפחה
 Weekday shul|בית הכנסת בימי חול|וואו מען דאוונט אינדערוואכן
 Shabbos shul|בית הכנסת בשבת|וואו מען דאוונט שבת
+Shul gabbai|גבאי בית הכנסת|גבאי פון דער שול
+Gabbai phone|טלפון הגבאי|טעלעפאן פונעם גבאי
+Record the gabbai so the team can ask who from the shul may be able to help.|רשמו את הגבאי כדי שהצוות יוכל לברר מי מבין מתפללי בית הכנסת יכול לסייע.|שרייבט אריין דעם גבאי כדי צו קענען פרעגן ווער פון די מענטשן אין דער שול קען ארויסהעלפן.
 Household circumstances|מצב המשפחה|די מצב פון דער משפחה
 Describe the household’s practical support needs.|תארו את צורכי הסיוע של המשפחה.|שרייבט מיט וואס די משפחה דארף הילף.
 Cancel|ביטול|צוריק

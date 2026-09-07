@@ -167,11 +167,27 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
                   'inlaws_maiden_name', 'inlaws_family', 'rabbi',
-                  'weekday_shul', 'shabbos_shul', 'circumstances'):
+                  'weekday_shul', 'shabbos_shul', 'shul_gabbai',
+                  'shul_gabbai_phone', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
     assert 'name="rabbi"' in edit.text
+
+def test_shul_gabbai_name_and_phone_are_saved(app, client):
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'shul_gabbai': 'Moshe Klein',
+        'shul_gabbai_phone': '845-555-0199',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        assert family.shul_gabbai == 'Moshe Klein'
+        assert family.shul_gabbai_phone == '845-555-0199'
+    profile = client.get('/families/1').text
+    assert 'Moshe Klein' in profile
+    assert '845-555-0199' in profile
 
 def test_profile_print_report_lists_and_filters_donations(app, client):
     with app.app_context():
