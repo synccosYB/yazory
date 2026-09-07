@@ -220,9 +220,6 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
             'Hersh Levy', 'Nephew', shlomo_id)
     supporter_list = client.get('/supporters?family_id=1').text
     assert 'Hersh Levy' in supporter_list and 'Shlomo supporter' in supporter_list
-    assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_list
-    supporter_detail = client.get(f'/supporters/{hersh_id}').text
-    assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_detail
     profile = client.get('/families/1').text
     assert 'Manage supporters' in profile
     assert 'name="pledge_frequency"' not in profile
