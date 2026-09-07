@@ -41,6 +41,8 @@ class Family(db.Model):
     shul_gabbai_phone = db.Column(db.String(80), default='')
     circumstances = db.Column(db.Text, default='')
     status = db.Column(db.String(30), default='Intake', nullable=False)
+    gabbais = db.relationship('ShulGabbai', backref='family', lazy=True,
+                              cascade='all, delete-orphan', order_by='ShulGabbai.id')
     children = db.relationship('Child', backref='family', lazy=True)
     contacts = db.relationship('Contact', backref='family', lazy=True)
     expenses = db.relationship('Expense', backref='family', lazy=True)
@@ -58,6 +60,12 @@ class HouseholdIntake(db.Model):
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
     data = db.Column(db.JSON, nullable=False, default=dict)
     family = db.relationship('Family', backref=db.backref('intake_record', uselist=False))
+
+class ShulGabbai(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    phone = db.Column(db.String(80), default='')
 
 class OrganizationSetting(db.Model):
     key = db.Column(db.String(80), primary_key=True)
@@ -272,6 +280,14 @@ def create_app(test_config=None):
             if column not in family_columns:
                 db.session.execute(text(
                     f"ALTER TABLE family ADD COLUMN {column} {definition} DEFAULT ''"
+                ))
+        # Move the original single gabbai fields into the repeatable list once.
+        for family in db.session.scalars(select(Family)).all():
+            if not family.gabbais and (family.shul_gabbai or family.shul_gabbai_phone):
+                db.session.add(ShulGabbai(
+                    family_id=family.id,
+                    name=family.shul_gabbai or 'Gabbai',
+                    phone=family.shul_gabbai_phone or '',
                 ))
         child_columns = {column['name'] for column in inspect(db.engine).get_columns('child')}
         for column, definition in {
@@ -703,6 +719,32 @@ def create_app(test_config=None):
         audit('Added child and school details', family_id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
+
+    @app.post('/families/<int:family_id>/gabbais')
+    def add_gabbai(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        db.session.add(ShulGabbai(
+            family_id=family.id,
+            name=field('name', True),
+            phone=field('phone', limit=80),
+        ))
+        audit('Added shul gabbai', family.id)
+        db.session.commit()
+        flash('Shul gabbai added.')
+        return redirect(url_for('family_detail', family_id=family.id))
+
+    @app.post('/gabbais/<int:gabbai_id>')
+    def update_gabbai(gabbai_id):
+        require_capability(('family_admin', 'office_employee'))
+        gabbai = db.get_or_404(ShulGabbai, gabbai_id)
+        accessible_family_or_404(gabbai.family_id)
+        gabbai.name = field('name', True)
+        gabbai.phone = field('phone', limit=80)
+        audit('Updated shul gabbai', gabbai.family_id)
+        db.session.commit()
+        flash('Shul gabbai updated.')
+        return redirect(url_for('family_detail', family_id=gabbai.family_id))
 
     @app.post('/children/<int:child_id>')
     def update_child(child_id):

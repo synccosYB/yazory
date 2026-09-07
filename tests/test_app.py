@@ -167,27 +167,11 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
                   'inlaws_maiden_name', 'inlaws_family', 'rabbi', 'rabbi_phone',
-                  'weekday_shul', 'shabbos_shul', 'shul_gabbai',
-                  'shul_gabbai_phone', 'circumstances'):
+                  'weekday_shul', 'shabbos_shul', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
     assert 'name="rabbi"' in edit.text
-
-def test_shul_gabbai_name_and_phone_are_saved(app, client):
-    response = post(client, '/families/1/edit', {
-        'name': 'Sample family',
-        'shul_gabbai': 'Moshe Klein',
-        'shul_gabbai_phone': '845-555-0199',
-    })
-    assert response.status_code == 302
-    with app.app_context():
-        family = db.session.get(Family, 1)
-        assert family.shul_gabbai == 'Moshe Klein'
-        assert family.shul_gabbai_phone == '845-555-0199'
-    profile = client.get('/families/1').text
-    assert 'Moshe Klein' in profile
-    assert '845-555-0199' in profile
 
 def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):
     response = post(client, '/families/1/edit', {
@@ -202,6 +186,24 @@ def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):
     profile = client.get('/families/1').text
     rabbi_block = profile[profile.index('Rabbi Rubin'):profile.index('Rabbi Rubin') + 500]
     assert '845-555-0101' in rabbi_block
+
+def test_multiple_shul_gabbais_can_be_added_and_updated(app, client):
+    assert post(client, '/families/1/gabbais', {
+        'name': 'First Gabbai', 'phone': '845-555-0201'}).status_code == 302
+    assert post(client, '/families/1/gabbais', {
+        'name': 'Second Gabbai', 'phone': '845-555-0202'}).status_code == 302
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        assert [(g.name, g.phone) for g in family.gabbais] == [
+            ('First Gabbai', '845-555-0201'),
+            ('Second Gabbai', '845-555-0202'),
+        ]
+        second_id = family.gabbais[1].id
+    assert post(client, f'/gabbais/{second_id}', {
+        'name': 'Second Gabbai', 'phone': '845-555-0299'}).status_code == 302
+    profile = client.get('/families/1').text
+    assert 'First Gabbai' in profile
+    assert '845-555-0299' in profile
 
 def test_profile_print_report_lists_and_filters_donations(app, client):
     with app.app_context():
