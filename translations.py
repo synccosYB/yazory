@@ -58,6 +58,26 @@ Edit family profile|עריכת פרופיל משפחה|ענדערן די פרט�
 Start with the household, then add schools, supporters, and expenses.|התחילו בפרטי המשפחה, ולאחר מכן הוסיפו מוסדות לימוד, תומכים והוצאות.|הייבט אן מיט די משפחה, דערנאך לייגט צו מוסדות, העלפער און הוצאות.
 Household & community|המשפחה והקהילה|די משפחה און די קהילה
 Family / individual name|שם המשפחה / הפונה|נאמען פון דער משפחה אדער דעם פונה
+Identity & address|זהות וכתובת|נאמען און אדרעס
+Name in English|שם באנגלית|נאמען אויף ענגליש
+Name in Yiddish|שם ביידיש|נאמען אויף אידיש
+Spouse name in English|שם בן/בת הזוג באנגלית|נאמען פונעם מאן אדער ווייב אויף ענגליש
+Spouse name in Yiddish|שם בן/בת הזוג ביידיש|נאמען פונעם מאן אדער ווייב אויף אידיש
+Street address|רחוב ומספר בית|הויז נומער און גאס
+City|עיר|שטאט
+State|מדינה|סטעיט
+ZIP code|מיקוד|זיפ קאוד
+Children & budget|ילדים ותקציב|קינדער און בודזשעט
+Children|ילדים|קינדער
+Household budget|תקציב משק הבית|בודזשעט פון דער משפחה
+Add every child individually, including married children.|יש להוסיף כל ילד בנפרד, כולל ילדים נשואים.|לייגט אריין יעדעס קינד באזונדער, אויך די פארהייראטע קינדער.
+Child name in English|שם הילד באנגלית|נאמען פונעם קינד אויף ענגליש
+Child name in Yiddish|שם הילד ביידיש|נאמען פונעם קינד אויף אידיש
+Age|גיל|עלטער
+Married?|נשוי/אה?|פארהייראט?
+Review & readiness|בדיקה ומוכנות|איבערקוקן אויב אלעס איז גרייט
+Before submitting for review|לפני הגשה לבדיקה|איידער מען שיקט עס צום איבערקוקן
+Save now and return later. The case remains in Intake until it is complete and submitted for review.|אפשר לשמור ולחזור מאוחר יותר. התיק יישאר בקליטה עד להשלמתו והגשתו לבדיקה.|מען קען יעצט אפהיטן און שפעטער צוריקקומען. די פניה בלייבט ביי ארייננעמען ביז אלעס איז פארטיג און מען שיקט עס צום איבערקוקן.
 Spouse name|שם בן/בת הזוג|נאמען פונעם מאן אדער די ווייב
 Phone|טלפון|טעלעפאן
 Address|כתובת|אדרעס

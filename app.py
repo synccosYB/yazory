@@ -366,10 +366,14 @@ def create_app(test_config=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
             ('name','spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances')} if family else {})
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
+        if family and not budget.get('children'):
+            budget['children'] = [{'id': str(child.id), 'name_en': child.name, 'name_yi': '', 'age': str(child.age),
+                'grade': child.grade, 'school': child.school, 'married': 'no', 'spouse_en': '', 'spouse_yi': '',
+                'tuition_contact': child.tuition_contact} for child in family.children]
         if error:
             budget.update(request.form)
             import json
-            for group in ('accounts', 'assistance'):
+            for group in ('children', 'accounts', 'assistance'):
                 try:
                     entries = json.loads(request.form.get(group + '_json', '[]'))
                     budget[group] = entries if isinstance(entries, list) else []
@@ -385,6 +389,34 @@ def create_app(test_config=None):
                 db.session.add(record)
             record.data = data
 
+    def sync_intake_children(family, data):
+        """Keep children entered in intake connected to the family profile."""
+        if data is None or 'children' not in data:
+            return
+        existing = {child.id: child for child in family.children}
+        retained = set()
+        for row in data['children']:
+            child_id = int(row['id']) if row.get('id') else None
+            child = existing.get(child_id)
+            if child is None:
+                child = Child(family_id=family.id,
+                    name=' / '.join(v for v in [row.get('name_en'), row.get('name_yi')] if v),
+                    age=row['age'], grade=row.get('grade', ''), school=row.get('school', ''),
+                    tuition_contact=row.get('tuition_contact', ''))
+                db.session.add(child)
+                db.session.flush()
+                row['id'] = str(child.id)
+            retained.add(child.id)
+            child.name = ' / '.join(v for v in [row.get('name_en'), row.get('name_yi')] if v)
+            child.age = row['age']
+            child.grade = row.get('grade', '')
+            child.school = row.get('school', '')
+            child.tuition_contact = row.get('tuition_contact', '')
+        for child_id, child in existing.items():
+            if child_id not in retained:
+                db.session.delete(child)
+        data['children_count'] = len(data['children'])
+
     @app.route('/families/new', methods=['GET', 'POST'])
     def new_family():
         require_capability(('organization_admin', 'office_employee'))
@@ -393,9 +425,15 @@ def create_app(test_config=None):
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
-            family = Family(name=field('name', True), **{k: field(k, limit={'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
+            initial_name = (intake_data or {}).get('name_en') or (intake_data or {}).get('name_yi') or field('name', True)
+            family = Family(name=initial_name, **{k: field(k, limit={'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
+            if intake_data:
+                family.name = ' / '.join(v for v in [intake_data.get('name_en'), intake_data.get('name_yi')] if v) or family.name
+                family.spouse = intake_data.get('spouse_en') or intake_data.get('spouse_yi') or family.spouse
+                if 'children_json' in request.form:
+                    sync_intake_children(family, intake_data)
             save_intake(family, intake_data)
             # An office intake never creates an unassigned household.
             if not organization_admin():
@@ -418,6 +456,11 @@ def create_app(test_config=None):
             limits = {'circumstances':5000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}
             for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
+            if intake_data:
+                family.name = ' / '.join(v for v in [intake_data.get('name_en'), intake_data.get('name_yi')] if v) or family.name
+                family.spouse = intake_data.get('spouse_en') or intake_data.get('spouse_yi') or family.spouse
+                if 'children_json' in request.form:
+                    sync_intake_children(family, intake_data)
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
             db.session.commit()
