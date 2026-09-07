@@ -250,7 +250,10 @@ def create_app(test_config=None):
                 ))
         child_columns = {column['name'] for column in inspect(db.engine).get_columns('child')}
         for column, definition in {
-            'married': 'BOOLEAN NOT NULL DEFAULT 0',
+            # FALSE is valid for PostgreSQL and SQLite. PostgreSQL rejects the
+            # integer DEFAULT 0 that was previously used here, which aborted
+            # the whole startup migration and left profile pages unusable.
+            'married': 'BOOLEAN NOT NULL DEFAULT FALSE',
             'spouse_name': "VARCHAR(160) DEFAULT ''",
         }.items():
             if column not in child_columns:
