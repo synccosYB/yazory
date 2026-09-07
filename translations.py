@@ -71,8 +71,14 @@ Affiliated rabbi|רב המשפחה|דער רב פון דער משפחה
 Weekday shul|בית הכנסת בימי חול|וואו מען דאוונט אינדערוואכן
 Shabbos shul|בית הכנסת בשבת|וואו מען דאוונט שבת
 Shul gabbai|גבאי בית הכנסת|גבאי פון דער שול
+Shul gabbais|גבאי בית הכנסת|גבאים פון דער שול
 Gabbai phone|טלפון הגבאי|טעלעפאן פונעם גבאי
++ Add another gabbai|+ הוספת גבאי נוסף|+ צולייגן נאך א גבאי
+Add gabbai|הוספת גבאי|צולייגן דעם גבאי
+Shul gabbai added.|גבאי בית הכנסת נוסף.|דער גבאי איז צוגעלייגט געווארן.
+Shul gabbai updated.|פרטי הגבאי עודכנו.|די פרטים פונעם גבאי זענען אפגעהיטן.
 Record the gabbai so the team can ask who from the shul may be able to help.|רשמו את הגבאי כדי שהצוות יוכל לברר מי מבין מתפללי בית הכנסת יכול לסייע.|שרייבט אריין דעם גבאי כדי צו קענען פרעגן ווער פון די מענטשן אין דער שול קען ארויסהעלפן.
+Add one or more gabbais from the family profile after saving.|לאחר השמירה ניתן להוסיף גבאי אחד או יותר בפרופיל המשפחה.|נאכן אפהיטן קען מען צולייגן איינעם אדער מער גבאים אינעם משפחה פראפיל.
 Household circumstances|מצב המשפחה|די מצב פון דער משפחה
 Describe the household’s practical support needs.|תארו את צורכי הסיוע של המשפחה.|שרייבט מיט וואס די משפחה דארף הילף.
 Cancel|ביטול|צוריק
