@@ -2,7 +2,7 @@ from io import BytesIO
 import sqlite3
 
 import pytest
-from app import create_app, db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
+from app import create_app, db, Family, Child, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -53,6 +53,26 @@ def test_case_and_expense_workflow(app, client):
         assert expense.payment_reference=='CHECK-123'
         assert len(db.session.scalars(db.select(Audit).where(Audit.family_id==family_id)).all())==8
         assert db.session.execute(db.select(Contact.monthly_cents).where(Contact.family_id==family_id)).scalar_one()==1825
+
+def test_married_child_records_spouse(app, client):
+    assert post(client, '/families/new', {'name':'Parents'}).status_code == 302
+    with app.app_context():
+        family_id = db.session.scalar(db.select(Family.id).where(Family.name == 'Parents'))
+    assert post(client, f'/families/{family_id}/children', {
+        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Spouse'
+    }).status_code == 302
+    with app.app_context():
+        child = db.session.scalar(db.select(Child).where(Child.family_id == family_id))
+        assert child.married is True
+        assert child.spouse_name == 'Spouse'
+        child_id = child.id
+    page = client.get(f'/families/{family_id}').text
+    assert 'Spouse' in page
+    assert post(client, f'/children/{child_id}', {
+        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Updated spouse'
+    }).status_code == 302
+    with app.app_context():
+        assert db.session.get(Child, child_id).spouse_name == 'Updated spouse'
 
 def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     for name in ('Case A', 'Case B'):

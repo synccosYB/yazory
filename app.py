@@ -87,6 +87,8 @@ class Child(db.Model):
     grade = db.Column(db.String(80), default='')
     school = db.Column(db.String(160), nullable=False)
     tuition_contact = db.Column(db.String(300), default='')
+    married = db.Column(db.Boolean, default=False, nullable=False)
+    spouse_name = db.Column(db.String(160), default='')
 
 class Contact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -147,7 +149,8 @@ DEFAULT_CHILD_BANDS = [{'min_age': 0, 'max_age': 5, 'amount_cents': 0},
                        {'min_age': 6, 'max_age': 12, 'amount_cents': 0},
                        {'min_age': 13, 'max_age': 30, 'amount_cents': 0}]
 CATEGORIES = DEFAULT_CATEGORIES
-RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'In-law’s maiden family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
+RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'Child’s in-law family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
+LEGACY_RELATIONSHIPS = {'In-law’s maiden family'}
 CONTACT_STATUSES = ['To contact', 'Contacted', 'Pledged', 'Paused', 'Declined']
 
 def valid_werkzeug_password_hash(value):
@@ -245,6 +248,13 @@ def create_app(test_config=None):
                 db.session.execute(text(
                     f"ALTER TABLE family ADD COLUMN {column} {definition} DEFAULT ''"
                 ))
+        child_columns = {column['name'] for column in inspect(db.engine).get_columns('child')}
+        for column, definition in {
+            'married': 'BOOLEAN NOT NULL DEFAULT 0',
+            'spouse_name': "VARCHAR(160) DEFAULT ''",
+        }.items():
+            if column not in child_columns:
+                db.session.execute(text(f'ALTER TABLE child ADD COLUMN {column} {definition}'))
         db.session.commit()
 
     def current_user():
@@ -590,13 +600,39 @@ def create_app(test_config=None):
         accessible_family_or_404(family_id)
         try:
             age = int(field('age', True))
-            if not 0 <= age <= 30: raise ValueError()
+            if not 0 <= age <= 120: raise ValueError()
         except ValueError:
-            abort(400, 'Age must be between 0 and 30.')
-        db.session.add(Child(family_id=family_id, name=field('name', True), age=age, grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300)))
+            abort(400, 'Age must be between 0 and 120.')
+        db.session.add(Child(family_id=family_id, name=field('name', True), age=age,
+            grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300),
+            married=request.form.get('married') == 'yes', spouse_name=field('spouse_name')))
         audit('Added child and school details', family_id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
+
+    @app.post('/children/<int:child_id>')
+    def update_child(child_id):
+        require_capability(('family_admin', 'office_employee'))
+        child = db.session.get(Child, child_id)
+        if child is None:
+            abort(404)
+        accessible_family_or_404(child.family_id)
+        try:
+            age = int(field('age', True))
+            if not 0 <= age <= 120: raise ValueError()
+        except ValueError:
+            abort(400, 'Age must be between 0 and 120.')
+        child.name = field('name', True)
+        child.age = age
+        child.grade = field('grade', limit=80)
+        child.school = field('school')
+        child.tuition_contact = field('tuition_contact', limit=300)
+        child.married = request.form.get('married') == 'yes'
+        child.spouse_name = field('spouse_name')
+        audit('Updated child and spouse details', child.family_id)
+        db.session.commit()
+        flash('Child and spouse updated.')
+        return redirect(url_for('family_detail', family_id=child.family_id))
 
     @app.post('/families/<int:family_id>/contacts')
     def add_contact(family_id):
@@ -607,7 +643,7 @@ def create_app(test_config=None):
             abort(404)
         relationship = field('relationship', True)
         status = field('status', True)
-        if relationship not in RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
+        if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
         pledge = amount('monthly', allow_zero=status!='Pledged')
         name = field('name', True)
         phone = field('phone', limit=80)

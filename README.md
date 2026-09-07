@@ -22,8 +22,8 @@ Open http://localhost:5000. Local demo data is stored in `instance/yazory-demo.d
 ## Included workflows
 
 - Family intake and profile editing: individual, spouse, father, in-laws, address, phone, rabbi, weekday and Shabbos shul, household circumstances.
-- Children: name, age, grade, school, tuition department contact.
-- Donor network: siblings, spouse’s siblings, the in-law maiden-family network, cousins, school/yeshivah friends, and other supporters. One supporter can be connected to multiple cases while sharing one synchronized outreach/pledge identity, so the organization-wide monthly charge is counted only once.
+- Children: name, age, grade, school, tuition department contact, married status, and the spouse’s name for each married child.
+- Donor network: siblings, spouse’s siblings, a married child’s in-law family, cousins, school/yeshivah friends, and other supporters. One supporter can be connected to multiple cases while sharing one synchronized outreach/pledge identity, so the organization-wide monthly charge is counted only once.
 - Case workflow: Intake → Under review → Active or Declined. Active cases can be paused or closed; closed/declined cases can return to review.
 - Expense requests: category, payee, budget month, amount, and notes. Organization expenses can be assigned to a case.
 - Expense workflow: Requested → Approved or Declined; Approved → Paid or Voided. Only active cases can be approved/paid. A payment reference is mandatory to mark Paid. Terminal expense states cannot be changed.
