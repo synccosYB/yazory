@@ -139,3 +139,39 @@ def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch):
     assert 'src="https://yazory.example/static/yazory-logo.png"' in delivered['html']
     assert 'Yazory · יעזורי' in delivered['html']
     assert '<a href="https://yazory.example/accept-invitation/' in delivered['html']
+
+
+def test_staff_details_status_and_delete(monkeypatch):
+    app, owner = app_and_owner(monkeypatch)
+    assert post(owner, '/staff', {'name': 'Staff Member', 'email': 'staff@example.test',
+        'role': 'office_employee', 'password': 'initial-password-123',
+        'phone': '845-555-1212', 'address': '10 Main St', 'city': 'Monroe',
+        'state': 'NY', 'zip_code': '10950', 'job_title': 'Coordinator'}).status_code == 302
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser).where(StaffUser.email == 'staff@example.test'))
+        user_id = user.id
+        assert (user.phone, user.city, user.job_title) == ('845-555-1212', 'Monroe', 'Coordinator')
+    page = owner.get('/staff').text
+    assert '845-555-1212' in page and '10 Main St' in page and 'Coordinator' in page
+    assert post(owner, f'/staff/{user_id}/details', {'name': 'Updated Staff',
+        'email': 'updated@example.test', 'phone': '845-555-3434', 'address': '20 Main St',
+        'city': 'Kiryas Joel', 'state': 'NY', 'zip_code': '10950',
+        'job_title': 'Manager'}).status_code == 302
+    assert post(owner, f'/staff/{user_id}/status', {'status': 'deactivated'}).status_code == 302
+    with app.app_context():
+        user = db.session.get(StaffUser, user_id)
+        assert (user.name, user.email, user.status, user.job_title) == (
+            'Updated Staff', 'updated@example.test', 'deactivated', 'Manager')
+    assert post(owner, f'/staff/{user_id}/delete', {}).status_code == 302
+    with app.app_context():
+        assert db.session.get(StaffUser, user_id) is None
+
+
+def test_owner_staff_account_cannot_be_deleted(monkeypatch):
+    app, owner = app_and_owner(monkeypatch)
+    with app.app_context():
+        user_id = db.session.scalar(db.select(StaffUser.id).where(
+            StaffUser.email == 'owner@example.test'))
+    assert post(owner, f'/staff/{user_id}/delete', {}).status_code == 400
+    with app.app_context():
+        assert db.session.get(StaffUser, user_id) is not None

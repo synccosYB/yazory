@@ -564,6 +564,20 @@ for _row in _PROFILE_REPORT_ROWS.strip().splitlines():
     CATALOG[_en] = {'he': _he, 'yi': _yi}
 
 CATALOG.update({
+    'Job title': {'he': 'תפקיד', 'yi': 'פאזיציע'},
+    'Phone': {'he': 'טלפון', 'yi': 'טעלעפאן'},
+    'Address': {'he': 'כתובת', 'yi': 'אדרעס'},
+    'City': {'he': 'עיר', 'yi': 'שטאט'},
+    'State': {'he': 'מדינה', 'yi': 'סטעיט'},
+    'ZIP code': {'he': 'מיקוד', 'yi': 'זיפ קאוד'},
+    'Last login': {'he': 'כניסה אחרונה', 'yi': 'לעצטע אריינטריט'},
+    'Edit detailed information': {'he': 'עריכת פרטים מלאים', 'yi': 'עדיטן פולע דעטאלן'},
+    'Save details': {'he': 'שמירת פרטים', 'yi': 'אפהיטן דעטאלן'},
+    'Staff details updated.': {'he': 'פרטי איש הצוות עודכנו.', 'yi': 'די שטאב דעטאלן זענען אפדעיטעד.'},
+    'Delete this staff account permanently?': {'he': 'למחוק לצמיתות את חשבון הצוות?', 'yi': 'אויסמעקן דעם שטאב־חשבון אויף אייביג?'},
+    'Staff account deleted.': {'he': 'חשבון הצוות נמחק.', 'yi': 'דער שטאב־חשבון איז אויסגעמעקט.'},
+    'The owner account cannot be deleted.': {'he': 'לא ניתן למחוק את חשבון הבעלים.', 'yi': 'מען קען נישט אויסמעקן דעם אייגנטימער־חשבון.'},
+    'The owner email address cannot be changed here.': {'he': 'לא ניתן לשנות כאן את כתובת הדוא״ל של הבעלים.', 'yi': 'מען קען דא נישט טוישן דעם אייגנטימער׳ס אימעיל אדרעס.'},
     'Edit supporter': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
     'EDIT SUPPORTER': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
     'Under supporter': {'he': 'תחת תומך', 'yi': 'אונטערן העלפער'},
