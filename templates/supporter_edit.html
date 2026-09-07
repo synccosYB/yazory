@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% from 'macros.html' import token %}{% block content %}
+<div class="page-heading"><div><div class="eyebrow">{{ _('EDIT SUPPORTER') }}</div><h1>{{ contact.name }}</h1><p>{{ contact.family.name }}</p></div><a class="button secondary" href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a></div>
+<form class="card padded" method="post">{{ token(csrf) }}<div class="form-grid">
+<label>{{ _('Name *') }}<input name="name" value="{{ contact.name }}" required maxlength="160"></label>
+<label>{{ _('Phone') }}<input name="phone" value="{{ contact.phone }}" maxlength="80"></label>
+<label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship==contact.relationship }}>{{ _(relationship) }}</option>{% endfor %}</select></label>
+<label>{{ _('Under supporter') }}<select name="parent_contact_id"><option value="">{{ _('Top-level supporter') }}</option>{% for parent in possible_parents %}<option value="{{ parent.id }}" {{ 'selected' if parent.id==contact.parent_contact_id }}>{{ parent.name }}</option>{% endfor %}</select><small>{{ _('Use this when the person is a child or son-in-law of another supporter.') }}</small></label>
+<label>{{ _('Donation amount ($)') }}<input name="monthly" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(contact.monthly_cents/100) }}" required></label>
+<label>{{ _('Donation frequency') }}<select name="pledge_frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency==contact.pledge_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
+<label>{{ _('Outreach status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status==contact.status }}>{{ _(status) }}</option>{% endfor %}</select></label>
+</div><div class="form-actions"><a href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a><button>{{ _('Save') }}</button></div></form>
+{% endblock %}

@@ -110,6 +110,9 @@ class Contact(db.Model):
     # The same real person may support several cases.  This stable key keeps the
     # case-specific relationship rows linked to one billing identity.
     supporter_key = db.Column(db.String(200), nullable=False, default='', index=True)
+    parent_contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=True, index=True)
+    parent_supporter = db.relationship('Contact', remote_side=[id],
+                                     backref=db.backref('nested_supporters', lazy=True))
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
     pledge_frequency = db.Column(db.String(20), nullable=False, default='Monthly')
     status = db.Column(db.String(30), default='To contact', nullable=False)
@@ -300,9 +303,20 @@ def create_app(test_config=None):
             if column not in child_columns:
                 db.session.execute(text(f'ALTER TABLE child ADD COLUMN {column} {definition}'))
         contact_columns = {column['name'] for column in inspect(db.engine).get_columns('contact')}
+        if 'supporter_key' not in contact_columns:
+            db.session.execute(text(
+                "ALTER TABLE contact ADD COLUMN supporter_key VARCHAR(200) DEFAULT '' NOT NULL"
+            ))
         if 'pledge_frequency' not in contact_columns:
             db.session.execute(text(
                 "ALTER TABLE contact ADD COLUMN pledge_frequency VARCHAR(20) NOT NULL DEFAULT 'Monthly'"
+            ))
+        if 'parent_contact_id' not in contact_columns:
+            db.session.execute(text(
+                'ALTER TABLE contact ADD COLUMN parent_contact_id INTEGER REFERENCES contact(id)'
+            ))
+            db.session.execute(text(
+                'CREATE INDEX IF NOT EXISTS ix_contact_parent_contact_id ON contact (parent_contact_id)'
             ))
         db.session.commit()
 
@@ -800,7 +814,7 @@ def create_app(test_config=None):
                                pledge_frequency=pledge_frequency, status=status))
         audit('Added donor network contact', family_id)
         db.session.commit()
-        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=family_id))
+        return redirect(url_for('supporters', family_id=family_id))
 
     @app.post('/contacts/<int:contact_id>')
     def update_contact(contact_id):
@@ -825,6 +839,55 @@ def create_app(test_config=None):
         audit(f'Updated donor pledge: {status}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+
+    @app.route('/contacts/<int:contact_id>/edit', methods=['GET', 'POST'])
+    def edit_contact(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        possible_parents = db.session.scalars(select(Contact).where(
+            Contact.family_id == contact.family_id,
+            Contact.id != contact.id,
+            Contact.parent_contact_id.is_(None)
+        ).order_by(Contact.name)).all()
+        if request.method == 'POST':
+            relationship = field('relationship', True)
+            status = field('status', True)
+            if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS or status not in CONTACT_STATUSES:
+                abort(400)
+            pledge_frequency = field('pledge_frequency') or 'Monthly'
+            if pledge_frequency not in PLEDGE_FREQUENCIES:
+                abort(400, 'Choose a valid donation frequency.')
+            parent_contact_id = request.form.get('parent_contact_id', type=int)
+            if parent_contact_id and not any(row.id == parent_contact_id for row in possible_parents):
+                abort(400, 'Choose a valid parent supporter.')
+            name = field('name', True)
+            phone = field('phone', limit=80)
+            new_key = supporter_key(name, phone)
+            linked = db.session.scalars(select(Contact).where(
+                Contact.supporter_key == contact.supporter_key)).all() if contact.supporter_key else [contact]
+            duplicate = db.session.scalar(select(Contact.id).where(
+                Contact.family_id == contact.family_id,
+                Contact.supporter_key == new_key,
+                Contact.id.not_in([row.id for row in linked])))
+            if duplicate:
+                abort(400, 'This supporter is already connected to this case.')
+            for linked_contact in linked:
+                linked_contact.name = name
+                linked_contact.phone = phone
+                linked_contact.supporter_key = new_key
+                linked_contact.status = status
+                linked_contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
+                linked_contact.pledge_frequency = pledge_frequency
+            contact.relationship = relationship
+            contact.parent_contact_id = parent_contact_id
+            audit(f'Updated supporter details: {name}', contact.family_id)
+            db.session.commit()
+            flash('Supporter updated.')
+            return redirect(url_for('supporter_detail', contact_id=contact.id))
+        return render_template('supporter_edit.html', title='Edit supporter', contact=contact,
+                               possible_parents=possible_parents)
 
     @app.post('/contacts/<int:contact_id>/children')
     def add_contact_child(contact_id):
@@ -1046,14 +1109,25 @@ def create_app(test_config=None):
     def supporters():
         require_capability(('family_admin', 'fundraiser'))
         query = request.args.get('q', '').strip()[:160]
+        family_id = request.args.get('family_id', type=int)
         statement = scoped_contacts_statement()
+        if family_id:
+            if not can_access_family(family_id):
+                abort(403, 'You are not assigned to this family.')
+            statement = statement.where(Contact.family_id == family_id)
         if query:
             statement = statement.where(Contact.name.icontains(query, autoescape=True))
         contacts = db.session.scalars(statement).all()
+        family_statement = select(Family).order_by(Family.name)
+        if not organization_admin():
+            family_statement = family_statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id)))
+        families = db.session.scalars(family_statement).all()
         totals = {c.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
             Receipt.contact_id == c.id)) for c in contacts}
         return render_template('supporters.html', title='Supporters', contacts=contacts,
-                               received=totals, query=query)
+                               received=totals, query=query, families=families,
+                               selected_family_id=family_id)
 
     @app.get('/supporters/<int:contact_id>')
     def supporter_detail(contact_id):
@@ -1265,8 +1339,11 @@ def create_app(test_config=None):
         print('Database migration completed. Existing records preserved.')
 
     with app.app_context():
+        # Hosting can start Gunicorn without executing the configured pre-start
+        # command. Apply the additive, idempotent upgrades here as well so no
+        # request can reach a model whose columns are missing in production.
+        ensure_schema()
         if app.config['DEMO']:
-            ensure_schema()
             if not db.session.scalar(select(Family.id).limit(1)):
                 family = Family(name='Sample family', spouse='Sample spouse', father='Sample father', inlaws='Sample in-laws', rabbi='Community rabbi', weekday_shul='Local shul', shabbos_shul='Local shul', circumstances='Fictional example: a household needs help with everyday expenses during illness.', status='Active')
                 db.session.add(family)
@@ -1275,6 +1352,8 @@ def create_app(test_config=None):
                 audit_entry = Audit(actor='System', action='Created fictional demo records', family_id=family.id)
                 db.session.add(audit_entry)
                 db.session.commit()
+        else:
+            ensure_bootstrap_owner()
     return app
 
 if __name__ == '__main__':
