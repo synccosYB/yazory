@@ -100,13 +100,13 @@ def test_connected_bilingual_identity_address_and_children(monkeypatch):
         'married':'yes','spouse_en':'Moshe','spouse_yi':'משה','tuition_contact':''}]
     response = client.post('/families/new', data={'csrf':csrf, 'intake_version':'1',
         'name':'', 'name_en':'Jacob Green', 'name_yi':'יעקב גרין', 'phone':'845-555-0100',
-        'street':'20 Zenta Rd.', 'city':'Monroe', 'state':'NY', 'zip':'10950',
+        'address':'20 Zenta Rd.', 'city':'Monroe', 'state':'NY', 'zip_code':'10950',
         'children_json':json.dumps(children), 'accounts_json':'[]', 'assistance_json':'[]'})
     assert response.status_code == 302
     with app.app_context():
         family = db.session.scalar(db.select(Family).where(Family.phone=='845-555-0100'))
         assert family.name == 'Jacob Green / יעקב גרין'
-        assert family.address == '20 Zenta Rd., Monroe, NY 10950'
+        assert family.full_address == '20 Zenta Rd., Monroe, NY 10950'
         assert len(family.children) == 1 and family.children[0].name == 'Leah / לאה'
         stored = db.session.get(HouseholdIntake, family.id).data
         assert stored['children'][0]['spouse_en'] == 'Moshe'
