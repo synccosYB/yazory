@@ -16,7 +16,9 @@ function show(i){step=i;pages.forEach((p,n)=>p.hidden=n!==i);tabs.forEach((t,n)=
 function move(i){if(i>step&&!validPage(step))return;show(i);}
 tabs.forEach(t=>t.onclick=()=>move(Number(t.dataset.step)));document.getElementById('intake-next').onclick=()=>move(step+1);document.getElementById('intake-back').onclick=()=>move(step-1);
 form.noValidate=true;form.addEventListener('submit',e=>{repeaters.forEach(r=>r.sync());for(let i=0;i<pages.length;i++){const invalid=[...pages[i].querySelectorAll('input,select,textarea')].find(f=>!f.disabled&&!f.checkValidity());if(invalid){e.preventDefault();show(i);invalid.reportValidity();return;}}});
-form.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'&&step<pages.length-1){e.preventDefault();move(step+1);}});show(0);
+form.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'&&step<pages.length-1){e.preventDefault();move(step+1);}});
+const requestedField=new URLSearchParams(location.search).get('field'),requestedInput=requestedField&&form.elements[requestedField];
+if(requestedInput){const requestedPage=pages.findIndex(page=>page.contains(requestedInput));show(requestedPage<0?0:requestedPage);requestedInput.focus();requestedInput.scrollIntoView({block:'center'});}else show(0);
 const totals=document.getElementById('intake-totals');
 if(totals){
  const status=document.getElementById('profile-save-status');
