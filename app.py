@@ -111,6 +111,7 @@ class Contact(db.Model):
     # case-specific relationship rows linked to one billing identity.
     supporter_key = db.Column(db.String(200), nullable=False, default='', index=True)
     parent_contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=True, index=True)
+    parent_connection = db.Column(db.String(20), nullable=False, default='')
     parent_supporter = db.relationship('Contact', remote_side=[id],
                                      backref=db.backref('nested_supporters', lazy=True))
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
@@ -327,6 +328,16 @@ def create_app(test_config=None):
             ))
             db.session.execute(text(
                 'CREATE INDEX IF NOT EXISTS ix_contact_parent_contact_id ON contact (parent_contact_id)'
+            ))
+        if 'parent_connection' not in contact_columns:
+            db.session.execute(text(
+                "ALTER TABLE contact ADD COLUMN parent_connection VARCHAR(20) NOT NULL DEFAULT ''"
+            ))
+            # Nested supporters previously displayed as sons-in-law, so retain
+            # that meaning for existing records while making it explicit.
+            db.session.execute(text(
+                "UPDATE contact SET parent_connection = 'Son-in-law' "
+                "WHERE parent_contact_id IS NOT NULL AND parent_connection = ''"
             ))
         db.session.commit()
 
@@ -872,6 +883,11 @@ def create_app(test_config=None):
             parent_contact_id = request.form.get('parent_contact_id', type=int)
             if parent_contact_id and not any(row.id == parent_contact_id for row in possible_parents):
                 abort(400, 'Choose a valid parent supporter.')
+            parent_connection = field('parent_connection')
+            if parent_contact_id and parent_connection not in ('Son', 'Son-in-law'):
+                abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+            if not parent_contact_id:
+                parent_connection = ''
             name = field('name', True)
             phone = field('phone', limit=80)
             new_key = supporter_key(name, phone)
@@ -892,6 +908,7 @@ def create_app(test_config=None):
                 linked_contact.pledge_frequency = pledge_frequency
             contact.relationship = relationship
             contact.parent_contact_id = parent_contact_id
+            contact.parent_connection = parent_connection
             audit(f'Updated supporter details: {name}', contact.family_id)
             db.session.commit()
             flash('Supporter updated.')
