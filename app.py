@@ -3,12 +3,12 @@ import secrets
 import hmac
 import re
 from io import BytesIO
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import select, func, UniqueConstraint, inspect, text, case, cast, String
+from sqlalchemy import select, func, UniqueConstraint, inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -100,10 +100,19 @@ class Contact(db.Model):
     # case-specific relationship rows linked to one billing identity.
     supporter_key = db.Column(db.String(200), nullable=False, default='', index=True)
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
+    pledge_frequency = db.Column(db.String(20), nullable=False, default='Monthly')
     status = db.Column(db.String(30), default='To contact', nullable=False)
     receipts = db.relationship('Receipt', backref='contact', lazy=True)
     children = db.relationship('ContactChild', backref='contact', lazy=True,
                                cascade='all, delete-orphan', order_by='ContactChild.id')
+
+    @property
+    def monthly_equivalent_cents(self):
+        if self.pledge_frequency == 'Weekly':
+            return round(self.monthly_cents * 52 / 12)
+        if self.pledge_frequency == 'One time':
+            return 0
+        return self.monthly_cents
 
 class ContactChild(db.Model):
     """A supporter's child, shown in the case network as a niece or nephew."""
@@ -162,6 +171,7 @@ CATEGORIES = DEFAULT_CATEGORIES
 RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'Child’s in-law family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
 LEGACY_RELATIONSHIPS = {'In-law’s maiden family'}
 CONTACT_STATUSES = ['To contact', 'Contacted', 'Pledged', 'Paused', 'Declined']
+PLEDGE_FREQUENCIES = ['Monthly', 'Weekly', 'One time']
 
 def valid_werkzeug_password_hash(value):
     if not value or any(character.isspace() for character in value):
@@ -213,16 +223,15 @@ def create_app(test_config=None):
             Contact.supporter_key == contact.supporter_key)) or 1
 
     def unique_pledged_total(family_ids=None):
-        identity = case(
-            (Contact.supporter_key != '', Contact.supporter_key),
-            else_='legacy:' + cast(Contact.id, String))
-        statement = select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(
-            Contact.status == 'Pledged',
-            Contact.id.in_(select(func.min(Contact.id)).where(Contact.status == 'Pledged').group_by(
-                identity)))
+        statement = select(Contact).where(Contact.status == 'Pledged')
         if family_ids is not None:
             statement = statement.where(Contact.family_id.in_(family_ids))
-        return db.session.scalar(statement) or 0
+        contacts = db.session.scalars(statement.order_by(Contact.id)).all()
+        unique = {}
+        for contact in contacts:
+            identity = contact.supporter_key or f'legacy:{contact.id}'
+            unique.setdefault(identity, contact)
+        return sum(contact.monthly_equivalent_cents for contact in unique.values())
 
     def ensure_bootstrap_owner():
         """Create the configured owner once; never replace an existing password."""
@@ -268,6 +277,11 @@ def create_app(test_config=None):
         }.items():
             if column not in child_columns:
                 db.session.execute(text(f'ALTER TABLE child ADD COLUMN {column} {definition}'))
+        contact_columns = {column['name'] for column in inspect(db.engine).get_columns('contact')}
+        if 'pledge_frequency' not in contact_columns:
+            db.session.execute(text(
+                "ALTER TABLE contact ADD COLUMN pledge_frequency VARCHAR(20) NOT NULL DEFAULT 'Monthly'"
+            ))
         db.session.commit()
 
     def current_user():
@@ -357,7 +371,7 @@ def create_app(test_config=None):
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         user = current_user()
-        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=expense_categories(), relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
+        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=expense_categories(), relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, pledge_frequencies=PLEDGE_FREQUENCIES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
 
     @app.before_request
     def security():
@@ -563,7 +577,68 @@ def create_app(test_config=None):
             contact.connected_cases = linked_contact_count(contact)
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                budget=budget_totals(family),
-                               pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged'))
+                               pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged'))
+
+    @app.get('/families/<int:family_id>/print')
+    def family_print_report(family_id):
+        """One filterable, print-ready record for every list on a family profile."""
+        require_capability(('family_admin',))
+        family = accessible_family_or_404(family_id)
+        query = request.args.get('q', '').strip()[:160]
+        section = request.args.get('section', 'all')
+        supporter_status = request.args.get('supporter_status', '')
+        expense_status = request.args.get('expense_status', '')
+        if section not in {'all', 'children', 'supporters', 'donations', 'expenses', 'documents', 'activity'}:
+            abort(400, 'Choose a valid report section.')
+        if supporter_status and supporter_status not in CONTACT_STATUSES:
+            abort(400, 'Choose a valid supporter status.')
+        if expense_status and expense_status not in EXPENSE_TRANSITIONS:
+            abort(400, 'Choose a valid expense status.')
+
+        def report_date(name):
+            raw = request.args.get(name, '').strip()
+            if not raw:
+                return None
+            try:
+                return date.fromisoformat(raw)
+            except ValueError:
+                abort(400, 'Enter a valid report date.')
+
+        date_from, date_to = report_date('date_from'), report_date('date_to')
+        if date_from and date_to and date_from > date_to:
+            abort(400, 'The start date must be before the end date.')
+        needle = query.casefold()
+        matches = lambda *values: not needle or any(needle in str(value or '').casefold() for value in values)
+
+        children = [child for child in sorted(family.children, key=lambda row: (row.age, row.name.casefold()))
+                    if matches(child.name, child.age, child.grade, child.school, child.tuition_contact, child.spouse_name)]
+        contacts = [contact for contact in sorted(family.contacts, key=lambda row: row.name.casefold())
+                    if (not supporter_status or contact.status == supporter_status)
+                    and matches(contact.name, contact.relationship, contact.phone, contact.status)]
+        receipt_statement = select(Receipt).where(Receipt.family_id == family.id)
+        if date_from:
+            receipt_statement = receipt_statement.where(Receipt.received_on >= date_from)
+        if date_to:
+            receipt_statement = receipt_statement.where(Receipt.received_on <= date_to)
+        receipts = [receipt for receipt in db.session.scalars(receipt_statement.order_by(
+            Receipt.received_on.desc(), Receipt.id.desc())).all()
+            if matches(receipt.contact.name, receipt.amount_cents / 100, receipt.reference, receipt.note,
+                       receipt.received_on.isoformat())]
+        expenses = [expense for expense in sorted(family.expenses, key=lambda row: (row.month, row.id), reverse=True)
+                    if (not expense_status or expense.status == expense_status)
+                    and matches(expense.category, expense.payee, expense.month, expense.amount_cents / 100,
+                                expense.status, expense.payment_reference, expense.note)]
+        documents = [document for document in sorted(family.documents, key=lambda row: row.uploaded_at, reverse=True)
+                     if matches(document.filename, document.content_type)]
+        activity = [row for row in db.session.scalars(select(Audit).where(
+            Audit.family_id == family.id).order_by(Audit.id.desc())).all()
+                    if matches(row.actor, row.action, row.at.isoformat())]
+        return render_template('family_print.html', title='Profile report', family=family,
+            query=query, section=section, supporter_status=supporter_status, expense_status=expense_status,
+            date_from=date_from, date_to=date_to, children=children, contacts=contacts, receipts=receipts,
+            expenses=expenses, documents=documents, activity=activity, budget=budget_totals(family),
+            pledged=sum(contact.monthly_equivalent_cents for contact in family.contacts if contact.status == 'Pledged'),
+            received=sum(receipt.amount_cents for receipt in receipts), generated_at=datetime.now(timezone.utc))
 
     @app.route('/families/<int:family_id>/expense-report', methods=['GET', 'POST'])
     def family_expense_report(family_id):
@@ -658,6 +733,8 @@ def create_app(test_config=None):
         status = field('status', True)
         if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
         pledge = amount('monthly', allow_zero=status!='Pledged')
+        pledge_frequency = field('pledge_frequency') or 'Monthly'
+        if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
         name = field('name', True)
         phone = field('phone', limit=80)
         key = supporter_key(name, phone)
@@ -667,11 +744,12 @@ def create_app(test_config=None):
         if duplicate_case:
             abort(400, 'This supporter is already connected to this case.')
         if existing:
-            pledge, status = existing.monthly_cents, existing.status
+            pledge, pledge_frequency, status = existing.monthly_cents, existing.pledge_frequency, existing.status
             if not phone:
                 phone = existing.phone
         db.session.add(Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
-                               supporter_key=key, monthly_cents=pledge, status=status))
+                               supporter_key=key, monthly_cents=pledge,
+                               pledge_frequency=pledge_frequency, status=status))
         audit('Added donor network contact', family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=family_id))
@@ -687,12 +765,15 @@ def create_app(test_config=None):
         status = field('status', True)
         if status not in CONTACT_STATUSES: abort(400)
         monthly_cents = amount('monthly', allow_zero=status!='Pledged')
+        pledge_frequency = field('pledge_frequency') or 'Monthly'
+        if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
         linked = [contact]
         if contact.supporter_key:
             linked = db.session.scalars(select(Contact).where(Contact.supporter_key == contact.supporter_key)).all()
         for linked_contact in linked:
             linked_contact.status = status
             linked_contact.monthly_cents = monthly_cents
+            linked_contact.pledge_frequency = pledge_frequency
         audit(f'Updated donor pledge: {status}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
@@ -805,8 +886,8 @@ def create_app(test_config=None):
         # Each case still shows the supporter commitment attributed to it. The
         # organization dashboard/billing rollup de-duplicates the shared person.
         pledged = {
-            family.id: db.session.scalar(select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(
-                Contact.family_id == family.id, Contact.status == 'Pledged'))
+            family.id: sum(contact.monthly_equivalent_cents for contact in db.session.scalars(select(Contact).where(
+                Contact.family_id == family.id, Contact.status == 'Pledged')).all())
             for family in families
         }
         received = {family.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
@@ -833,7 +914,7 @@ def create_app(test_config=None):
         contacts = db.session.scalars(select(Contact).where(Contact.family_id == family.id).order_by(Contact.id)).all()
         for contact in contacts:
             contact.connected_cases = linked_contact_count(contact)
-        pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged')
+        pledged = sum(contact.monthly_equivalent_cents for contact in contacts if contact.status == 'Pledged')
         return render_template('fundraising_detail.html', title='Fundraising workspace', family=family,
                                contacts=contacts, pledged=pledged)
 
@@ -922,7 +1003,7 @@ def create_app(test_config=None):
         rows = []
         for family in families:
             totals = budget_totals(family)
-            pledged = sum(c.monthly_cents for c in family.contacts if c.status == 'Pledged')
+            pledged = sum(c.monthly_equivalent_cents for c in family.contacts if c.status == 'Pledged')
             received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(Receipt.family_id == family.id))
             approved = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
                 Expense.family_id == family.id, Expense.status == 'Approved',
@@ -1081,6 +1162,8 @@ def create_app(test_config=None):
         contact_columns = {column['name'] for column in inspect(db.engine).get_columns('contact')}
         if 'supporter_key' not in contact_columns:
             db.session.execute(text("ALTER TABLE contact ADD COLUMN supporter_key VARCHAR(200) DEFAULT '' NOT NULL"))
+        if 'pledge_frequency' not in contact_columns:
+            db.session.execute(text("ALTER TABLE contact ADD COLUMN pledge_frequency VARCHAR(20) DEFAULT 'Monthly' NOT NULL"))
         db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_contact_supporter_key ON contact (supporter_key)'))
         db.session.commit()
         for contact in db.session.scalars(select(Contact).where(Contact.supporter_key == '')).all():

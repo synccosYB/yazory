@@ -109,6 +109,16 @@ Build this family’s circle of support.|בנו את מעגל התמיכה של 
 + Add supporter|+ הוספת תומך|+ צולייגן א העלפער
 Name *|שם *|נאמען *
 Monthly pledge ($)|התחייבות חודשית ($)|חודש׳ליכער צוזאג ($)
+Donation amount ($)|סכום התרומה ($)|סכום פון די נדבה ($)
+Donation amount|סכום התרומה|סכום פון די נדבה
+Donation frequency|תדירות התרומה|ווי אפט די נדבה
+Donation commitment|התחייבות לתרומה|צוזאג פון די נדבה
+Donation commitments|התחייבויות לתרומות|צוזאגן פון נדבות
+Donation & outreach|תרומה ויצירת קשר|נדבה און קשר
+Weekly|שבועי|וועכנטליך
+Monthly|חודשי|חודש׳ליך
+One time|חד-פעמי|איין מאל
+Track relatives, friends, and recurring or one-time commitments. A supporter connected to multiple cases is charged only once.|מעקב אחר קרובים, חברים והתחייבויות קבועות או חד-פעמיות. תומך המחובר למספר תיקים מחויב פעם אחת בלבד.|האלט חשבון פון קרובים, חברים און וועכנטליכע, חודש׳ליכע אדער איינמאליגע צוזאגן. א העלפער וואס איז פארבונדן מיט מער ווי איין משפחה ווערט נאר איינמאל געבעטן.
 Outreach status|מצב יצירת הקשר|וואו מען האלט מיטן קשר
 Add supporter|הוספת תומך|צולייגן דעם העלפער
 Expense requests|בקשות להוצאות|בקשות פאר הוצאות
@@ -474,5 +484,37 @@ Enter your organization’s monthly planning rates. Blank means unknown. These a
 Child cost equals the sum of age-group rates, with child-specific amounts replacing those rates. Birth date updates age automatically; otherwise keep the entered age current. Camp and seasonal costs should be entered as annual cost divided by 12.|עלות הילד היא סכום תעריפי הגיל, כאשר סכומים אישיים מחליפים את התעריף. תאריך לידה מעדכן גיל אוטומטית; אחרת יש לעדכן את הגיל ידנית. הזינו קייטנה והוצאות עונתיות כעלות שנתית חלקי 12.|די הוצאה פאר יעדעס קינד איז צוזאמען אלע סכומים פון זיין יארגאנג. א באזונדערער סכום פאר דעם קינד נעמט איבער דעם כלליות׳דיגן סכום. מיט א געבורטס דאטום ווערט דער עלטער אליין באנייט, אנדערש דארף מען עס אליין פאררעכטן. קעמפ און סעזאן הוצאות רעכנט מען די יערליכע סומע צעטיילט אויף 12.
 '''
 for _row in _CHILD_BUDGET_ROWS.strip().splitlines():
+    _en, _he, _yi = _row.split('|')
+    CATALOG[_en] = {'he': _he, 'yi': _yi}
+
+_PROFILE_REPORT_ROWS = '''
+Profile report|דוח פרופיל|באריכט פונעם פראפיל
+Print profile / PDF|הדפסת פרופיל / PDF|דרוקן פראפיל / PDF
+Back to profile|חזרה לפרופיל|צוריק צום פראפיל
+Print / Save PDF|הדפסה / שמירה כ-PDF|דרוקן / אפהיטן אלס PDF
+FAMILY PROFILE REPORT|דוח פרופיל משפחה|משפחה פראפיל באריכט
+Generated|הופק|געמאכט
+Search all lists|חיפוש בכל הרשימות|זוכן אין אלע ליסטעס
+Name, note, reference, school…|שם, הערה, אסמכתא, מוסד…|נאמען, נאטיץ, רעפערענץ, מוסד…
+List|רשימה|ליסטע
+All lists|כל הרשימות|אלע ליסטעס
+All statuses|כל הסטטוסים|אלע סטאטוסן
+Supporter status|סטטוס תומך|העלפער סטאטוס
+Expense status|סטטוס הוצאה|הוצאה סטאטוס
+Donations from|תרומות מתאריך|נדבות פון
+Donations through|תרומות עד תאריך|נדבות ביז
+Apply filters|החלת מסננים|לייג צו פילטערס
+Clear filters|ניקוי מסננים|מעק אויס פילטערס
+Donations shown|תרומות מוצגות|געוויזענע נדבות
+Donation history|היסטוריית תרומות|היסטאריע פון נדבות
+No matching records.|לא נמצאו רשומות מתאימות.|קיין פאסיגע רעקארדס נישט געפונען.
+File|קובץ|פייל
+Type|סוג|סארט
+Uploaded|הועלה|ארויפגעלייגט
+Date|תאריך|דאטום
+Activity|פעילות|אקטיוויטעט
+Staff|איש צוות|שטאב
+'''
+for _row in _PROFILE_REPORT_ROWS.strip().splitlines():
     _en, _he, _yi = _row.split('|')
     CATALOG[_en] = {'he': _he, 'yi': _yi}
