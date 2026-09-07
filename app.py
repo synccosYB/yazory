@@ -2,6 +2,8 @@ import os
 import secrets
 import hmac
 import re
+import hashlib
+from html import escape
 from io import BytesIO
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -17,6 +19,7 @@ from translations import LANGUAGES, translate, translate_audit
 from intake import validate_intake, intake_for_form
 from budget_report import household_report
 import child_budget
+from email_service import deliver
 
 db = SQLAlchemy()
 
@@ -82,6 +85,11 @@ class StaffUser(db.Model):
     email = db.Column(db.String(254), nullable=False, unique=True, index=True)
     password_hash = db.Column(db.String(512), nullable=False)
     role = db.Column(db.String(30), nullable=False, default='family_admin')
+    name = db.Column(db.String(160), nullable=False, default='')
+    status = db.Column(db.String(20), nullable=False, default='active', index=True)
+    invited_at = db.Column(db.DateTime, nullable=True)
+    activated_at = db.Column(db.DateTime, nullable=True)
+    last_login_at = db.Column(db.DateTime, nullable=True)
     assignments = db.relationship('FamilyAssignment', backref='staff_user', lazy=True, cascade='all, delete-orphan')
 
 class FamilyAssignment(db.Model):
@@ -89,6 +97,33 @@ class FamilyAssignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     staff_user_id = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=False, index=True)
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, index=True)
+
+
+class AccountToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    staff_user_id = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=False, index=True)
+    purpose = db.Column(db.String(20), nullable=False, index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True)
+    staff_user = db.relationship('StaffUser', foreign_keys=[staff_user_id])
+
+
+class EmailMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(40), nullable=False, index=True)
+    recipient = db.Column(db.String(254), nullable=False, index=True)
+    subject = db.Column(db.String(300), nullable=False)
+    text_body = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='queued', index=True)
+    provider_id = db.Column(db.String(200), default='')
+    error = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    staff_user_id = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True, index=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=True, index=True)
 
 class Child(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -220,7 +255,10 @@ def create_app(test_config=None):
                       SESSION_COOKIE_SECURE=production,
                       PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
                       MAX_CONTENT_LENGTH=10*1024*1024, DEMO=demo,
-                      ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash)
+                      ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash,
+                      RESEND_API_KEY=os.getenv('RESEND_API_KEY', ''),
+                      EMAIL_FROM=os.getenv('EMAIL_FROM', ''),
+                      APP_BASE_URL=os.getenv('APP_BASE_URL', '').rstrip('/'))
     if test_config:
         app.config.update(test_config)
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
@@ -240,6 +278,66 @@ def create_app(test_config=None):
             return 'phone:' + digits[-10:]
         normalized_name = re.sub(r'[^\w]+', '', (name or '').casefold())
         return 'name:' + normalized_name
+
+    def utcnow():
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def account_token(user, purpose, hours, created_by=None):
+        raw = secrets.token_urlsafe(32)
+        # Only a digest is retained, so a database disclosure cannot expose a live link.
+        db.session.add(AccountToken(staff_user_id=user.id, purpose=purpose,
+            token_hash=hashlib.sha256(raw.encode()).hexdigest(), expires_at=utcnow() + timedelta(hours=hours),
+            created_by=created_by.id if created_by else None))
+        return raw
+
+    def token_record(raw, purpose):
+        if not raw:
+            return None
+        return db.session.scalar(select(AccountToken).where(
+            AccountToken.token_hash == hashlib.sha256(raw.encode()).hexdigest(),
+            AccountToken.purpose == purpose, AccountToken.used_at.is_(None),
+            AccountToken.expires_at > utcnow()))
+
+    def absolute_url(endpoint, **values):
+        base = app.config.get('APP_BASE_URL')
+        return (base + url_for(endpoint, **values)) if base else url_for(endpoint, _external=True, **values)
+
+    def send_email(kind, recipient, subject, body, staff_user_id=None, family_id=None):
+        message = EmailMessage(kind=kind, recipient=recipient, subject=subject, text_body=body,
+                               staff_user_id=staff_user_id, family_id=family_id)
+        db.session.add(message)
+        db.session.flush()
+        safe_body = escape(body)
+        safe_body = re.sub(r'(https?://[^\s<]+)', r'<a href="\1">\1</a>', safe_body)
+        html = ('<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto">'
+                '<h2 style="color:#173e66">Yazory</h2>'
+                f'<div style="white-space:pre-line;line-height:1.6">{safe_body}</div></div>')
+        if app.config['TESTING'] or app.config['DEMO']:
+            message.status = 'preview'
+            return message
+        provider_id, error = deliver(app.config['RESEND_API_KEY'], app.config['EMAIL_FROM'],
+                                     recipient, subject, html, body)
+        message.provider_id = provider_id or ''
+        message.error = error or ''
+        message.status = 'failed' if error else 'sent'
+        message.sent_at = None if error else utcnow()
+        return message
+
+    def notify_users(users, kind, subject, body, family_id=None):
+        for user in users:
+            if user.status == 'active':
+                send_email(kind, user.email, subject, body, staff_user_id=user.id, family_id=family_id)
+
+    def assigned_users(family_id, roles=None):
+        statement = select(StaffUser).join(FamilyAssignment).where(
+            FamilyAssignment.family_id == family_id, StaffUser.status == 'active')
+        if roles:
+            statement = statement.where(StaffUser.role.in_(roles))
+        return db.session.scalars(statement).all()
+
+    def organization_admins():
+        return db.session.scalars(select(StaffUser).where(
+            StaffUser.role == 'organization_admin', StaffUser.status == 'active')).all()
 
     def linked_contact_count(contact):
         if not contact.supporter_key:
@@ -280,6 +378,14 @@ def create_app(test_config=None):
     def ensure_schema():
         """Create missing tables and apply the additive legacy-schema upgrades."""
         db.create_all()
+        staff_columns = {column['name'] for column in inspect(db.engine).get_columns('staff_user')}
+        for column, definition in {
+            'name': "VARCHAR(160) NOT NULL DEFAULT ''",
+            'status': "VARCHAR(20) NOT NULL DEFAULT 'active'",
+            'invited_at': 'TIMESTAMP', 'activated_at': 'TIMESTAMP', 'last_login_at': 'TIMESTAMP',
+        }.items():
+            if column not in staff_columns:
+                db.session.execute(text(f'ALTER TABLE staff_user ADD COLUMN {column} {definition}'))
         family_columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
         for column, definition in {
             'city': 'VARCHAR(120)',
@@ -428,16 +534,18 @@ def create_app(test_config=None):
 
     @app.before_request
     def security():
+        public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
+                            'reset_password', 'accept_invitation')
         if request.endpoint in ('static', 'health', 'set_language'):
             return
         if request.method == 'POST' and not hmac.compare_digest(session.get('csrf', ''), request.form.get('csrf', '')):
             abort(400, 'Your form expired. Reload the page and try again.')
         if request.method == 'POST' and not session.get('csrf'):
             abort(400)
-        if not app.config['DEMO'] and request.endpoint != 'login':
+        if not app.config['DEMO'] and request.endpoint not in public_endpoints:
             if not session.get('user_id'):
                 return redirect(url_for('login'))
-            if current_user() is None:
+            if current_user() is None or current_user().status != 'active':
                 language = session.get('language', 'en')
                 session.clear()
                 session['language'] = language
@@ -462,6 +570,12 @@ def create_app(test_config=None):
         value = request.form.get(name, '').strip()
         if (required and not value) or len(value) > limit:
             abort(400, f'{name.replace("_", " ").title()} is required or exceeds {limit} characters.')
+        return value
+
+    def email_field(name='email'):
+        value = field(name, True, 254).lower()
+        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
+            abort(400, 'Enter a valid email address.')
         return value
 
     def amount(name, allow_zero=False):
@@ -496,15 +610,17 @@ def create_app(test_config=None):
         if request.method == 'POST':
             import time
             time.sleep(1)
-            email = field('email', True)
+            email = email_field()
             ensure_bootstrap_owner()
             user = db.session.scalar(select(StaffUser).where(StaffUser.email == email.lower()))
-            if user and check_password_hash(user.password_hash, request.form.get('password', '')):
+            if user and user.status == 'active' and check_password_hash(user.password_hash, request.form.get('password', '')):
                 language = session.get('language', 'en')
                 session.clear()
                 session['language'] = language
                 session['user_id'] = user.id
                 session.permanent = True
+                user.last_login_at = utcnow()
+                db.session.commit()
                 return redirect(url_for('dashboard'))
             flash('Email or password is incorrect.', 'error')
         return render_template('login.html', title='Staff sign in')
@@ -515,6 +631,67 @@ def create_app(test_config=None):
         session.clear()
         session['language'] = language
         return redirect(url_for('login'))
+
+    @app.route('/forgot-password', methods=['GET', 'POST'])
+    def forgot_password():
+        if request.method == 'POST':
+            email = email_field()
+            user = db.session.scalar(select(StaffUser).where(
+                StaffUser.email == email, StaffUser.status == 'active'))
+            if user:
+                db.session.execute(db.update(AccountToken).where(
+                    AccountToken.staff_user_id == user.id, AccountToken.purpose == 'reset',
+                    AccountToken.used_at.is_(None)).values(used_at=utcnow()))
+                raw = account_token(user, 'reset', 1)
+                link = absolute_url('reset_password', token=raw)
+                send_email('password_reset', user.email, 'Reset your Yazory password',
+                    f'A password reset was requested for your Yazory account.\n\nReset password: {link}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.',
+                    staff_user_id=user.id)
+                db.session.commit()
+            flash('If an active account uses that email, a reset link has been sent.')
+            return redirect(url_for('login'))
+        return render_template('forgot_password.html', title='Reset password')
+
+    @app.route('/reset-password/<token>', methods=['GET', 'POST'])
+    def reset_password(token):
+        record = token_record(token, 'reset')
+        if record is None:
+            abort(400, 'This password-reset link is invalid or expired.')
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            confirmation = request.form.get('password_confirmation', '')
+            if not 12 <= len(password) <= 256 or password != confirmation:
+                abort(400, 'Passwords must match and contain at least 12 characters.')
+            record.staff_user.password_hash = generate_password_hash(password)
+            record.used_at = utcnow()
+            db.session.commit()
+            flash('Password updated. You can now sign in.')
+            return redirect(url_for('login'))
+        return render_template('set_password.html', title='Reset password', invitation=False)
+
+    @app.route('/accept-invitation/<token>', methods=['GET', 'POST'])
+    def accept_invitation(token):
+        record = token_record(token, 'invite')
+        if record is None or record.staff_user.status != 'pending':
+            abort(400, 'This invitation is invalid, expired, or already used.')
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            confirmation = request.form.get('password_confirmation', '')
+            name = field('name', True)
+            if not 12 <= len(password) <= 256 or password != confirmation:
+                abort(400, 'Passwords must match and contain at least 12 characters.')
+            user = record.staff_user
+            user.name = name
+            user.password_hash = generate_password_hash(password)
+            user.status = 'active'
+            user.activated_at = utcnow()
+            record.used_at = utcnow()
+            audit(f'Accepted staff invitation: {user.email}')
+            db.session.commit()
+            flash('Your Yazory account is ready. Sign in to continue.')
+            return redirect(url_for('login'))
+        return render_template('set_password.html', title='Accept invitation', invitation=True,
+                               invited_user=record.staff_user)
 
     @app.get('/')
     def dashboard():
@@ -732,6 +909,9 @@ def create_app(test_config=None):
         old = family.status
         family.status = status
         audit(f'Case status: {old} → {status}', family.id)
+        notify_users(assigned_users(family.id), 'case_status',
+            f'Yazory case YZ-{family.id:04d} status updated',
+            f'Case YZ-{family.id:04d} changed from {old} to {status}. Sign in to Yazory to review it.', family.id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family.id))
 
@@ -1035,8 +1215,13 @@ def create_app(test_config=None):
             if datetime.strptime(month, '%Y-%m').strftime('%Y-%m') != month: raise ValueError()
         except ValueError:
             abort(400, 'Enter a valid month.')
-        db.session.add(Expense(family_id=family_id, category=category, payee=field('payee', True), amount_cents=amount('amount'), month=month, note=field('note', limit=5000)))
+        expense = Expense(family_id=family_id, category=category, payee=field('payee', True), amount_cents=amount('amount'), month=month, note=field('note', limit=5000))
+        db.session.add(expense)
+        db.session.flush()
         audit('Submitted expense request', family_id)
+        notify_users(organization_admins(), 'expense_requested',
+            f'Expense request for case YZ-{family.id:04d}',
+            f'A new {category} expense request for ${expense.amount_cents / 100:,.2f} requires review. Sign in to Yazory for the full request.', family.id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
 
@@ -1249,7 +1434,7 @@ def create_app(test_config=None):
         return render_template('controls.html', title='Controls', categories=expense_categories(),
                                bands_json=json.dumps(child_bands(), indent=2))
 
-    @app.get('/people-access')
+    @app.route('/people-access', methods=['GET', 'POST'])
     def people_access():
         require_organization_admin()
         return staff()
@@ -1278,6 +1463,10 @@ def create_app(test_config=None):
         old = expense.status
         expense.status = status
         audit(f'Expense #{expense.id}: {old} → {status}', expense.family_id)
+        notify_users(assigned_users(expense.family_id, ('family_admin', 'office_employee')),
+            'expense_status', f'Expense request for YZ-{expense.family_id:04d}: {status}',
+            f'The ${expense.amount_cents / 100:,.2f} {expense.category} expense changed from {old} to {status}. Sign in to Yazory for details.',
+            expense.family_id)
         db.session.commit()
         return redirect(url_for('expenses'))
 
@@ -1286,23 +1475,102 @@ def create_app(test_config=None):
         require_organization_admin()
         return render_template('activity.html', title='Activity log', activity=db.session.scalars(select(Audit).order_by(Audit.id.desc()).limit(200)).all())
 
+    @app.get('/emails')
+    def email_history():
+        require_organization_admin()
+        messages = db.session.scalars(select(EmailMessage).order_by(EmailMessage.id.desc()).limit(250)).all()
+        return render_template('email_history.html', title='Email history', messages=messages)
+
     @app.route('/staff', methods=['GET', 'POST'])
     def staff():
         require_organization_admin()
         if request.method == 'POST':
-            email = field('email', True, 254).lower()
+            email = email_field()
             role = field('role', True, 30)
-            password = request.form.get('password', '')
-            if role not in STAFF_ROLES or not 12 <= len(password) <= 256:
-                abort(400, 'Choose a valid role and a password of at least 12 characters.')
+            name = field('name')
+            if role not in STAFF_ROLES:
+                abort(400, 'Choose a valid role.')
             if db.session.scalar(select(StaffUser.id).where(StaffUser.email == email)):
                 abort(400, 'A staff account already uses this email.')
-            db.session.add(StaffUser(email=email, password_hash=generate_password_hash(password), role=role))
+            # Existing automated tests may still supply a password; real users always choose their own.
+            test_password = request.form.get('password', '') if app.config['TESTING'] else ''
+            user = StaffUser(email=email, name=name,
+                password_hash=generate_password_hash(test_password) if len(test_password) >= 12 else '!invited',
+                role=role, status='active' if len(test_password) >= 12 else 'pending',
+                invited_at=utcnow())
+            db.session.add(user)
+            db.session.flush()
+            family_id = request.form.get('family_id', type=int)
+            if family_id and role != 'organization_admin':
+                family = db.session.get(Family, family_id)
+                if family is None:
+                    abort(400, 'Choose a valid family assignment.')
+                db.session.add(FamilyAssignment(staff_user_id=user.id, family_id=family.id))
+            if user.status == 'pending':
+                raw = account_token(user, 'invite', 48, current_user())
+                link = absolute_url('accept_invitation', token=raw)
+                message = send_email('staff_invitation', user.email, 'You are invited to Yazory',
+                    f'You have been invited to Yazory as {role.replace("_", " ")}.\n\nAccept invitation: {link}\n\nThis secure link expires in 48 hours.',
+                    staff_user_id=user.id)
+            audit(f'Invited staff user: {email}')
             db.session.commit()
-            flash('Staff account created.')
+            flash('Invitation created, but email delivery failed. Check Email history.' if
+                  user.status == 'pending' and message.status == 'failed' else
+                  'Invitation created and email queued.')
             return redirect(url_for('staff'))
         owner = db.session.scalar(select(StaffUser).where(StaffUser.email == app.config['ADMIN_EMAIL'].strip().lower()))
         return render_template('staff.html', title='Staff & assignments', users=db.session.scalars(select(StaffUser).order_by(StaffUser.email)).all(), families=db.session.scalars(select(Family).order_by(Family.name)).all(), owner_user_id=owner.id if owner else None)
+
+    @app.post('/staff/<int:user_id>/resend-invitation')
+    def resend_invitation(user_id):
+        require_organization_admin()
+        user = db.get_or_404(StaffUser, user_id)
+        if user.status != 'pending':
+            abort(400, 'Only pending invitations can be resent.')
+        db.session.execute(db.update(AccountToken).where(
+            AccountToken.staff_user_id == user.id, AccountToken.purpose == 'invite',
+            AccountToken.used_at.is_(None)).values(used_at=utcnow()))
+        raw = account_token(user, 'invite', 48, current_user())
+        user.invited_at = utcnow()
+        message = send_email('staff_invitation', user.email, 'You are invited to Yazory',
+            f'Your Yazory invitation was renewed.\n\nAccept invitation: {absolute_url("accept_invitation", token=raw)}\n\nThis secure link expires in 48 hours.',
+            staff_user_id=user.id)
+        audit(f'Resent staff invitation: {user.email}')
+        db.session.commit()
+        flash('Invitation renewed, but email delivery failed. Check Email history.' if
+              message.status == 'failed' else 'Invitation resent.')
+        return redirect(url_for('staff'))
+
+    @app.post('/staff/<int:user_id>/status')
+    def staff_status(user_id):
+        require_organization_admin()
+        user = db.get_or_404(StaffUser, user_id)
+        new_status = field('status', True, 20)
+        owner_email = app.config['ADMIN_EMAIL'].strip().lower()
+        if user.email == owner_email or new_status not in ('active', 'deactivated'):
+            abort(400, 'This account status cannot be changed.')
+        if user.status == 'pending':
+            abort(400, 'Cancel the pending invitation instead.')
+        user.status = new_status
+        audit(f'{"Activated" if new_status == "active" else "Deactivated"} staff user: {user.email}')
+        db.session.commit()
+        flash('Account status updated.')
+        return redirect(url_for('staff'))
+
+    @app.post('/staff/<int:user_id>/cancel-invitation')
+    def cancel_invitation(user_id):
+        require_organization_admin()
+        user = db.get_or_404(StaffUser, user_id)
+        if user.status != 'pending':
+            abort(400, 'Only pending invitations can be cancelled.')
+        user.status = 'cancelled'
+        db.session.execute(db.update(AccountToken).where(
+            AccountToken.staff_user_id == user.id, AccountToken.purpose == 'invite',
+            AccountToken.used_at.is_(None)).values(used_at=utcnow()))
+        audit(f'Cancelled staff invitation: {user.email}')
+        db.session.commit()
+        flash('Invitation cancelled.')
+        return redirect(url_for('staff'))
 
     @app.get('/settings')
     def settings():
@@ -1347,6 +1615,11 @@ def create_app(test_config=None):
             action = ('Assigned family administrator: ' if user.role == 'family_admin'
                       else 'Assigned staff member: ')
         audit(f'{action}{user.email}', family.id)
+        if user.status == 'active':
+            change = 'removed from' if assignment else 'assigned to'
+            send_email('family_assignment', user.email, f'Yazory family access {"removed" if assignment else "assigned"}',
+                f'You were {change} case YZ-{family.id:04d}. Sign in to Yazory to review your current assignments.',
+                staff_user_id=user.id, family_id=family.id)
         db.session.commit()
         return redirect(url_for('staff'))
 
