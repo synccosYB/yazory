@@ -884,6 +884,10 @@ def create_app(test_config=None):
             if parent_contact_id and not any(row.id == parent_contact_id for row in possible_parents):
                 abort(400, 'Choose a valid parent supporter.')
             parent_connection = field('parent_connection')
+            if parent_contact_id and not parent_connection:
+                # Existing forms and records predate this field. Preserve their
+                # former meaning instead of sending the user to an error page.
+                parent_connection = 'Son-in-law'
             if parent_contact_id and parent_connection not in ('Son', 'Son-in-law'):
                 abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
             if not parent_contact_id:
