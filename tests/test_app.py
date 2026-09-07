@@ -173,6 +173,17 @@ def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_p
         "circumstances TEXT DEFAULT '', status VARCHAR(30) NOT NULL DEFAULT 'Intake')"
     )
     connection.execute("INSERT INTO family (name) VALUES ('Existing family')")
+    connection.execute(
+        'CREATE TABLE child ('
+        'id INTEGER PRIMARY KEY, family_id INTEGER NOT NULL, '
+        'name VARCHAR(160) NOT NULL, age INTEGER NOT NULL, '
+        "grade VARCHAR(80) DEFAULT '', school VARCHAR(160) NOT NULL, "
+        "tuition_contact VARCHAR(300) DEFAULT '')"
+    )
+    connection.execute(
+        "INSERT INTO child (family_id, name, age, school) "
+        "VALUES (1, 'Existing child', 18, 'Existing school')"
+    )
     connection.commit()
     connection.close()
     for key in ['APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET']:
@@ -188,8 +199,13 @@ def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_p
     assert client.get('/families').status_code == 200
     assert client.get('/families/1').status_code == 200
     with app.app_context():
-        columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
-    assert {'city', 'state', 'zip_code'} <= columns
+        family_columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
+        child_columns = {column['name'] for column in inspect(db.engine).get_columns('child')}
+        child = db.session.get(Child, 1)
+        assert child.married is False
+        assert child.spouse_name == ''
+    assert {'city', 'state', 'zip_code'} <= family_columns
+    assert {'married', 'spouse_name'} <= child_columns
 
 @pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','לוח בקרה'),('yi','rtl','איבערבליק')])
 def test_shared_language_screens(client,language,direction,label):
