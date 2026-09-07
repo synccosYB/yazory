@@ -181,14 +181,14 @@ Voided|בוטל|אנולירט
 To contact|ליצירת קשר|מען דארף זיך פארבינדן
 Contacted|נוצר קשר|מען האט גערעדט
 Pledged|התחייב|צוגעזאגט
-Sibling|אח/אחות|ברידער/שוואַגער
+Sibling|אח/אחות|ברודער אדער שוועסטער
 Nephew|אחיין|פלימעניק
 Children & spouses|ילדים ובני זוג|קינדער און זייערע מאן אדער ווייב
 Niece / nephew of applicant|אחיין / אחיינית של הפונה|נעפיו אדער ניס פונעם אנפרעגער
 Supporter’s child|ילד של התומך|א קינד פונעם העלפער
 Add another child|הוספת ילד נוסף|צולייגן נאך א קינד
 This child is already listed under this supporter.|הילד הזה כבר רשום תחת התומך הזה.|דאס קינד שטייט שוין אונטער דעם העלפער.
-Spouse’s sibling|אח/אחות של בן/בת הזוג|ברידער/שוואַגער פונם ווייב
+Spouse’s sibling|אח/אחות של בן/בת הזוג|ברודער אדער שוועסטער פון דער ווייב אדער מאן
 In-law’s maiden family|משפחת הנעורים של החותנים|די מיידל נאמען משפחה פון די מחותנים
 In-law maiden name|שם הנעורים של החותנים|די מיידל נאמען פון די מחותנים
 In-law maiden family / network|משפחת הנעורים ורשת הקשרים של החותנים|די מיידל נאמען משפחה און זייער נעטווארק
@@ -542,6 +542,21 @@ CATALOG.update({
     'Edit supporter': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
     'EDIT SUPPORTER': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
     'Under supporter': {'he': 'תחת תומך', 'yi': 'אונטערן העלפער'},
+    'Whose son or son-in-law is he?': {'he': 'של מי הוא בן או חתן?', 'yi': 'ביי וועמען איז ער א זון אדער איידעם?'},
+    'What is he to that supporter?': {'he': 'מה הקשר שלו לאותו תומך?', 'yi': 'וואס איז ער ביי יענעם העלפער?'},
+    'Not connected under another supporter': {'he': 'לא מקושר תחת תומך אחר', 'yi': 'נישט פארבונדן אונטער אן אנדערן העלפער'},
+    'Son': {'he': 'בן', 'yi': 'זון'},
+    'Son-in-law': {'he': 'חתן', 'yi': 'איידעם'},
+    'Son of': {'he': 'בן של', 'yi': 'זון פון'},
+    'Choose': {'he': 'בחרו', 'yi': 'קלויבט אויס'},
+    'Choose the supporter above first, then specify whether this person is his son or son-in-law.': {
+        'he': 'בחרו תחילה את התומך למעלה, ואז ציינו אם האדם הוא בנו או חתנו.',
+        'yi': 'קלויבט קודם אויס דעם העלפער אויבן, און דערנאך צי דער מענטש איז זיין זון אדער איידעם.'
+    },
+    'Choose whether this person is a son or son-in-law of the selected supporter.': {
+        'he': 'בחרו אם האדם הוא בן או חתן של התומך שנבחר.',
+        'yi': 'קלויבט אויס צי דער מענטש איז א זון אדער איידעם פונעם אויסגעקליבענעם העלפער.'
+    },
     'Son-in-law of': {'he': 'חתן של', 'yi': 'איידעם ביי'},
     'of the applicant': {'he': 'של הפונה', 'yi': 'פונעם אפליקאנט'},
     'Top-level supporter': {'he': 'תומך ברמה ראשית', 'yi': 'הויפט העלפער'},
