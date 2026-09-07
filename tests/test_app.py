@@ -87,6 +87,16 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     assert '$280.00' not in dashboard
     assert '2 connected cases' in client.get(f'/families/{first_id}').text
 
+def test_profile_data_points_have_targeted_pencil_edit_links(client):
+    profile = client.get('/families/1').text
+    for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
+                  'inlaws_maiden_name', 'inlaws_family', 'rabbi',
+                  'weekday_shul', 'shabbos_shul', 'circumstances'):
+        assert f'/families/1/edit?field={field}' in profile
+    edit = client.get('/families/1/edit?field=rabbi')
+    assert edit.status_code == 200
+    assert 'name="rabbi"' in edit.text
+
 @pytest.mark.parametrize('amount',['NaN','Infinity','-1','0','1.001','1000001','bad'])
 def test_invalid_money(client,amount):
     assert post(client,'/families/1/expenses',{'category':'Groceries','payee':'Shop','amount':amount,'month':'2026-09'}).status_code==400
