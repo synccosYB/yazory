@@ -542,6 +542,21 @@ CATALOG.update({
     'Edit supporter': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
     'EDIT SUPPORTER': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
     'Under supporter': {'he': 'תחת תומך', 'yi': 'אונטערן העלפער'},
+    'Whose son or son-in-law is he?': {'he': 'של מי הוא בן או חתן?', 'yi': 'ביי וועמען איז ער א זון אדער איידעם?'},
+    'What is he to that supporter?': {'he': 'מה הקשר שלו לאותו תומך?', 'yi': 'וואס איז ער ביי יענעם העלפער?'},
+    'Not connected under another supporter': {'he': 'לא מקושר תחת תומך אחר', 'yi': 'נישט פארבונדן אונטער אן אנדערן העלפער'},
+    'Son': {'he': 'בן', 'yi': 'זון'},
+    'Son-in-law': {'he': 'חתן', 'yi': 'איידעם'},
+    'Son of': {'he': 'בן של', 'yi': 'זון פון'},
+    'Choose': {'he': 'בחרו', 'yi': 'קלויבט אויס'},
+    'Choose the supporter above first, then specify whether this person is his son or son-in-law.': {
+        'he': 'בחרו תחילה את התומך למעלה, ואז ציינו אם האדם הוא בנו או חתנו.',
+        'yi': 'קלויבט קודם אויס דעם העלפער אויבן, און דערנאך צי דער מענטש איז זיין זון אדער איידעם.'
+    },
+    'Choose whether this person is a son or son-in-law of the selected supporter.': {
+        'he': 'בחרו אם האדם הוא בן או חתן של התומך שנבחר.',
+        'yi': 'קלויבט אויס צי דער מענטש איז א זון אדער איידעם פונעם אויסגעקליבענעם העלפער.'
+    },
     'Son-in-law of': {'he': 'חתן של', 'yi': 'איידעם ביי'},
     'of the applicant': {'he': 'של הפונה', 'yi': 'פונעם אפליקאנט'},
     'Top-level supporter': {'he': 'תומך ברמה ראשית', 'yi': 'הויפט העלפער'},
