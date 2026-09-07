@@ -277,6 +277,10 @@ def translate(text):
     return CATALOG.get(text, {}).get(session.get('language', 'en'), text)
 
 AUDIT_PREFIXES = {
+    'Deleted supporter: ': {
+        'he': 'נמחק תומך: ',
+        'yi': 'אויסגעמעקט א העלפער: ',
+    },
     'Added child under supporter: ': {
         'he': 'נוסף ילד תחת התומך: ',
         'yi': 'צוגעלייגט א קינד אונטער דעם העלפער: ',
@@ -529,3 +533,22 @@ Staff|איש צוות|שטאב
 for _row in _PROFILE_REPORT_ROWS.strip().splitlines():
     _en, _he, _yi = _row.split('|')
     CATALOG[_en] = {'he': _he, 'yi': _yi}
+
+CATALOG.update({
+    'Actions': {'he': 'פעולות', 'yi': 'אקציעס'},
+    'Supporter history': {'he': 'היסטוריית תומך', 'yi': 'היסטאריע פונעם העלפער'},
+    'SUPPORTER HISTORY': {'he': 'היסטוריית תומך', 'yi': 'היסטאריע פונעם העלפער'},
+    'Back to supporters': {'he': 'חזרה לתומכים', 'yi': 'צוריק צו די העלפער'},
+    'Connected families': {'he': 'משפחות מחוברות', 'yi': 'פארבונדענע משפחות'},
+    'Total received': {'he': 'סך הכול התקבל', 'yi': 'סך הכל באקומען'},
+    'Every family connection for this supporter.': {'he': 'כל קשר משפחתי של תומך זה.', 'yi': 'יעדע משפחה וואס איז פארבונדן מיט דעם העלפער.'},
+    'All recorded receipts for this supporter.': {'he': 'כל הקבלות שנרשמו עבור תומך זה.', 'yi': 'אלע פארשריבענע קבלות פון דעם העלפער.'},
+    'Recorded by': {'he': 'נרשם על ידי', 'yi': 'פארשריבן דורך'},
+    'No donation history recorded.': {'he': 'לא נרשמה היסטוריית תרומות.', 'yi': 'נישטא קיין פארשריבענע נדבה היסטאריע.'},
+    'Delete this supporter connection?': {'he': 'למחוק את הקשר לתומך הזה?', 'yi': 'אויסמעקן דעם קשר מיטן העלפער?'},
+    'Supporter deleted.': {'he': 'התומך נמחק.', 'yi': 'דער העלפער איז אויסגעמעקט.'},
+    'This supporter cannot be deleted because donation receipts are recorded.': {
+        'he': 'לא ניתן למחוק את התומך משום שרשומות עבורו קבלות תרומה.',
+        'yi': 'מען קען נישט אויסמעקן דעם העלפער ווייל עס זענען פארשריבן קבלות אויף זיין נאמען.'
+    },
+})

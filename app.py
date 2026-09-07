@@ -849,6 +849,23 @@ def create_app(test_config=None):
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
 
+    @app.post('/contacts/<int:contact_id>/delete')
+    def delete_contact(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        if contact.receipts:
+            abort(400, 'This supporter cannot be deleted because donation receipts are recorded.')
+        family_id = contact.family_id
+        name = contact.name
+        db.session.delete(contact)
+        audit(f'Deleted supporter: {name}', family_id)
+        db.session.commit()
+        flash('Supporter deleted.')
+        next_url = request.form.get('next', '')
+        return redirect(next_url if next_url.startswith('/') and not next_url.startswith('//') else url_for('supporters'))
+
     def accessible_document_or_403(document_id):
         if organization_admin():
             return db.get_or_404(Document, document_id)
@@ -1037,6 +1054,27 @@ def create_app(test_config=None):
             Receipt.contact_id == c.id)) for c in contacts}
         return render_template('supporters.html', title='Supporters', contacts=contacts,
                                received=totals, query=query)
+
+    @app.get('/supporters/<int:contact_id>')
+    def supporter_detail(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        linked_statement = scoped_contacts_statement()
+        if contact.supporter_key:
+            linked_statement = linked_statement.where(Contact.supporter_key == contact.supporter_key)
+        else:
+            linked_statement = linked_statement.where(Contact.id == contact.id)
+        linked_contacts = db.session.scalars(linked_statement.order_by(Contact.id)).all()
+        contact_ids = [row.id for row in linked_contacts]
+        receipts = db.session.scalars(select(Receipt).where(
+            Receipt.contact_id.in_(contact_ids)
+        ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if contact_ids else []
+        return render_template('supporter_detail.html', title='Supporter history',
+                               supporter=contact, linked_contacts=linked_contacts,
+                               receipts=receipts,
+                               total_received=sum(receipt.amount_cents for receipt in receipts))
 
     @app.get('/approvals')
     def approvals():
