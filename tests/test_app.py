@@ -81,8 +81,10 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
         assert all(contact.monthly_cents == 5000 for contact in db.session.scalars(
             db.select(Contact).where(Contact.name == 'Shared supporter')).all())
     dashboard = client.get('/').text
-    assert '$50.00' in dashboard
-    assert '$100.00' not in dashboard
+    # The demo fixture already has a separate $180 pledge. The shared $50
+    # supporter must be counted once ($230 total), never twice ($280 total).
+    assert '$230.00' in dashboard
+    assert '$280.00' not in dashboard
     assert '2 connected cases' in client.get(f'/families/{first_id}').text
 
 @pytest.mark.parametrize('amount',['NaN','Infinity','-1','0','1.001','1000001','bad'])
