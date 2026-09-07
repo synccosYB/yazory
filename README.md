@@ -28,10 +28,9 @@ Open http://localhost:5000. Local demo data is stored in `instance/yazory-demo.d
 - Expense requests: category, payee, budget month, amount, and notes. Organization expenses can be assigned to a case.
 - Expense workflow: Requested → Approved or Declined; Approved → Paid or Voided. Only active cases can be approved/paid. A payment reference is mandatory to mark Paid. Terminal expense states cannot be changed.
 - Individual staff accounts use `organization_admin`, `family_admin`, `office_employee`, or `fundraiser`. Organization administrators have organization-wide case, financial workflow, account, and assignment authority. Family administrators manage assigned household profiles, children, documents, supporter contacts/pledges, and expense requests. Office employees manage assigned household intake/profiles, children, documents, and expense requests only; each intake they create is assigned to them atomically. Fundraisers use the dedicated assigned-family fundraising workspace for supporter contacts, outreach, and pledges only; it intentionally excludes confidential household details, documents, expenses, and general family pages. All non-admin family access is an explicit `FamilyAssignment`; only organization administrators manage assignments.
-- Connected workspace pages: Overview, `/cases` (with `/families` compatibility), supporters, fundraising, collections, expenses, approvals, reports, people/access, and controls. Organization controls persist editable permitted expense categories and child age-band estimates.
-- Collections use manual `Receipt` records linked to the supporter and case. A pledge is never a receipt; receipt and expense-payment entries document external activity only and never move money. ABCharity is intentionally not connected and the fundraising page truthfully exposes no external action.
+- Overview, unified expense approval queue, family search, and actor/timestamp activity history.
 
-Pledges are commitments, not collected revenue. Payment recording does not transfer money. Monthly overview totals use saved records and expense budget month; they are not bank reconciliation or cash-basis accounting reports. Profile shortfall separates saved income, entered household bills, configured child estimates, and actual child amounts so estimates are never double counted.
+Pledges are commitments, not collected revenue. Payment recording does not transfer money. Monthly overview totals use expense budget month; they are not bank reconciliation or cash-basis accounting reports.
 
 ## Production preparation
 
@@ -57,18 +56,7 @@ Initialize the configured database once:
 APP_ENV=production flask --app 'app:create_app()' init-db
 ```
 
-For an existing deployment, back up first and run the additive migration before
-starting the new application version:
-
-```sh
-APP_ENV=production flask --app 'app:create_app()' migrate-db
-```
-
-`migrate-db` only calls SQLAlchemy's idempotent `create_all()` to add missing
-tables (including receipts and organization settings); it never drops or
-rewrites existing records. Use versioned migrations for future column changes.
-
-The publishing command in `.replit` sets `APP_ENV=production` and runs Gunicorn on port 5000. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL. Schema creation is explicit and nondestructive; future schema changes will require versioned migrations.
+The publishing command in `.replit` sets `APP_ENV=production`, runs the additive `init-db` upgrade, and then starts Gunicorn on port 5000. This prevents a newly deployed page from querying tables or columns that the existing database does not yet have. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL.
 
 The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
 

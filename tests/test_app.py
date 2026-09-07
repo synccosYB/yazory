@@ -1,7 +1,9 @@
 from io import BytesIO
+import sqlite3
 
 import pytest
 from app import create_app, db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
+from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
 @pytest.fixture
@@ -95,6 +97,37 @@ def test_demo_rejects_shared_database(monkeypatch):
     with pytest.raises(RuntimeError,match='Demo mode'):
         create_app()
 
+def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_path):
+    database_path = tmp_path / 'legacy.db'
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        'CREATE TABLE family ('
+        'id INTEGER PRIMARY KEY, name VARCHAR(160) NOT NULL, '
+        "spouse VARCHAR(160) DEFAULT '', phone VARCHAR(80) DEFAULT '', "
+        "address VARCHAR(300) DEFAULT '', father VARCHAR(160) DEFAULT '', "
+        "inlaws VARCHAR(160) DEFAULT '', rabbi VARCHAR(160) DEFAULT '', "
+        "weekday_shul VARCHAR(160) DEFAULT '', shabbos_shul VARCHAR(160) DEFAULT '', "
+        "circumstances TEXT DEFAULT '', status VARCHAR(30) NOT NULL DEFAULT 'Intake')"
+    )
+    connection.execute("INSERT INTO family (name) VALUES ('Existing family')")
+    connection.commit()
+    connection.close()
+    for key in ['APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET']:
+        monkeypatch.delenv(key, raising=False)
+
+    app = create_app({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{database_path}',
+        'SECRET_KEY': 'test-only',
+    })
+    client = app.test_client()
+
+    assert client.get('/families').status_code == 200
+    assert client.get('/families/1').status_code == 200
+    with app.app_context():
+        columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
+    assert {'city', 'state', 'zip_code'} <= columns
+
 @pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','לוח בקרה'),('yi','rtl','איבערבליק')])
 def test_shared_language_screens(client,language,direction,label):
     result=client.get(f'/language/{language}?next=/expenses%3Fstatus%3DRequested')
@@ -124,6 +157,20 @@ def test_language_keeps_user_content(client):
     client.get('/language/yi')
     post(client,'/families/new',{'name':'Original family name'})
     assert 'Original family name' in client.get('/families').text
+
+def test_family_address_parts_are_saved_and_displayed(app, client):
+    response = post(client, '/families/new', {
+        'name':'Address family', 'address':'12 Main Street', 'city':'Monroe',
+        'state':'NY', 'zip_code':'10950',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).where(Family.name == 'Address family'))
+        assert (family.address, family.city, family.state, family.zip_code) == (
+            '12 Main Street', 'Monroe', 'NY', '10950')
+        family_id = family.id
+    page = client.get(f'/families/{family_id}').text
+    assert '12 Main Street, Monroe, NY 10950' in page
 
 def test_roles_assignments_and_bootstrap_isolation(monkeypatch):
     """Roles are enforced from the database, including after an assignment is revoked."""

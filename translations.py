@@ -61,6 +61,10 @@ Family / individual name|שם המשפחה / הפונה|נאמען פון דער
 Spouse name|שם בן/בת הזוג|נאמען פונעם מאן אדער די ווייב
 Phone|טלפון|טעלעפאן
 Address|כתובת|אדרעס
+Street address|כתובת רחוב|הויז אדרעס
+City|עיר|שטאט
+State|מדינה|סטעיט
+ZIP code|מיקוד|זיפ קאוד
 Father|אב|טאטע
 In-laws|מחותנים|שווער און שוויגער
 Affiliated rabbi|רב המשפחה|דער רב פון דער משפחה
