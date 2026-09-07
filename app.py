@@ -716,7 +716,7 @@ def create_app(test_config=None):
             abort(400, 'This child is already listed under this supporter.')
         db.session.add(ContactChild(contact_id=contact.id, name=name,
                                     spouse_name=spouse_name, phone=phone))
-        audit(f'Added niece or nephew under supporter {contact.name}', contact.family_id)
+        audit(f'Added child under supporter: {contact.name}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
 
