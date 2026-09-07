@@ -102,6 +102,16 @@ class Contact(db.Model):
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
     status = db.Column(db.String(30), default='To contact', nullable=False)
     receipts = db.relationship('Receipt', backref='contact', lazy=True)
+    children = db.relationship('ContactChild', backref='contact', lazy=True,
+                               cascade='all, delete-orphan', order_by='ContactChild.id')
+
+class ContactChild(db.Model):
+    """A supporter's child, shown in the case network as a niece or nephew."""
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=False, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    spouse_name = db.Column(db.String(160), default='')
+    phone = db.Column(db.String(80), default='')
 
 class Receipt(db.Model):
     """A manual record of money reported received; it never collects money."""
@@ -684,6 +694,29 @@ def create_app(test_config=None):
             linked_contact.status = status
             linked_contact.monthly_cents = monthly_cents
         audit(f'Updated donor pledge: {status}', contact.family_id)
+        db.session.commit()
+        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+
+    @app.post('/contacts/<int:contact_id>/children')
+    def add_contact_child(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(select(Contact).where(
+            Contact.id == contact_id,
+            Contact.family_id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id)))) if not organization_admin() else db.get_or_404(Contact, contact_id)
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        name = field('name', True)
+        spouse_name = field('spouse_name')
+        phone = field('phone', limit=80)
+        duplicate = db.session.scalar(select(ContactChild.id).where(
+            ContactChild.contact_id == contact.id,
+            func.lower(ContactChild.name) == name.lower()))
+        if duplicate:
+            abort(400, 'This child is already listed under this supporter.')
+        db.session.add(ContactChild(contact_id=contact.id, name=name,
+                                    spouse_name=spouse_name, phone=phone))
+        audit(f'Added niece or nephew under supporter {contact.name}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
 
