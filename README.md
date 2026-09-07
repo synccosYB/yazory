@@ -42,6 +42,9 @@ Deployment intentionally refuses to start without all of these Replit Secrets:
 | `ADMIN_EMAIL` | Bootstrap owner organization-administrator identity |
 | `ADMIN_PASSWORD_HASH` | Bootstrap owner Werkzeug password hash, never the plaintext password |
 | `SESSION_SECRET` | Stable random secret, at least 32 characters |
+| `APP_BASE_URL` | Public origin used in secure email links, for example `https://yazory.replit.app` |
+| `RESEND_API_KEY` | Resend API key for transactional email |
+| `EMAIL_FROM` | Verified sender, for example `Yazory <notifications@example.org>` |
 
 Generate a session secret privately with `python -c "import secrets; print(secrets.token_hex(32))"`.
 Generate a password hash privately with:
@@ -60,7 +63,7 @@ The publishing command in `.replit` sets `APP_ENV=production`, runs the additive
 
 The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
 
-Not yet implemented: automated donation collection, receipts, bank reconciliation, document uploads, invitations, email/SMS delivery, full bookkeeping, recurring expense generation, or automated backups. No production publishing or external financial actions are performed by this repository setup.
+Staff invitations, account activation, password recovery, role/assignment notifications, case/expense notifications, and an administrator delivery log are implemented through Resend. Without email secrets, messages are retained as failed delivery records. Still not implemented: automated donation collection, donor PDF receipts, bank reconciliation, email replies/shared inbox, SMS delivery, full bookkeeping, recurring expense generation, or automated backups. No external financial actions are performed by this repository setup.
 
 ## Tests
 

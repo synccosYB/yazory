@@ -1,5 +1,5 @@
 """Focused regression coverage for the connected workspace additions."""
-from app import create_app, db, Family, Contact, Receipt, OrganizationSetting
+from app import create_app, db, Family, Contact, Receipt, OrganizationSetting, StaffUser
 
 
 def csrf(client):
@@ -48,3 +48,23 @@ def test_connected_routes_languages_receipts_and_controls(monkeypatch):
                                            'child_bands': '[{"min_age":0,"max_age":30,"amount_cents":100}]'}).status_code == 302
     with app.app_context():
         assert db.session.get(OrganizationSetting, 'expense_categories').value == ['Groceries', 'Other']
+
+
+def test_people_access_accepts_staff_account_form_submission(monkeypatch):
+    for key in ('APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET'):
+        monkeypatch.delenv(key, raising=False)
+    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SECRET_KEY': 'test'})
+    client = app.test_client()
+
+    response = client.post('/people-access', data={
+        'csrf': csrf(client),
+        'email': 'new-staff@example.test',
+        'password': 'new-staff-password',
+        'role': 'office_employee',
+    })
+
+    assert response.status_code == 302
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser).where(StaffUser.email == 'new-staff@example.test'))
+        assert user is not None
+        assert user.role == 'office_employee'
