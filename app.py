@@ -168,7 +168,7 @@ DEFAULT_CHILD_BANDS = [{'min_age': 0, 'max_age': 5, 'amount_cents': 0},
                        {'min_age': 6, 'max_age': 12, 'amount_cents': 0},
                        {'min_age': 13, 'max_age': 30, 'amount_cents': 0}]
 CATEGORIES = DEFAULT_CATEGORIES
-RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'Child’s in-law family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
+RELATIONSHIPS = ['Sibling', 'Nephew', 'Spouse’s sibling', 'Child’s in-law family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
 LEGACY_RELATIONSHIPS = {'In-law’s maiden family'}
 CONTACT_STATUSES = ['To contact', 'Contacted', 'Pledged', 'Paused', 'Declined']
 PLEDGE_FREQUENCIES = ['Monthly', 'Weekly', 'One time']
