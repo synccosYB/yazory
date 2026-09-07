@@ -1,5 +1,6 @@
 import re
 
+import app as app_module
 from werkzeug.security import generate_password_hash
 
 from app import (AccountToken, EmailMessage, Family, FamilyAssignment, StaffUser,
@@ -105,3 +106,36 @@ def test_unknown_reset_email_does_not_disclose_account(monkeypatch):
     assert response.status_code == 302
     with app.app_context():
         assert db.session.scalar(db.select(db.func.count()).select_from(AccountToken)) == 0
+
+
+def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch):
+    app, owner = app_and_owner(monkeypatch)
+    app.config['APP_BASE_URL'] = 'https://yazory.example'
+    app.config['RESEND_API_KEY'] = 'test-key'
+    app.config['EMAIL_FROM'] = 'notifications@synccos.live'
+    delivered = {}
+
+    def capture_delivery(api_key, sender, recipient, subject, html, text):
+        delivered.update(api_key=api_key, sender=sender, recipient=recipient,
+                         subject=subject, html=html, text=text)
+        return 'email_123', None
+
+    monkeypatch.setattr(app_module, 'deliver', capture_delivery)
+    app.config['TESTING'] = False
+    response = post(owner, '/people-access', {'name': 'Family Admin',
+        'email': 'brand@example.test', 'role': 'family_admin'})
+    assert response.status_code == 302
+    with app.app_context():
+        message = db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.recipient == 'brand@example.test'))
+        assert message.status == 'sent'
+        # The persisted plain-text version remains suitable for logs and clients
+        # that do not display HTML.
+        assert 'You have been invited' in message.text_body
+    assert delivered['sender'] == 'notifications@synccos.live'
+    assert 'background:#f8f7f3' in delivered['html']
+    assert 'background:#173e66' in delivered['html']
+    assert 'background:#b49a52' in delivered['html']
+    assert 'src="https://yazory.example/static/yazory-logo.png"' in delivered['html']
+    assert 'Yazory · יעזורי' in delivered['html']
+    assert '<a href="https://yazory.example/accept-invitation/' in delivered['html']

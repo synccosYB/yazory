@@ -308,10 +308,33 @@ def create_app(test_config=None):
         db.session.add(message)
         db.session.flush()
         safe_body = escape(body)
-        safe_body = re.sub(r'(https?://[^\s<]+)', r'<a href="\1">\1</a>', safe_body)
-        html = ('<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto">'
-                '<h2 style="color:#173e66">Yazory</h2>'
-                f'<div style="white-space:pre-line;line-height:1.6">{safe_body}</div></div>')
+        safe_body = re.sub(
+            r'(https?://[^\s<]+)',
+            r'<a href="\1" style="display:inline-block;background:#b49a52;color:#172f4c;font-weight:700;line-height:1.4;text-decoration:none;padding:11px 17px;border-radius:5px;word-break:break-word">\1</a>',
+            safe_body)
+        paragraphs = ''.join(
+            f'<p style="margin:0 0 18px;color:#17385f;font-size:16px;line-height:1.65">'
+            f'{paragraph.replace(chr(10), "<br>")}</p>'
+            for paragraph in safe_body.split('\n\n') if paragraph
+        )
+        logo_url = absolute_url('static', filename='yazory-logo.png')
+        html = f'''<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f8f7f3;font-family:Arial,'Segoe UI',sans-serif;color:#17385f">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f8f7f3">
+<tr><td align="center" style="padding:28px 12px">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border:1px solid #e3e5e9;border-radius:8px;overflow:hidden">
+<tr><td align="center" style="background:#ffffff;padding:24px 24px 18px;border-bottom:4px solid #b49a52">
+<img src="{logo_url}" width="150" alt="Yazory · יעזורי" style="display:block;width:150px;max-width:45%;height:auto;border:0">
+</td></tr>
+<tr><td style="padding:34px 38px 24px">{paragraphs}</td></tr>
+<tr><td style="background:#173e66;padding:20px 28px;text-align:center;color:#ffffff">
+<div style="font-size:14px;font-weight:700;letter-spacing:.3px">Yazory · יעזורי</div>
+<div style="margin-top:6px;color:#d4dfeb;font-size:12px;line-height:1.5">A circle of support.</div>
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>'''
         if app.config['TESTING'] or app.config['DEMO']:
             message.status = 'preview'
             return message
