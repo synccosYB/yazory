@@ -86,3 +86,28 @@ def test_legacy_and_blank_account_bills():
         data = validate_intake({'accounts_json':json.dumps([{**row,'monthly_bill':amount}])})
         assert data['accounts'][0]['monthly_bill'] == expected
         assert intake_for_form(data)['accounts'][0]['monthly_bill'] == ('' if expected is None else amount if amount != '0' else '0.00')
+
+
+def test_connected_bilingual_identity_address_and_children(monkeypatch):
+    for key in ['APP_ENV','DATABASE_URL','ADMIN_EMAIL','ADMIN_PASSWORD_HASH','SESSION_SECRET']:
+        monkeypatch.delenv(key, raising=False)
+    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI':'sqlite://', 'SECRET_KEY':'test'})
+    client = app.test_client()
+    client.get('/families/new')
+    with client.session_transaction() as session:
+        csrf = session['csrf']
+    children = [{'name_en':'Leah','name_yi':'לאה','age':'19','grade':'','school':'Seminary',
+        'married':'yes','spouse_en':'Moshe','spouse_yi':'משה','tuition_contact':''}]
+    response = client.post('/families/new', data={'csrf':csrf, 'intake_version':'1',
+        'name':'', 'name_en':'Jacob Green', 'name_yi':'יעקב גרין', 'phone':'845-555-0100',
+        'street':'20 Zenta Rd.', 'city':'Monroe', 'state':'NY', 'zip':'10950',
+        'children_json':json.dumps(children), 'accounts_json':'[]', 'assistance_json':'[]'})
+    assert response.status_code == 302
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).where(Family.phone=='845-555-0100'))
+        assert family.name == 'Jacob Green / יעקב גרין'
+        assert family.address == '20 Zenta Rd., Monroe, NY 10950'
+        assert len(family.children) == 1 and family.children[0].name == 'Leah / לאה'
+        stored = db.session.get(HouseholdIntake, family.id).data
+        assert stored['children'][0]['spouse_en'] == 'Moshe'
+        assert stored['children_count'] == 1
