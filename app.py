@@ -177,6 +177,21 @@ def create_app(test_config=None):
             owner.password_hash = password_hash
             db.session.commit()
 
+    def ensure_schema():
+        """Create missing tables and apply the additive legacy-schema upgrades."""
+        db.create_all()
+        family_columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
+        for column, definition in {
+            'city': 'VARCHAR(120)',
+            'state': 'VARCHAR(80)',
+            'zip_code': 'VARCHAR(20)',
+        }.items():
+            if column not in family_columns:
+                db.session.execute(text(
+                    f"ALTER TABLE family ADD COLUMN {column} {definition} DEFAULT ''"
+                ))
+        db.session.commit()
+
     def current_user():
         if app.config['DEMO']:
             return None
@@ -714,22 +729,13 @@ def create_app(test_config=None):
 
     @app.cli.command('init-db')
     def init_db():
-        db.create_all()
-        family_columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
-        for column, definition in {
-            'city': 'VARCHAR(120)',
-            'state': 'VARCHAR(80)',
-            'zip_code': 'VARCHAR(20)',
-        }.items():
-            if column not in family_columns:
-                db.session.execute(text(f'ALTER TABLE family ADD COLUMN {column} {definition} DEFAULT \'\''))
-        db.session.commit()
+        ensure_schema()
         ensure_bootstrap_owner()
         print('Database initialized. Existing records preserved.')
 
     with app.app_context():
         if app.config['DEMO']:
-            db.create_all()
+            ensure_schema()
             if not db.session.scalar(select(Family.id).limit(1)):
                 family = Family(name='Sample family', spouse='Sample spouse', father='Sample father', inlaws='Sample in-laws', rabbi='Community rabbi', weekday_shul='Local shul', shabbos_shul='Local shul', circumstances='Fictional example: a household needs help with everyday expenses during illness.', status='Active')
                 db.session.add(family)

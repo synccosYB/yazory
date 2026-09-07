@@ -1,7 +1,9 @@
 from io import BytesIO
+import sqlite3
 
 import pytest
 from app import create_app, db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
+from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
 @pytest.fixture
@@ -94,6 +96,37 @@ def test_demo_rejects_shared_database(monkeypatch):
     monkeypatch.setenv('DATABASE_URL','postgresql://example.invalid/yazory')
     with pytest.raises(RuntimeError,match='Demo mode'):
         create_app()
+
+def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_path):
+    database_path = tmp_path / 'legacy.db'
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        'CREATE TABLE family ('
+        'id INTEGER PRIMARY KEY, name VARCHAR(160) NOT NULL, '
+        "spouse VARCHAR(160) DEFAULT '', phone VARCHAR(80) DEFAULT '', "
+        "address VARCHAR(300) DEFAULT '', father VARCHAR(160) DEFAULT '', "
+        "inlaws VARCHAR(160) DEFAULT '', rabbi VARCHAR(160) DEFAULT '', "
+        "weekday_shul VARCHAR(160) DEFAULT '', shabbos_shul VARCHAR(160) DEFAULT '', "
+        "circumstances TEXT DEFAULT '', status VARCHAR(30) NOT NULL DEFAULT 'Intake')"
+    )
+    connection.execute("INSERT INTO family (name) VALUES ('Existing family')")
+    connection.commit()
+    connection.close()
+    for key in ['APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET']:
+        monkeypatch.delenv(key, raising=False)
+
+    app = create_app({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{database_path}',
+        'SECRET_KEY': 'test-only',
+    })
+    client = app.test_client()
+
+    assert client.get('/families').status_code == 200
+    assert client.get('/families/1').status_code == 200
+    with app.app_context():
+        columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
+    assert {'city', 'state', 'zip_code'} <= columns
 
 @pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','לוח בקרה'),('yi','rtl','איבערבליק')])
 def test_shared_language_screens(client,language,direction,label):
