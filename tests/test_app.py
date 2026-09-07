@@ -2,7 +2,7 @@ from io import BytesIO
 import sqlite3
 
 import pytest
-from app import create_app, db, Family, Child, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
+from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Audit, Document, StaffUser, FamilyAssignment
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -106,6 +106,29 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     assert '$230.00' in dashboard
     assert '$280.00' not in dashboard
     assert '2 connected cases' in client.get(f'/families/{first_id}').text
+
+def test_supporter_can_have_multiple_children_and_spouses(app, client):
+    assert post(client, '/families/1/contacts', {
+        'name':'Supporter parent', 'relationship':'Sibling',
+        'status':'To contact', 'monthly':'0'}).status_code == 302
+    with app.app_context():
+        contact_id = db.session.execute(db.select(Contact.id).where(
+            Contact.name == 'Supporter parent')).scalar_one()
+    for name, spouse in (('Married child one', 'Spouse one'),
+                         ('Married child two', 'Spouse two')):
+        assert post(client, f'/contacts/{contact_id}/children', {
+            'name':name, 'spouse_name':spouse, 'phone':'845-555-0100'}).status_code == 302
+    with app.app_context():
+        children = db.session.scalars(db.select(ContactChild).where(
+            ContactChild.contact_id == contact_id).order_by(ContactChild.id)).all()
+        assert [(child.name, child.spouse_name) for child in children] == [
+            ('Married child one', 'Spouse one'), ('Married child two', 'Spouse two')]
+    profile = client.get('/families/1').text
+    assert 'Married child one' in profile
+    assert 'Spouse one' in profile
+    assert 'Niece / nephew of applicant' in profile
+    assert post(client, f'/contacts/{contact_id}/children', {
+        'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
 
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text

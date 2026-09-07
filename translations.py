@@ -162,6 +162,11 @@ To contact|ליצירת קשר|מען דארף זיך פארבינדן
 Contacted|נוצר קשר|מען האט גערעדט
 Pledged|התחייב|צוגעזאגט
 Sibling|אח/אחות|ברודער אדער שוועסטער
+Children & spouses|ילדים ובני זוג|קינדער און זייערע מאן אדער ווייב
+Niece / nephew of applicant|אחיין / אחיינית של הפונה|נעפיו אדער ניס פונעם אנפרעגער
+Supporter’s child|ילד של התומך|א קינד פונעם העלפער
+Add another child|הוספת ילד נוסף|צולייגן נאך א קינד
+This child is already listed under this supporter.|הילד הזה כבר רשום תחת התומך הזה.|דאס קינד שטייט שוין אונטער דעם העלפער.
 Spouse’s sibling|אח/אחות של בן/בת הזוג|ברודער אדער שוועסטער פון דער ווייב אדער מאן
 In-law’s maiden family|משפחת הנעורים של החותנים|די מיידל נאמען משפחה פון די מחותנים
 In-law maiden name|שם הנעורים של החותנים|די מיידל נאמען פון די מחותנים
@@ -251,6 +256,10 @@ def translate(text):
     return CATALOG.get(text, {}).get(session.get('language', 'en'), text)
 
 AUDIT_PREFIXES = {
+    'Added child under supporter: ': {
+        'he': 'נוסף ילד תחת התומך: ',
+        'yi': 'צוגעלייגט א קינד אונטער דעם העלפער: ',
+    },
     'Updated staff role for ': {
         'he': 'עודכן תפקיד הצוות עבור ',
         'yi': 'מען האט געטוישט די שטאב ראלע פאר ',
