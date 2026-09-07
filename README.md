@@ -56,7 +56,7 @@ Initialize the configured database once:
 APP_ENV=production flask --app 'app:create_app()' init-db
 ```
 
-The publishing command in `.replit` sets `APP_ENV=production` and runs Gunicorn on port 5000. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL. Schema creation is explicit and nondestructive; future schema changes will require versioned migrations.
+The publishing command in `.replit` sets `APP_ENV=production`, runs the additive `init-db` upgrade, and then starts Gunicorn on port 5000. This prevents a newly deployed page from querying tables or columns that the existing database does not yet have. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL.
 
 The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
 
