@@ -166,7 +166,7 @@ def test_supporter_donation_frequency_is_saved_and_used_in_monthly_total(app, cl
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
-                  'inlaws_maiden_name', 'inlaws_family', 'rabbi',
+                  'inlaws_maiden_name', 'inlaws_family', 'rabbi', 'rabbi_phone',
                   'weekday_shul', 'shabbos_shul', 'shul_gabbai',
                   'shul_gabbai_phone', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
@@ -188,6 +188,20 @@ def test_shul_gabbai_name_and_phone_are_saved(app, client):
     profile = client.get('/families/1').text
     assert 'Moshe Klein' in profile
     assert '845-555-0199' in profile
+
+def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'rabbi': 'Rabbi Rubin',
+        'rabbi_phone': '845-555-0101',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        assert family.rabbi_phone == '845-555-0101'
+    profile = client.get('/families/1').text
+    rabbi_block = profile[profile.index('Rabbi Rubin'):profile.index('Rabbi Rubin') + 500]
+    assert '845-555-0101' in rabbi_block
 
 def test_profile_print_report_lists_and_filters_donations(app, client):
     with app.app_context():
