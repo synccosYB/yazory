@@ -87,6 +87,8 @@ class Child(db.Model):
     grade = db.Column(db.String(80), default='')
     school = db.Column(db.String(160), nullable=False)
     tuition_contact = db.Column(db.String(300), default='')
+    married = db.Column(db.Boolean, default=False, nullable=False)
+    spouse_name = db.Column(db.String(160), default='')
 
 class Contact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -100,6 +102,16 @@ class Contact(db.Model):
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
     status = db.Column(db.String(30), default='To contact', nullable=False)
     receipts = db.relationship('Receipt', backref='contact', lazy=True)
+    children = db.relationship('ContactChild', backref='contact', lazy=True,
+                               cascade='all, delete-orphan', order_by='ContactChild.id')
+
+class ContactChild(db.Model):
+    """A supporter's child, shown in the case network as a niece or nephew."""
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=False, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    spouse_name = db.Column(db.String(160), default='')
+    phone = db.Column(db.String(80), default='')
 
 class Receipt(db.Model):
     """A manual record of money reported received; it never collects money."""
@@ -147,7 +159,8 @@ DEFAULT_CHILD_BANDS = [{'min_age': 0, 'max_age': 5, 'amount_cents': 0},
                        {'min_age': 6, 'max_age': 12, 'amount_cents': 0},
                        {'min_age': 13, 'max_age': 30, 'amount_cents': 0}]
 CATEGORIES = DEFAULT_CATEGORIES
-RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'In-law’s maiden family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
+RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'Child’s in-law family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
+LEGACY_RELATIONSHIPS = {'In-law’s maiden family'}
 CONTACT_STATUSES = ['To contact', 'Contacted', 'Pledged', 'Paused', 'Declined']
 
 def valid_werkzeug_password_hash(value):
@@ -245,6 +258,16 @@ def create_app(test_config=None):
                 db.session.execute(text(
                     f"ALTER TABLE family ADD COLUMN {column} {definition} DEFAULT ''"
                 ))
+        child_columns = {column['name'] for column in inspect(db.engine).get_columns('child')}
+        for column, definition in {
+            # FALSE is valid for PostgreSQL and SQLite. PostgreSQL rejects the
+            # integer DEFAULT 0 that was previously used here, which aborted
+            # the whole startup migration and left profile pages unusable.
+            'married': 'BOOLEAN NOT NULL DEFAULT FALSE',
+            'spouse_name': "VARCHAR(160) DEFAULT ''",
+        }.items():
+            if column not in child_columns:
+                db.session.execute(text(f'ALTER TABLE child ADD COLUMN {column} {definition}'))
         db.session.commit()
 
     def current_user():
@@ -590,13 +613,39 @@ def create_app(test_config=None):
         accessible_family_or_404(family_id)
         try:
             age = int(field('age', True))
-            if not 0 <= age <= 30: raise ValueError()
+            if not 0 <= age <= 120: raise ValueError()
         except ValueError:
-            abort(400, 'Age must be between 0 and 30.')
-        db.session.add(Child(family_id=family_id, name=field('name', True), age=age, grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300)))
+            abort(400, 'Age must be between 0 and 120.')
+        db.session.add(Child(family_id=family_id, name=field('name', True), age=age,
+            grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300),
+            married=request.form.get('married') == 'yes', spouse_name=field('spouse_name')))
         audit('Added child and school details', family_id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
+
+    @app.post('/children/<int:child_id>')
+    def update_child(child_id):
+        require_capability(('family_admin', 'office_employee'))
+        child = db.session.get(Child, child_id)
+        if child is None:
+            abort(404)
+        accessible_family_or_404(child.family_id)
+        try:
+            age = int(field('age', True))
+            if not 0 <= age <= 120: raise ValueError()
+        except ValueError:
+            abort(400, 'Age must be between 0 and 120.')
+        child.name = field('name', True)
+        child.age = age
+        child.grade = field('grade', limit=80)
+        child.school = field('school')
+        child.tuition_contact = field('tuition_contact', limit=300)
+        child.married = request.form.get('married') == 'yes'
+        child.spouse_name = field('spouse_name')
+        audit('Updated child and spouse details', child.family_id)
+        db.session.commit()
+        flash('Child and spouse updated.')
+        return redirect(url_for('family_detail', family_id=child.family_id))
 
     @app.post('/families/<int:family_id>/contacts')
     def add_contact(family_id):
@@ -607,7 +656,7 @@ def create_app(test_config=None):
             abort(404)
         relationship = field('relationship', True)
         status = field('status', True)
-        if relationship not in RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
+        if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
         pledge = amount('monthly', allow_zero=status!='Pledged')
         name = field('name', True)
         phone = field('phone', limit=80)
@@ -645,6 +694,29 @@ def create_app(test_config=None):
             linked_contact.status = status
             linked_contact.monthly_cents = monthly_cents
         audit(f'Updated donor pledge: {status}', contact.family_id)
+        db.session.commit()
+        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+
+    @app.post('/contacts/<int:contact_id>/children')
+    def add_contact_child(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(select(Contact).where(
+            Contact.id == contact_id,
+            Contact.family_id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id)))) if not organization_admin() else db.get_or_404(Contact, contact_id)
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        name = field('name', True)
+        spouse_name = field('spouse_name')
+        phone = field('phone', limit=80)
+        duplicate = db.session.scalar(select(ContactChild.id).where(
+            ContactChild.contact_id == contact.id,
+            func.lower(ContactChild.name) == name.lower()))
+        if duplicate:
+            abort(400, 'This child is already listed under this supporter.')
+        db.session.add(ContactChild(contact_id=contact.id, name=name,
+                                    spouse_name=spouse_name, phone=phone))
+        audit(f'Added child under supporter: {contact.name}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
 

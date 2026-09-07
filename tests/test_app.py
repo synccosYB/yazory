@@ -2,7 +2,7 @@ from io import BytesIO
 import sqlite3
 
 import pytest
-from app import create_app, db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
+from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Audit, Document, StaffUser, FamilyAssignment
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -54,6 +54,26 @@ def test_case_and_expense_workflow(app, client):
         assert len(db.session.scalars(db.select(Audit).where(Audit.family_id==family_id)).all())==8
         assert db.session.execute(db.select(Contact.monthly_cents).where(Contact.family_id==family_id)).scalar_one()==1825
 
+def test_married_child_records_spouse(app, client):
+    assert post(client, '/families/new', {'name':'Parents'}).status_code == 302
+    with app.app_context():
+        family_id = db.session.scalar(db.select(Family.id).where(Family.name == 'Parents'))
+    assert post(client, f'/families/{family_id}/children', {
+        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Spouse'
+    }).status_code == 302
+    with app.app_context():
+        child = db.session.scalar(db.select(Child).where(Child.family_id == family_id))
+        assert child.married is True
+        assert child.spouse_name == 'Spouse'
+        child_id = child.id
+    page = client.get(f'/families/{family_id}').text
+    assert 'Spouse' in page
+    assert post(client, f'/children/{child_id}', {
+        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Updated spouse'
+    }).status_code == 302
+    with app.app_context():
+        assert db.session.get(Child, child_id).spouse_name == 'Updated spouse'
+
 def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     for name in ('Case A', 'Case B'):
         assert post(client, '/families/new', {'name':name}).status_code == 302
@@ -86,6 +106,29 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     assert '$230.00' in dashboard
     assert '$280.00' not in dashboard
     assert '2 connected cases' in client.get(f'/families/{first_id}').text
+
+def test_supporter_can_have_multiple_children_and_spouses(app, client):
+    assert post(client, '/families/1/contacts', {
+        'name':'Supporter parent', 'relationship':'Sibling',
+        'status':'To contact', 'monthly':'0'}).status_code == 302
+    with app.app_context():
+        contact_id = db.session.execute(db.select(Contact.id).where(
+            Contact.name == 'Supporter parent')).scalar_one()
+    for name, spouse in (('Married child one', 'Spouse one'),
+                         ('Married child two', 'Spouse two')):
+        assert post(client, f'/contacts/{contact_id}/children', {
+            'name':name, 'spouse_name':spouse, 'phone':'845-555-0100'}).status_code == 302
+    with app.app_context():
+        children = db.session.scalars(db.select(ContactChild).where(
+            ContactChild.contact_id == contact_id).order_by(ContactChild.id)).all()
+        assert [(child.name, child.spouse_name) for child in children] == [
+            ('Married child one', 'Spouse one'), ('Married child two', 'Spouse two')]
+    profile = client.get('/families/1').text
+    assert 'Married child one' in profile
+    assert 'Spouse one' in profile
+    assert 'Niece / nephew of applicant' in profile
+    assert post(client, f'/contacts/{contact_id}/children', {
+        'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
 
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
@@ -153,6 +196,17 @@ def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_p
         "circumstances TEXT DEFAULT '', status VARCHAR(30) NOT NULL DEFAULT 'Intake')"
     )
     connection.execute("INSERT INTO family (name) VALUES ('Existing family')")
+    connection.execute(
+        'CREATE TABLE child ('
+        'id INTEGER PRIMARY KEY, family_id INTEGER NOT NULL, '
+        'name VARCHAR(160) NOT NULL, age INTEGER NOT NULL, '
+        "grade VARCHAR(80) DEFAULT '', school VARCHAR(160) NOT NULL, "
+        "tuition_contact VARCHAR(300) DEFAULT '')"
+    )
+    connection.execute(
+        "INSERT INTO child (family_id, name, age, school) "
+        "VALUES (1, 'Existing child', 18, 'Existing school')"
+    )
     connection.commit()
     connection.close()
     for key in ['APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET']:
@@ -168,8 +222,13 @@ def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_p
     assert client.get('/families').status_code == 200
     assert client.get('/families/1').status_code == 200
     with app.app_context():
-        columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
-    assert {'city', 'state', 'zip_code'} <= columns
+        family_columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
+        child_columns = {column['name'] for column in inspect(db.engine).get_columns('child')}
+        child = db.session.get(Child, 1)
+        assert child.married is False
+        assert child.spouse_name == ''
+    assert {'city', 'state', 'zip_code'} <= family_columns
+    assert {'married', 'spouse_name'} <= child_columns
 
 @pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','לוח בקרה'),('yi','rtl','איבערבליק')])
 def test_shared_language_screens(client,language,direction,label):
