@@ -1,8 +1,9 @@
 from io import BytesIO
 import sqlite3
+from datetime import date
 
 import pytest
-from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Audit, Document, StaffUser, FamilyAssignment
+from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -130,6 +131,25 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
     assert post(client, f'/contacts/{contact_id}/children', {
         'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
 
+def test_supporter_donation_frequency_is_saved_and_used_in_monthly_total(app, client):
+    assert post(client, '/families/1/contacts', {
+        'name':'Weekly donor', 'relationship':'Friend', 'status':'Pledged',
+        'monthly':'12', 'pledge_frequency':'Weekly'}).status_code == 302
+    assert post(client, '/families/1/contacts', {
+        'name':'One-time donor', 'relationship':'Friend', 'status':'Pledged',
+        'monthly':'500', 'pledge_frequency':'One time'}).status_code == 302
+    with app.app_context():
+        weekly = db.session.scalar(db.select(Contact).where(Contact.name == 'Weekly donor'))
+        one_time = db.session.scalar(db.select(Contact).where(Contact.name == 'One-time donor'))
+        assert weekly.pledge_frequency == 'Weekly'
+        assert weekly.monthly_equivalent_cents == 5200
+        assert one_time.pledge_frequency == 'One time'
+        assert one_time.monthly_equivalent_cents == 0
+    profile = client.get('/families/1').text
+    assert 'selected value="Weekly"' in profile
+    assert 'selected value="One time"' in profile
+    assert '$232.00' in profile
+
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
@@ -139,6 +159,25 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
     assert 'name="rabbi"' in edit.text
+
+def test_profile_print_report_lists_and_filters_donations(app, client):
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        contact = family.contacts[0]
+        db.session.add(Receipt(contact_id=contact.id, family_id=family.id, amount_cents=4250,
+            received_on=date(2026, 9, 2), reference='DON-42', note='Rosh Hashanah'))
+        db.session.commit()
+    profile = client.get('/families/1').text
+    assert '/families/1/print' in profile
+    report = client.get('/families/1/print')
+    assert report.status_code == 200
+    assert 'DON-42' in report.text
+    assert '$42.50' in report.text
+    assert 'Print / Save PDF' in report.text
+    filtered = client.get('/families/1/print?section=donations&q=DON-42&date_from=2026-09-01&date_to=2026-09-30').text
+    assert 'DON-42' in filtered
+    assert '<h2>Children' not in filtered
+    assert client.get('/families/1/print?date_from=2026-10-01&date_to=2026-09-01').status_code == 400
 
 @pytest.mark.parametrize('amount',['NaN','Infinity','-1','0','1.001','1000001','bad'])
 def test_invalid_money(client,amount):
