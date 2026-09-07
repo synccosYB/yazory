@@ -108,6 +108,41 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     assert '$280.00' not in dashboard
     assert '2 connected cases' in client.get(f'/families/{first_id}').text
 
+def test_supporter_history_and_safe_duplicate_deletion(app, client):
+    for name in ('History family A', 'History family B'):
+        assert post(client, '/families/new', {'name': name}).status_code == 302
+    with app.app_context():
+        families = db.session.scalars(db.select(Family).where(
+            Family.name.in_(('History family A', 'History family B'))).order_by(Family.name)).all()
+        first_id, second_id = (family.id for family in families)
+    for family_id in (first_id, second_id):
+        assert post(client, f'/families/{family_id}/contacts', {
+            'name': 'History supporter', 'phone': '845-555-0199',
+            'relationship': 'Sibling', 'status': 'Pledged', 'monthly': '25',
+            'pledge_frequency': 'Monthly'}).status_code == 302
+    with app.app_context():
+        contacts = db.session.scalars(db.select(Contact).where(
+            Contact.name == 'History supporter').order_by(Contact.id)).all()
+        first_contact_id, duplicate_contact_id = (contact.id for contact in contacts)
+        db.session.add(Receipt(contact_id=first_contact_id, family_id=first_id,
+                               amount_cents=1250, received_on=date(2026, 9, 7),
+                               reference='HISTORY-1'))
+        db.session.commit()
+
+    supporter_list = client.get('/supporters').text
+    assert f'/supporters/{first_contact_id}' in supporter_list
+    detail = client.get(f'/supporters/{duplicate_contact_id}').text
+    assert 'History family A' in detail and 'History family B' in detail
+    assert 'HISTORY-1' in detail and '$12.50' in detail
+
+    assert post(client, f'/contacts/{duplicate_contact_id}/delete', {'next': '/supporters'}).status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, duplicate_contact_id) is None
+        assert db.session.get(Contact, first_contact_id) is not None
+    assert post(client, f'/contacts/{first_contact_id}/delete', {'next': '/supporters'}).status_code == 400
+    with app.app_context():
+        assert db.session.get(Contact, first_contact_id) is not None
+
 def test_supporter_can_have_multiple_children_and_spouses(app, client):
     assert post(client, '/families/1/contacts', {
         'name':'Supporter parent', 'relationship':'Sibling',
