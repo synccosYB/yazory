@@ -86,6 +86,12 @@ class StaffUser(db.Model):
     password_hash = db.Column(db.String(512), nullable=False)
     role = db.Column(db.String(30), nullable=False, default='family_admin')
     name = db.Column(db.String(160), nullable=False, default='')
+    phone = db.Column(db.String(80), nullable=False, default='')
+    address = db.Column(db.String(240), nullable=False, default='')
+    city = db.Column(db.String(120), nullable=False, default='')
+    state = db.Column(db.String(80), nullable=False, default='')
+    zip_code = db.Column(db.String(20), nullable=False, default='')
+    job_title = db.Column(db.String(120), nullable=False, default='')
     status = db.Column(db.String(20), nullable=False, default='active', index=True)
     invited_at = db.Column(db.DateTime, nullable=True)
     activated_at = db.Column(db.DateTime, nullable=True)
@@ -404,6 +410,12 @@ def create_app(test_config=None):
         staff_columns = {column['name'] for column in inspect(db.engine).get_columns('staff_user')}
         for column, definition in {
             'name': "VARCHAR(160) NOT NULL DEFAULT ''",
+            'phone': "VARCHAR(80) NOT NULL DEFAULT ''",
+            'address': "VARCHAR(240) NOT NULL DEFAULT ''",
+            'city': "VARCHAR(120) NOT NULL DEFAULT ''",
+            'state': "VARCHAR(80) NOT NULL DEFAULT ''",
+            'zip_code': "VARCHAR(20) NOT NULL DEFAULT ''",
+            'job_title': "VARCHAR(120) NOT NULL DEFAULT ''",
             'status': "VARCHAR(20) NOT NULL DEFAULT 'active'",
             'invited_at': 'TIMESTAMP', 'activated_at': 'TIMESTAMP', 'last_login_at': 'TIMESTAMP',
         }.items():
@@ -1517,7 +1529,10 @@ def create_app(test_config=None):
                 abort(400, 'A staff account already uses this email.')
             # Existing automated tests may still supply a password; real users always choose their own.
             test_password = request.form.get('password', '') if app.config['TESTING'] else ''
-            user = StaffUser(email=email, name=name,
+            user = StaffUser(email=email, name=name, phone=field('phone', limit=80),
+                address=field('address', limit=240), city=field('city', limit=120),
+                state=field('state', limit=80), zip_code=field('zip_code', limit=20),
+                job_title=field('job_title', limit=120),
                 password_hash=generate_password_hash(test_password) if len(test_password) >= 12 else '!invited',
                 role=role, status='active' if len(test_password) >= 12 else 'pending',
                 invited_at=utcnow())
@@ -1543,6 +1558,55 @@ def create_app(test_config=None):
             return redirect(url_for('staff'))
         owner = db.session.scalar(select(StaffUser).where(StaffUser.email == app.config['ADMIN_EMAIL'].strip().lower()))
         return render_template('staff.html', title='Staff & assignments', users=db.session.scalars(select(StaffUser).order_by(StaffUser.email)).all(), families=db.session.scalars(select(Family).order_by(Family.name)).all(), owner_user_id=owner.id if owner else None)
+
+    @app.post('/staff/<int:user_id>/details')
+    def staff_details(user_id):
+        require_organization_admin()
+        user = db.get_or_404(StaffUser, user_id)
+        email = email_field()
+        owner_email = app.config['ADMIN_EMAIL'].strip().lower()
+        if user.email == owner_email and email != owner_email:
+            abort(400, 'The owner email address cannot be changed here.')
+        duplicate = db.session.scalar(select(StaffUser.id).where(
+            StaffUser.email == email, StaffUser.id != user.id))
+        if duplicate:
+            abort(400, 'A staff account already uses this email.')
+        old_email = user.email
+        user.name = field('name')
+        user.email = email
+        user.phone = field('phone', limit=80)
+        user.address = field('address', limit=240)
+        user.city = field('city', limit=120)
+        user.state = field('state', limit=80)
+        user.zip_code = field('zip_code', limit=20)
+        user.job_title = field('job_title', limit=120)
+        audit(f'Updated staff details: {old_email}')
+        db.session.commit()
+        flash('Staff details updated.')
+        return redirect(url_for('staff'))
+
+    @app.post('/staff/<int:user_id>/delete')
+    def delete_staff(user_id):
+        require_organization_admin()
+        user = db.get_or_404(StaffUser, user_id)
+        if user.id == current_user().id or user.email == app.config['ADMIN_EMAIL'].strip().lower():
+            abort(400, 'The owner account cannot be deleted.')
+        if user.role == 'organization_admin':
+            admin_count = db.session.scalar(select(func.count()).select_from(StaffUser).where(
+                StaffUser.role == 'organization_admin'))
+            if admin_count <= 1:
+                abort(400, 'At least one organization administrator is required.')
+        email = user.email
+        db.session.execute(db.update(AccountToken).where(AccountToken.created_by == user.id).values(created_by=None))
+        db.session.execute(db.delete(AccountToken).where(AccountToken.staff_user_id == user.id))
+        db.session.execute(db.update(EmailMessage).where(EmailMessage.staff_user_id == user.id).values(staff_user_id=None))
+        db.session.execute(db.update(Receipt).where(Receipt.recorded_by == user.id).values(recorded_by=None))
+        db.session.execute(db.delete(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id))
+        db.session.delete(user)
+        audit(f'Deleted staff user: {email}')
+        db.session.commit()
+        flash('Staff account deleted.')
+        return redirect(url_for('staff'))
 
     @app.post('/staff/<int:user_id>/resend-invitation')
     def resend_invitation(user_id):

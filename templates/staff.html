@@ -1,7 +1,55 @@
-{% extends 'base.html' %}{% from 'macros.html' import token %}{% block content %}
-<div class="page-heading"><div><div class="eyebrow">{{ _('STAFF ADMINISTRATION') }}</div><h1>{{ _('People & access') }}</h1><p>{{ _('Invite staff, manage roles, and control explicit family access.') }}</p></div><a class="button secondary" href="{{ url_for('email_history') }}">{{ _('Email history') }}</a></div>
-<section class="card padded"><h2>{{ _('Invite a staff member') }}</h2><form method="post">{{ token(csrf) }}<div class="form-grid"><label>{{ _('Name') }}<input name="name" maxlength="160" autocomplete="name"></label><label>{{ _('Email') }}<input type="email" name="email" required maxlength="254" autocomplete="email"></label><label>{{ _('Role') }}<select name="role"><option value="family_admin">{{ _('Family administrator') }}</option><option value="office_employee">{{ _('Office employee') }}</option><option value="fundraiser">{{ _('Fundraiser') }}</option><option value="organization_admin">{{ _('Organization administrator') }}</option></select></label><label>{{ _('Initial family assignment') }}<select name="family_id"><option value="">{{ _('Assign later') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select></label></div><button>{{ _('Send invitation') }}</button><small>{{ _('The user will create their own password. Invitations expire after 48 hours.') }}</small></form></section>
-<section class="card padded"><h2>{{ _('Staff accounts') }}</h2>{% for user in users %}<div data-page-item class="staff-entry"><div class="activity-row"><div><strong>{{ user.name or user.email }}</strong><small>{{ user.email }} · {{ _({'organization_admin':'Organization administrator','family_admin':'Family administrator','office_employee':'Office employee','fundraiser':'Fundraiser'}[user.role]) }}</small></div><span class="badge {{ user.status }}">{{ _(user.status.title()) }}</span></div>
-{% if user.status == 'pending' %}<div class="row-actions"><form method="post" action="{{ url_for('resend_invitation', user_id=user.id) }}">{{ token(csrf) }}<button class="small">{{ _('Resend invitation') }}</button></form><form method="post" action="{{ url_for('cancel_invitation', user_id=user.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Cancel invitation') }}</button></form></div>{% else %}<div class="row-actions">{% if user.id != owner_user_id %}<form method="post" class="compact-form" action="{{ url_for('staff_role', user_id=user.id) }}">{{ token(csrf) }}<select name="role">{% for value, label in [('family_admin','Family administrator'),('office_employee','Office employee'),('fundraiser','Fundraiser'),('organization_admin','Organization administrator')] %}<option value="{{ value }}" {{ 'selected' if user.role==value }}>{{ _(label) }}</option>{% endfor %}</select><button class="small">{{ _('Save role') }}</button></form><form method="post" action="{{ url_for('staff_status', user_id=user.id) }}">{{ token(csrf) }}<input type="hidden" name="status" value="{{ 'active' if user.status == 'deactivated' else 'deactivated' }}"><button class="small {{ 'danger' if user.status == 'active' }}">{{ _('Reactivate') if user.status == 'deactivated' else _('Deactivate') }}</button></form>{% else %}<span class="badge active">{{ _('Owner') }}</span>{% endif %}</div>{% endif %}
-{% if user.role != 'organization_admin' and user.status != 'cancelled' %}<form method="post" class="compact-form" action="{{ url_for('staff_assignment', user_id=user.id) }}">{{ token(csrf) }}<select name="family_id">{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select><button class="small">{{ _('Assign / revoke family') }}</button></form><p class="muted">{% for assignment in user.assignments %}{{ assignment.family.name }}{% if not loop.last %}, {% endif %}{% else %}{{ _('No family assignments.') }}{% endfor %}</p>{% endif %}</div>{% endfor %}</section>
+{% extends 'base.html' %}
+{% from 'macros.html' import token %}
+{% block content %}
+<div class="page-heading">
+  <div><div class="eyebrow">{{ _('STAFF ADMINISTRATION') }}</div><h1>{{ _('People & access') }}</h1><p>{{ _('Invite staff, manage roles, and control explicit family access.') }}</p></div>
+  <a class="button secondary" href="{{ url_for('email_history') }}">{{ _('Email history') }}</a>
+</div>
+<section class="card padded">
+  <h2>{{ _('Invite a staff member') }}</h2>
+  <form method="post">{{ token(csrf) }}
+    <div class="form-grid">
+      <label>{{ _('Name') }}<input name="name" maxlength="160" autocomplete="name"></label>
+      <label>{{ _('Job title') }}<input name="job_title" maxlength="120" autocomplete="organization-title"></label>
+      <label>{{ _('Email') }}<input type="email" name="email" required maxlength="254" autocomplete="email"></label>
+      <label>{{ _('Phone') }}<input type="tel" name="phone" maxlength="80" autocomplete="tel"></label>
+      <label>{{ _('Address') }}<input name="address" maxlength="240" autocomplete="street-address"></label>
+      <label>{{ _('City') }}<input name="city" maxlength="120" autocomplete="address-level2"></label>
+      <label>{{ _('State') }}<input name="state" maxlength="80" autocomplete="address-level1"></label>
+      <label>{{ _('ZIP code') }}<input name="zip_code" maxlength="20" autocomplete="postal-code"></label>
+      <label>{{ _('Role') }}<select name="role"><option value="family_admin">{{ _('Family administrator') }}</option><option value="office_employee">{{ _('Office employee') }}</option><option value="fundraiser">{{ _('Fundraiser') }}</option><option value="organization_admin">{{ _('Organization administrator') }}</option></select></label>
+      <label>{{ _('Initial family assignment') }}<select name="family_id"><option value="">{{ _('Assign later') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select></label>
+    </div>
+    <button>{{ _('Send invitation') }}</button><small>{{ _('The user will create their own password. Invitations expire after 48 hours.') }}</small>
+  </form>
+</section>
+<section class="card padded">
+  <h2>{{ _('Staff accounts') }}</h2>
+  {% for user in users %}<article data-page-item class="staff-entry">
+    <div class="activity-row"><div><strong>{{ user.name or user.email }}</strong><small>{{ user.email }} · {{ _({'organization_admin':'Organization administrator','family_admin':'Family administrator','office_employee':'Office employee','fundraiser':'Fundraiser'}[user.role]) }}{% if user.job_title %} · {{ user.job_title }}{% endif %}</small></div><span class="badge {{ user.status }}">{{ _(user.status.title()) }}</span></div>
+    <dl class="staff-details">
+      <div><dt>{{ _('Phone') }}</dt><dd>{{ user.phone or '—' }}</dd></div>
+      <div><dt>{{ _('Address') }}</dt><dd>{{ user.address or '—' }}{% if user.city or user.state or user.zip_code %}<br>{{ user.city }}{% if user.city and user.state %}, {% endif %}{{ user.state }} {{ user.zip_code }}{% endif %}</dd></div>
+      <div><dt>{{ _('Last login') }}</dt><dd>{{ user.last_login_at.strftime('%Y-%m-%d %H:%M UTC') if user.last_login_at else '—' }}</dd></div>
+    </dl>
+    <details><summary>{{ _('Edit detailed information') }}</summary>
+      <form method="post" action="{{ url_for('staff_details', user_id=user.id) }}">{{ token(csrf) }}
+        <div class="form-grid">
+          <label>{{ _('Name') }}<input name="name" value="{{ user.name }}" maxlength="160" autocomplete="name"></label>
+          <label>{{ _('Job title') }}<input name="job_title" value="{{ user.job_title }}" maxlength="120"></label>
+          <label>{{ _('Email') }}<input type="email" name="email" value="{{ user.email }}" required maxlength="254" autocomplete="email" {{ 'readonly' if user.id == owner_user_id }}></label>
+          <label>{{ _('Phone') }}<input type="tel" name="phone" value="{{ user.phone }}" maxlength="80" autocomplete="tel"></label>
+          <label>{{ _('Address') }}<input name="address" value="{{ user.address }}" maxlength="240" autocomplete="street-address"></label>
+          <label>{{ _('City') }}<input name="city" value="{{ user.city }}" maxlength="120"></label>
+          <label>{{ _('State') }}<input name="state" value="{{ user.state }}" maxlength="80"></label>
+          <label>{{ _('ZIP code') }}<input name="zip_code" value="{{ user.zip_code }}" maxlength="20"></label>
+        </div><button class="small">{{ _('Save details') }}</button>
+      </form>
+    </details>
+    {% if user.status == 'pending' %}<div class="row-actions"><form method="post" action="{{ url_for('resend_invitation', user_id=user.id) }}">{{ token(csrf) }}<button class="small">{{ _('Resend invitation') }}</button></form><form method="post" action="{{ url_for('cancel_invitation', user_id=user.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Cancel invitation') }}</button></form></div>
+    {% else %}<div class="row-actions">{% if user.id != owner_user_id %}<form method="post" class="compact-form" action="{{ url_for('staff_role', user_id=user.id) }}">{{ token(csrf) }}<select name="role">{% for value, label in [('family_admin','Family administrator'),('office_employee','Office employee'),('fundraiser','Fundraiser'),('organization_admin','Organization administrator')] %}<option value="{{ value }}" {{ 'selected' if user.role==value }}>{{ _(label) }}</option>{% endfor %}</select><button class="small">{{ _('Save role') }}</button></form><form method="post" action="{{ url_for('staff_status', user_id=user.id) }}">{{ token(csrf) }}<input type="hidden" name="status" value="{{ 'active' if user.status == 'deactivated' else 'deactivated' }}"><button class="small {{ 'danger' if user.status == 'active' }}">{{ _('Reactivate') if user.status == 'deactivated' else _('Deactivate') }}</button></form>{% else %}<span class="badge active">{{ _('Owner') }}</span>{% endif %}</div>{% endif %}
+    {% if user.role != 'organization_admin' and user.status != 'cancelled' %}<form method="post" class="compact-form" action="{{ url_for('staff_assignment', user_id=user.id) }}">{{ token(csrf) }}<select name="family_id">{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select><button class="small">{{ _('Assign / revoke family') }}</button></form><p class="muted">{% for assignment in user.assignments %}{{ assignment.family.name }}{% if not loop.last %}, {% endif %}{% else %}{{ _('No family assignments.') }}{% endfor %}</p>{% endif %}
+    {% if user.id != owner_user_id %}<form method="post" class="staff-delete" action="{{ url_for('delete_staff', user_id=user.id) }}" onsubmit="return confirm('{{ _('Delete this staff account permanently?') }}')">{{ token(csrf) }}<button class="small danger">{{ _('Delete') }}</button></form>{% endif %}
+  </article>{% endfor %}
+</section>
 {% endblock %}
