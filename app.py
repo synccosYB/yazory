@@ -34,6 +34,7 @@ class Family(db.Model):
     inlaws_maiden_name = db.Column(db.String(160), default='')
     inlaws_family = db.Column(db.Text, default='')
     rabbi = db.Column(db.String(160), default='')
+    rabbi_phone = db.Column(db.String(80), default='')
     weekday_shul = db.Column(db.String(160), default='')
     shabbos_shul = db.Column(db.String(160), default='')
     shul_gabbai = db.Column(db.String(160), default='')
@@ -264,6 +265,7 @@ def create_app(test_config=None):
             'zip_code': 'VARCHAR(20)',
             'inlaws_maiden_name': 'VARCHAR(160)',
             'inlaws_family': 'TEXT',
+            'rabbi_phone': 'VARCHAR(80)',
             'shul_gabbai': 'VARCHAR(160)',
             'shul_gabbai_phone': 'VARCHAR(80)',
         }.items():
@@ -508,7 +510,7 @@ def create_app(test_config=None):
 
     def intake_form(family, title, error=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
-            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
+            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
         if error:
             budget.update(request.form)
@@ -537,8 +539,8 @@ def create_app(test_config=None):
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
-            limits = {'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
-            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
+            limits = {'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
+            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
             save_intake(family, intake_data)
@@ -560,8 +562,8 @@ def create_app(test_config=None):
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
-            limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'shul_gabbai_phone':80}
-            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone','circumstances']:
+            limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
+            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
