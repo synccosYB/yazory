@@ -277,6 +277,10 @@ def translate(text):
     return CATALOG.get(text, {}).get(session.get('language', 'en'), text)
 
 AUDIT_PREFIXES = {
+    'Updated supporter details: ': {
+        'he': 'עודכנו פרטי תומך: ',
+        'yi': 'אפדעיטעד די פרטים פונעם העלפער: ',
+    },
     'Deleted supporter: ': {
         'he': 'נמחק תומך: ',
         'yi': 'אויסגעמעקט א העלפער: ',
@@ -535,6 +539,20 @@ for _row in _PROFILE_REPORT_ROWS.strip().splitlines():
     CATALOG[_en] = {'he': _he, 'yi': _yi}
 
 CATALOG.update({
+    'Edit supporter': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
+    'EDIT SUPPORTER': {'he': 'עריכת תומך', 'yi': 'עדיטן דעם העלפער'},
+    'Under supporter': {'he': 'תחת תומך', 'yi': 'אונטערן העלפער'},
+    'Top-level supporter': {'he': 'תומך ברמה ראשית', 'yi': 'הויפט העלפער'},
+    'Use this when the person is a child or son-in-law of another supporter.': {
+        'he': 'השתמשו בזה כאשר האדם הוא ילד או חתן של תומך אחר.',
+        'yi': 'ניצט דאס ווען דער מענטש איז א קינד אדער איידעם פון אן אנדערן העלפער.'
+    },
+    'Choose a valid parent supporter.': {'he': 'בחרו תומך אב תקין.', 'yi': 'קלויבט אויס א גילטיגן הויפט העלפער.'},
+    'Supporter updated.': {'he': 'התומך עודכן.', 'yi': 'דער העלפער איז אפדעיטעד.'},
+    'Updated supporter details: ': {'he': 'עודכנו פרטי תומך: ', 'yi': 'אפדעיטעד די פרטים פונעם העלפער: '},
+    'Supporters are managed in one central list.': {'he': 'התומכים מנוהלים ברשימה מרכזית אחת.', 'yi': 'מען פירט אלע העלפער אין איין צענטראלע ליסטע.'},
+    'Manage supporters': {'he': 'ניהול תומכים', 'yi': 'פירן די העלפער'},
+    'Show all supporters': {'he': 'הצגת כל התומכים', 'yi': 'ווייז אלע העלפער'},
     'Actions': {'he': 'פעולות', 'yi': 'אקציעס'},
     'Supporter history': {'he': 'היסטוריית תומך', 'yi': 'היסטאריע פונעם העלפער'},
     'SUPPORTER HISTORY': {'he': 'היסטוריית תומך', 'yi': 'היסטאריע פונעם העלפער'},

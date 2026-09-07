@@ -95,6 +95,7 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
         assert len(contacts) == 2
         assert contacts[0].supporter_key == contacts[1].supporter_key
         assert all(contact.status == 'Pledged' and contact.monthly_cents == 3600 for contact in contacts)
+        first_contact_id = contacts[0].id
         second_contact_id = contacts[1].id
     assert post(client, f'/contacts/{second_contact_id}', {
         'status':'Pledged', 'monthly':'50'}).status_code == 302
@@ -106,7 +107,7 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     # supporter must be counted once ($230 total), never twice ($280 total).
     assert '$230.00' in dashboard
     assert '$280.00' not in dashboard
-    assert '2 connected cases' in client.get(f'/families/{first_id}').text
+    assert '2' in client.get(f'/supporters/{first_contact_id}').text
 
 def test_supporter_history_and_safe_duplicate_deletion(app, client):
     for name in ('History family A', 'History family B'):
@@ -159,10 +160,10 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
             ContactChild.contact_id == contact_id).order_by(ContactChild.id)).all()
         assert [(child.name, child.spouse_name) for child in children] == [
             ('Married child one', 'Spouse one'), ('Married child two', 'Spouse two')]
-    profile = client.get('/families/1').text
-    assert 'Married child one' in profile
-    assert 'Spouse one' in profile
-    assert 'Niece / nephew of applicant' in profile
+    supporter_page = client.get(f'/supporters/{contact_id}').text
+    assert 'Married child one' in supporter_page
+    assert 'Spouse one' in supporter_page
+    assert 'Niece / nephew of applicant' in supporter_page
     assert post(client, f'/contacts/{contact_id}/children', {
         'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
 
@@ -170,7 +171,7 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
     ('en', 'Nephew'), ('he', 'אחיין'), ('yi', 'פלימעניק')])
 def test_nephew_is_available_as_applicant_relationship(app, client, language, label):
     client.get(f'/language/{language}')
-    page = client.get('/families/1').text
+    page = client.get('/supporters?family_id=1').text
     assert f'<option value="Nephew">{label}</option>' in page
     assert post(client, '/families/1/contacts', {
         'name':'Sibling child', 'relationship':'Nephew',
@@ -193,10 +194,35 @@ def test_supporter_donation_frequency_is_saved_and_used_in_monthly_total(app, cl
         assert weekly.monthly_equivalent_cents == 5200
         assert one_time.pledge_frequency == 'One time'
         assert one_time.monthly_equivalent_cents == 0
+        weekly_id, one_time_id = weekly.id, one_time.id
+    weekly_edit = client.get(f'/contacts/{weekly_id}/edit').text
+    one_time_edit = client.get(f'/contacts/{one_time_id}/edit').text
+    assert 'value="Weekly" selected' in weekly_edit
+    assert 'value="One time" selected' in one_time_edit
+    assert '$232.00' in client.get('/families/1').text
+
+def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client):
+    for name, relationship in (('Shlomo supporter', 'Sibling'), ('Hersh son-in-law', 'Nephew')):
+        assert post(client, '/families/1/contacts', {
+            'name': name, 'relationship': relationship,
+            'status': 'To contact', 'monthly': '0'}).status_code == 302
+    with app.app_context():
+        shlomo = db.session.scalar(db.select(Contact).where(Contact.name == 'Shlomo supporter'))
+        hersh = db.session.scalar(db.select(Contact).where(Contact.name == 'Hersh son-in-law'))
+        shlomo_id, hersh_id = shlomo.id, hersh.id
+    assert post(client, f'/contacts/{hersh_id}/edit', {
+        'name': 'Hersh Levy', 'phone': '845-555-0111', 'relationship': 'Nephew',
+        'parent_contact_id': str(shlomo_id), 'status': 'Contacted',
+        'monthly': '10', 'pledge_frequency': 'Monthly'}).status_code == 302
+    with app.app_context():
+        hersh = db.session.get(Contact, hersh_id)
+        assert (hersh.name, hersh.relationship, hersh.parent_contact_id) == (
+            'Hersh Levy', 'Nephew', shlomo_id)
+    supporter_list = client.get('/supporters?family_id=1').text
+    assert 'Hersh Levy' in supporter_list and 'Shlomo supporter' in supporter_list
     profile = client.get('/families/1').text
-    assert 'selected value="Weekly"' in profile
-    assert 'selected value="One time"' in profile
-    assert '$232.00' in profile
+    assert 'Manage supporters' in profile
+    assert 'name="pledge_frequency"' not in profile
 
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
@@ -567,7 +593,7 @@ def test_office_and_fundraiser_permissions_and_isolation(monkeypatch):
     assert 'Assigned household' in summary and 'Private household' not in summary
     assert 'CONFIDENTIAL' not in summary and 'PRIVATE PAYEE' not in summary
     detail = fundraiser_client.get(f'/fundraising/{assigned_id}')
-    assert detail.status_code == 200 and 'Assigned donor' in detail.text
+    assert detail.status_code == 200 and f'/supporters?family_id={assigned_id}' in detail.text
     for confidential in ('CONFIDENTIAL ADDRESS', 'CONFIDENTIAL MEDICAL NOTES', 'PRIVATE PAYEE'):
         assert confidential not in detail.text
     assert fundraiser_client.get(f'/fundraising/{private_id}').status_code == 403
