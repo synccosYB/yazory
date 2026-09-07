@@ -818,6 +818,21 @@ def create_app(test_config=None):
         pledge = amount('monthly', allow_zero=status!='Pledged')
         pledge_frequency = field('pledge_frequency') or 'Monthly'
         if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
+        parent_contact_id = request.form.get('parent_contact_id', type=int)
+        parent_connection = field('parent_connection')
+        if parent_contact_id:
+            parent = db.session.scalar(select(Contact).where(
+                Contact.id == parent_contact_id,
+                Contact.family_id == family_id,
+                Contact.parent_contact_id.is_(None)))
+            if parent is None:
+                abort(400, 'Choose a valid parent supporter.')
+            if not parent_connection:
+                parent_connection = 'Son-in-law'
+            if parent_connection not in ('Son', 'Son-in-law'):
+                abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+        else:
+            parent_connection = ''
         name = field('name', True)
         phone = field('phone', limit=80)
         key = supporter_key(name, phone)
@@ -831,7 +846,8 @@ def create_app(test_config=None):
             if not phone:
                 phone = existing.phone
         db.session.add(Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
-                               supporter_key=key, monthly_cents=pledge,
+                               supporter_key=key, parent_contact_id=parent_contact_id,
+                               parent_connection=parent_connection, monthly_cents=pledge,
                                pledge_frequency=pledge_frequency, status=status))
         audit('Added donor network contact', family_id)
         db.session.commit()
@@ -1154,11 +1170,15 @@ def create_app(test_config=None):
             family_statement = family_statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
                 FamilyAssignment.staff_user_id == current_user().id)))
         families = db.session.scalars(family_statement).all()
+        family_ids = [family.id for family in families]
+        possible_parents = db.session.scalars(select(Contact).where(
+            Contact.family_id.in_(family_ids), Contact.parent_contact_id.is_(None)
+        ).order_by(Contact.family_id, Contact.name)).all() if family_ids else []
         totals = {c.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
             Receipt.contact_id == c.id)) for c in contacts}
         return render_template('supporters.html', title='Supporters', contacts=contacts,
                                received=totals, query=query, families=families,
-                               selected_family_id=family_id)
+                               selected_family_id=family_id, possible_parents=possible_parents)
 
     @app.get('/supporters/<int:contact_id>')
     def supporter_detail(contact_id):

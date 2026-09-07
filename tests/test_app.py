@@ -227,6 +227,20 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert 'Manage supporters' in profile
     assert 'name="pledge_frequency"' not in profile
 
+def test_nested_supporter_can_be_connected_when_first_added(app, client):
+    assert post(client, '/families/1/contacts', {
+        'name': 'Brother', 'relationship': 'Sibling',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    with app.app_context():
+        brother_id = db.session.scalar(db.select(Contact.id).where(Contact.name == 'Brother'))
+    assert post(client, '/families/1/contacts', {
+        'name': 'Brother son', 'relationship': 'Nephew',
+        'parent_contact_id': str(brother_id), 'parent_connection': 'Son',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    with app.app_context():
+        nephew = db.session.scalar(db.select(Contact).where(Contact.name == 'Brother son'))
+        assert (nephew.parent_contact_id, nephew.parent_connection) == (brother_id, 'Son')
+
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
