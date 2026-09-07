@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import select, func, UniqueConstraint
+from sqlalchemy import select, func, UniqueConstraint, inspect, text
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -26,6 +26,9 @@ class Family(db.Model):
     spouse = db.Column(db.String(160), default='')
     phone = db.Column(db.String(80), default='')
     address = db.Column(db.String(300), default='')
+    city = db.Column(db.String(120), default='')
+    state = db.Column(db.String(80), default='')
+    zip_code = db.Column(db.String(20), default='')
     father = db.Column(db.String(160), default='')
     inlaws = db.Column(db.String(160), default='')
     rabbi = db.Column(db.String(160), default='')
@@ -38,6 +41,13 @@ class Family(db.Model):
     expenses = db.relationship('Expense', backref='family', lazy=True)
     documents = db.relationship('Document', backref='family', lazy=True, cascade='all, delete-orphan')
     assignments = db.relationship('FamilyAssignment', backref='family', lazy=True, cascade='all, delete-orphan')
+
+    @property
+    def full_address(self):
+        locality = ', '.join(part for part in (self.city, self.state) if part)
+        if self.zip_code:
+            locality = f'{locality} {self.zip_code}'.strip()
+        return ', '.join(part for part in (self.address, locality) if part)
 
 class HouseholdIntake(db.Model):
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
@@ -339,7 +349,7 @@ def create_app(test_config=None):
 
     def intake_form(family, title, error=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
-            ('name','spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances')} if family else {})
+            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances')} if family else {})
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
         if error:
             budget.update(request.form)
@@ -368,7 +378,7 @@ def create_app(test_config=None):
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
-            family = Family(name=field('name', True), **{k: field(k, limit=300 if k=='address' else 80 if k=='phone' else 160) for k in ['spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
+            family = Family(name=field('name', True), **{k: field(k, limit={'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
             save_intake(family, intake_data)
@@ -390,8 +400,9 @@ def create_app(test_config=None):
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
-            for key in ['name','spouse','phone','address','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances']:
-                setattr(family, key, field(key, required=key=='name', limit=5000 if key=='circumstances' else 300 if key=='address' else 80 if key=='phone' else 160))
+            limits = {'circumstances':5000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}
+            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances']:
+                setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
             db.session.commit()
@@ -704,6 +715,15 @@ def create_app(test_config=None):
     @app.cli.command('init-db')
     def init_db():
         db.create_all()
+        family_columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
+        for column, definition in {
+            'city': 'VARCHAR(120)',
+            'state': 'VARCHAR(80)',
+            'zip_code': 'VARCHAR(20)',
+        }.items():
+            if column not in family_columns:
+                db.session.execute(text(f'ALTER TABLE family ADD COLUMN {column} {definition} DEFAULT \'\''))
+        db.session.commit()
         ensure_bootstrap_owner()
         print('Database initialized. Existing records preserved.')
 
