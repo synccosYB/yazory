@@ -212,7 +212,7 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
         shlomo_id, hersh_id = shlomo.id, hersh.id
     assert post(client, f'/contacts/{hersh_id}/edit', {
         'name': 'Hersh Levy', 'phone': '845-555-0111', 'relationship': 'Nephew',
-        'parent_contact_id': str(shlomo_id), 'parent_connection': 'Son-in-law', 'status': 'Contacted',
+        'parent_contact_id': str(shlomo_id), 'status': 'Contacted',
         'monthly': '10', 'pledge_frequency': 'Monthly'}).status_code == 302
     with app.app_context():
         hersh = db.session.get(Contact, hersh_id)
