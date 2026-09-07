@@ -131,6 +131,19 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
     assert post(client, f'/contacts/{contact_id}/children', {
         'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
 
+@pytest.mark.parametrize('language,label', [
+    ('en', 'Nephew'), ('he', 'אחיין'), ('yi', 'פלימעניק')])
+def test_nephew_is_available_as_applicant_relationship(app, client, language, label):
+    client.get(f'/language/{language}')
+    page = client.get('/families/1').text
+    assert f'<option value="Nephew">{label}</option>' in page
+    assert post(client, '/families/1/contacts', {
+        'name':'Sibling child', 'relationship':'Nephew',
+        'status':'To contact', 'monthly':'0'}).status_code == 302
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact).where(Contact.name == 'Sibling child'))
+        assert contact.relationship == 'Nephew'
+
 def test_supporter_donation_frequency_is_saved_and_used_in_monthly_total(app, client):
     assert post(client, '/families/1/contacts', {
         'name':'Weekly donor', 'relationship':'Friend', 'status':'Pledged',
@@ -154,11 +167,27 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
                   'inlaws_maiden_name', 'inlaws_family', 'rabbi',
-                  'weekday_shul', 'shabbos_shul', 'circumstances'):
+                  'weekday_shul', 'shabbos_shul', 'shul_gabbai',
+                  'shul_gabbai_phone', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
     assert 'name="rabbi"' in edit.text
+
+def test_shul_gabbai_name_and_phone_are_saved(app, client):
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'shul_gabbai': 'Moshe Klein',
+        'shul_gabbai_phone': '845-555-0199',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        assert family.shul_gabbai == 'Moshe Klein'
+        assert family.shul_gabbai_phone == '845-555-0199'
+    profile = client.get('/families/1').text
+    assert 'Moshe Klein' in profile
+    assert '845-555-0199' in profile
 
 def test_profile_print_report_lists_and_filters_donations(app, client):
     with app.app_context():
