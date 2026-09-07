@@ -131,6 +131,19 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
     assert post(client, f'/contacts/{contact_id}/children', {
         'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
 
+@pytest.mark.parametrize('language,label', [
+    ('en', 'Nephew'), ('he', 'אחיין'), ('yi', 'פלימעניק')])
+def test_nephew_is_available_as_applicant_relationship(app, client, language, label):
+    client.get(f'/language/{language}')
+    page = client.get('/families/1').text
+    assert f'<option value="Nephew">{label}</option>' in page
+    assert post(client, '/families/1/contacts', {
+        'name':'Sibling child', 'relationship':'Nephew',
+        'status':'To contact', 'monthly':'0'}).status_code == 302
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact).where(Contact.name == 'Sibling child'))
+        assert contact.relationship == 'Nephew'
+
 def test_supporter_donation_frequency_is_saved_and_used_in_monthly_total(app, client):
     assert post(client, '/families/1/contacts', {
         'name':'Weekly donor', 'relationship':'Friend', 'status':'Pledged',
