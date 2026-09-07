@@ -335,10 +335,6 @@ def create_app(test_config=None):
             ))
             # Nested supporters previously displayed as sons-in-law, so retain
             # that meaning for existing records while making it explicit.
-            db.session.execute(text(
-                "UPDATE contact SET parent_connection = 'Son-in-law' "
-                "WHERE parent_contact_id IS NOT NULL AND parent_connection = ''"
-            ))
         db.session.commit()
 
     def current_user():
@@ -827,8 +823,6 @@ def create_app(test_config=None):
                 Contact.parent_contact_id.is_(None)))
             if parent is None:
                 abort(400, 'Choose a valid parent supporter.')
-            if not parent_connection:
-                parent_connection = 'Son-in-law'
             if parent_connection not in ('Son', 'Son-in-law'):
                 abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
         else:
@@ -900,10 +894,6 @@ def create_app(test_config=None):
             if parent_contact_id and not any(row.id == parent_contact_id for row in possible_parents):
                 abort(400, 'Choose a valid parent supporter.')
             parent_connection = field('parent_connection')
-            if parent_contact_id and not parent_connection:
-                # Existing forms and records predate this field. Preserve their
-                # former meaning instead of sending the user to an error page.
-                parent_connection = 'Son-in-law'
             if parent_contact_id and parent_connection not in ('Son', 'Son-in-law'):
                 abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
             if not parent_contact_id:

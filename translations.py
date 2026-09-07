@@ -558,6 +558,7 @@ CATALOG.update({
         'yi': 'קלויבט אויס צי דער מענטש איז א זון אדער איידעם פונעם אויסגעקליבענעם העלפער.'
     },
     'Son-in-law of': {'he': 'חתן של', 'yi': 'איידעם ביי'},
+    'Son or son-in-law of': {'he': 'בן או חתן של', 'yi': 'זון אדער איידעם ביי'},
     'of the applicant': {'he': 'של הפונה', 'yi': 'פונעם אפליקאנט'},
     'Top-level supporter': {'he': 'תומך ברמה ראשית', 'yi': 'הויפט העלפער'},
     'Use this when the person is a child or son-in-law of another supporter.': {
