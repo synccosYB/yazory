@@ -212,7 +212,7 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
         shlomo_id, hersh_id = shlomo.id, hersh.id
     assert post(client, f'/contacts/{hersh_id}/edit', {
         'name': 'Hersh Levy', 'phone': '845-555-0111', 'relationship': 'Nephew',
-        'parent_contact_id': str(shlomo_id), 'status': 'Contacted',
+        'parent_contact_id': str(shlomo_id), 'parent_connection': 'Son-in-law', 'status': 'Contacted',
         'monthly': '10', 'pledge_frequency': 'Monthly'}).status_code == 302
     with app.app_context():
         hersh = db.session.get(Contact, hersh_id)
@@ -225,7 +225,8 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_detail
     profile = client.get('/families/1').text
     assert 'Manage supporters' in profile
-    assert 'name="pledge_frequency"' not in profile
+    assert 'name="pledge_frequency"' in profile
+    assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in profile
 
 def test_nested_supporter_can_be_connected_when_first_added(app, client):
     assert post(client, '/families/1/contacts', {
@@ -240,6 +241,12 @@ def test_nested_supporter_can_be_connected_when_first_added(app, client):
     with app.app_context():
         nephew = db.session.scalar(db.select(Contact).where(Contact.name == 'Brother son'))
         assert (nephew.parent_contact_id, nephew.parent_connection) == (brother_id, 'Son')
+
+    response = post(client, '/families/1/contacts', {
+        'name': 'Unspecified connection', 'relationship': 'Nephew',
+        'parent_contact_id': str(brother_id),
+        'status': 'To contact', 'monthly': '0'})
+    assert response.status_code == 400
 
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
