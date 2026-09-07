@@ -212,12 +212,12 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
         shlomo_id, hersh_id = shlomo.id, hersh.id
     assert post(client, f'/contacts/{hersh_id}/edit', {
         'name': 'Hersh Levy', 'phone': '845-555-0111', 'relationship': 'Nephew',
-        'parent_contact_id': str(shlomo_id), 'status': 'Contacted',
+        'parent_contact_id': str(shlomo_id), 'parent_connection': 'Son-in-law', 'status': 'Contacted',
         'monthly': '10', 'pledge_frequency': 'Monthly'}).status_code == 302
     with app.app_context():
         hersh = db.session.get(Contact, hersh_id)
-        assert (hersh.name, hersh.relationship, hersh.parent_contact_id) == (
-            'Hersh Levy', 'Nephew', shlomo_id)
+        assert (hersh.name, hersh.relationship, hersh.parent_contact_id, hersh.parent_connection) == (
+            'Hersh Levy', 'Nephew', shlomo_id, 'Son-in-law')
     supporter_list = client.get('/supporters?family_id=1').text
     assert 'Hersh Levy' in supporter_list and 'Shlomo supporter' in supporter_list
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_list
