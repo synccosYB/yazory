@@ -54,6 +54,37 @@ def test_case_and_expense_workflow(app, client):
         assert len(db.session.scalars(db.select(Audit).where(Audit.family_id==family_id)).all())==8
         assert db.session.execute(db.select(Contact.monthly_cents).where(Contact.family_id==family_id)).scalar_one()==1825
 
+def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
+    for name in ('Case A', 'Case B'):
+        assert post(client, '/families/new', {'name':name}).status_code == 302
+    with app.app_context():
+        families = db.session.scalars(db.select(Family).where(Family.name.in_(('Case A', 'Case B'))).order_by(Family.name)).all()
+        for family in families:
+            family.status = 'Active'
+        db.session.commit()
+        first_id, second_id = (family.id for family in families)
+    assert post(client, f'/families/{first_id}/contacts', {
+        'name':'Shared supporter', 'phone':'845-555-0123',
+        'relationship':'In-law’s maiden family', 'status':'Pledged', 'monthly':'36'}).status_code == 302
+    assert post(client, f'/families/{second_id}/contacts', {
+        'name':'Shared supporter', 'phone':'(845) 555-0123',
+        'relationship':'First cousin', 'status':'To contact', 'monthly':'0'}).status_code == 302
+    with app.app_context():
+        contacts = db.session.scalars(db.select(Contact).where(Contact.name == 'Shared supporter').order_by(Contact.id)).all()
+        assert len(contacts) == 2
+        assert contacts[0].supporter_key == contacts[1].supporter_key
+        assert all(contact.status == 'Pledged' and contact.monthly_cents == 3600 for contact in contacts)
+        second_contact_id = contacts[1].id
+    assert post(client, f'/contacts/{second_contact_id}', {
+        'status':'Pledged', 'monthly':'50'}).status_code == 302
+    with app.app_context():
+        assert all(contact.monthly_cents == 5000 for contact in db.session.scalars(
+            db.select(Contact).where(Contact.name == 'Shared supporter')).all())
+    dashboard = client.get('/').text
+    assert '$50.00' in dashboard
+    assert '$100.00' not in dashboard
+    assert '2 connected cases' in client.get(f'/families/{first_id}').text
+
 @pytest.mark.parametrize('amount',['NaN','Infinity','-1','0','1.001','1000001','bad'])
 def test_invalid_money(client,amount):
     assert post(client,'/families/1/expenses',{'category':'Groceries','payee':'Shop','amount':amount,'month':'2026-09'}).status_code==400

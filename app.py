@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import select, func, UniqueConstraint, inspect, text
+from sqlalchemy import select, func, UniqueConstraint, inspect, text, case, cast, String
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -31,6 +31,8 @@ class Family(db.Model):
     zip_code = db.Column(db.String(20), default='')
     father = db.Column(db.String(160), default='')
     inlaws = db.Column(db.String(160), default='')
+    inlaws_maiden_name = db.Column(db.String(160), default='')
+    inlaws_family = db.Column(db.Text, default='')
     rabbi = db.Column(db.String(160), default='')
     weekday_shul = db.Column(db.String(160), default='')
     shabbos_shul = db.Column(db.String(160), default='')
@@ -92,6 +94,9 @@ class Contact(db.Model):
     name = db.Column(db.String(160), nullable=False)
     relationship = db.Column(db.String(80), nullable=False)
     phone = db.Column(db.String(80), default='')
+    # The same real person may support several cases.  This stable key keeps the
+    # case-specific relationship rows linked to one billing identity.
+    supporter_key = db.Column(db.String(200), nullable=False, default='', index=True)
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
     status = db.Column(db.String(30), default='To contact', nullable=False)
     receipts = db.relationship('Receipt', backref='contact', lazy=True)
@@ -142,7 +147,7 @@ DEFAULT_CHILD_BANDS = [{'min_age': 0, 'max_age': 5, 'amount_cents': 0},
                        {'min_age': 6, 'max_age': 12, 'amount_cents': 0},
                        {'min_age': 13, 'max_age': 30, 'amount_cents': 0}]
 CATEGORIES = DEFAULT_CATEGORIES
-RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
+RELATIONSHIPS = ['Sibling', 'Spouse’s sibling', 'In-law’s maiden family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
 CONTACT_STATUSES = ['To contact', 'Contacted', 'Pledged', 'Paused', 'Declined']
 
 def valid_werkzeug_password_hash(value):
@@ -180,6 +185,32 @@ def create_app(test_config=None):
     def money(cents):
         return f'${(cents or 0)/100:,.2f}'
 
+    def supporter_key(name, phone):
+        """Identify one supporter across cases, preferring a normalized phone."""
+        digits = re.sub(r'\D', '', phone or '')
+        if len(digits) >= 7:
+            return 'phone:' + digits[-10:]
+        normalized_name = re.sub(r'[^\w]+', '', (name or '').casefold())
+        return 'name:' + normalized_name
+
+    def linked_contact_count(contact):
+        if not contact.supporter_key:
+            return 1
+        return db.session.scalar(select(func.count(func.distinct(Contact.family_id))).where(
+            Contact.supporter_key == contact.supporter_key)) or 1
+
+    def unique_pledged_total(family_ids=None):
+        identity = case(
+            (Contact.supporter_key != '', Contact.supporter_key),
+            else_='legacy:' + cast(Contact.id, String))
+        statement = select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(
+            Contact.status == 'Pledged',
+            Contact.id.in_(select(func.min(Contact.id)).where(Contact.status == 'Pledged').group_by(
+                identity)))
+        if family_ids is not None:
+            statement = statement.where(Contact.family_id.in_(family_ids))
+        return db.session.scalar(statement) or 0
+
     def ensure_bootstrap_owner():
         """Create the configured owner once; never replace an existing password."""
         if app.config['DEMO']:
@@ -207,6 +238,8 @@ def create_app(test_config=None):
             'city': 'VARCHAR(120)',
             'state': 'VARCHAR(80)',
             'zip_code': 'VARCHAR(20)',
+            'inlaws_maiden_name': 'VARCHAR(160)',
+            'inlaws_family': 'TEXT',
         }.items():
             if column not in family_columns:
                 db.session.execute(text(
@@ -405,7 +438,8 @@ def create_app(test_config=None):
         month = datetime.now().strftime('%Y-%m')
         expenses = db.session.scalars(select(Expense).where(Expense.month == month, Expense.family_id.in_(family_ids))).all()
         network_visible = organization_admin() or bool(current_user() and current_user().role in ('family_admin', 'fundraiser'))
-        pledged = db.session.scalar(select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(Contact.status == 'Pledged', Contact.family_id.in_(select(Family.id).where(Family.status == 'Active', Family.id.in_(family_ids))))) if network_visible else 0
+        active_family_ids = select(Family.id).where(Family.status == 'Active', Family.id.in_(family_ids))
+        pledged = unique_pledged_total(active_family_ids) if network_visible else 0
         requested_statement = select(Expense).where(Expense.status == 'Requested').order_by(Expense.id.desc())
         if not organization_admin():
             requested_statement = requested_statement.where(Expense.family_id.in_(
@@ -433,7 +467,7 @@ def create_app(test_config=None):
 
     def intake_form(family, title, error=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
-            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances')} if family else {})
+            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','weekday_shul','shabbos_shul','circumstances')} if family else {})
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
         if error:
             budget.update(request.form)
@@ -462,7 +496,8 @@ def create_app(test_config=None):
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
-            family = Family(name=field('name', True), **{k: field(k, limit={'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
+            limits = {'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'inlaws_family':1000}
+            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','weekday_shul','shabbos_shul']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
             save_intake(family, intake_data)
@@ -484,8 +519,8 @@ def create_app(test_config=None):
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
-            limits = {'circumstances':5000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}
-            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','rabbi','weekday_shul','shabbos_shul','circumstances']:
+            limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80}
+            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','weekday_shul','shabbos_shul','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
@@ -501,6 +536,8 @@ def create_app(test_config=None):
         if current_user() and current_user().role == 'office_employee':
             return render_template('family_office_with_documents.html', title=family.name, family=family)
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
+        for contact in family.contacts:
+            contact.connected_cases = linked_contact_count(contact)
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                budget=budget_totals(family),
                                pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged'))
@@ -572,7 +609,20 @@ def create_app(test_config=None):
         status = field('status', True)
         if relationship not in RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
         pledge = amount('monthly', allow_zero=status!='Pledged')
-        db.session.add(Contact(family_id=family_id, name=field('name', True), relationship=relationship, phone=field('phone', limit=80), monthly_cents=pledge, status=status))
+        name = field('name', True)
+        phone = field('phone', limit=80)
+        key = supporter_key(name, phone)
+        existing = db.session.scalar(select(Contact).where(Contact.supporter_key == key).order_by(Contact.id))
+        duplicate_case = db.session.scalar(select(Contact.id).where(
+            Contact.family_id == family_id, Contact.supporter_key == key))
+        if duplicate_case:
+            abort(400, 'This supporter is already connected to this case.')
+        if existing:
+            pledge, status = existing.monthly_cents, existing.status
+            if not phone:
+                phone = existing.phone
+        db.session.add(Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
+                               supporter_key=key, monthly_cents=pledge, status=status))
         audit('Added donor network contact', family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=family_id))
@@ -587,8 +637,13 @@ def create_app(test_config=None):
             abort(403, 'You are not assigned to this family.')
         status = field('status', True)
         if status not in CONTACT_STATUSES: abort(400)
-        contact.status = status
-        contact.monthly_cents = amount('monthly', allow_zero=status!='Pledged')
+        monthly_cents = amount('monthly', allow_zero=status!='Pledged')
+        linked = [contact]
+        if contact.supporter_key:
+            linked = db.session.scalars(select(Contact).where(Contact.supporter_key == contact.supporter_key)).all()
+        for linked_contact in linked:
+            linked_contact.status = status
+            linked_contact.monthly_cents = monthly_cents
         audit(f'Updated donor pledge: {status}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
@@ -675,6 +730,8 @@ def create_app(test_config=None):
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
                 FamilyAssignment.staff_user_id == current_user().id)))
         families = db.session.execute(statement).all()
+        # Each case still shows the supporter commitment attributed to it. The
+        # organization dashboard/billing rollup de-duplicates the shared person.
         pledged = {
             family.id: db.session.scalar(select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(
                 Contact.family_id == family.id, Contact.status == 'Pledged'))
@@ -702,6 +759,8 @@ def create_app(test_config=None):
         if family is None:
             abort(404)
         contacts = db.session.scalars(select(Contact).where(Contact.family_id == family.id).order_by(Contact.id)).all()
+        for contact in contacts:
+            contact.connected_cases = linked_contact_count(contact)
         pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged')
         return render_template('fundraising_detail.html', title='Fundraising workspace', family=family,
                                contacts=contacts, pledged=pledged)
@@ -947,6 +1006,14 @@ def create_app(test_config=None):
     @app.cli.command('init-db')
     def init_db():
         ensure_schema()
+        contact_columns = {column['name'] for column in inspect(db.engine).get_columns('contact')}
+        if 'supporter_key' not in contact_columns:
+            db.session.execute(text("ALTER TABLE contact ADD COLUMN supporter_key VARCHAR(200) DEFAULT '' NOT NULL"))
+        db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_contact_supporter_key ON contact (supporter_key)'))
+        db.session.commit()
+        for contact in db.session.scalars(select(Contact).where(Contact.supporter_key == '')).all():
+            contact.supporter_key = supporter_key(contact.name, contact.phone)
+        db.session.commit()
         ensure_bootstrap_owner()
         print('Database initialized. Existing records preserved.')
 
