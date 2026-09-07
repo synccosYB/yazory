@@ -3,7 +3,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 MONEY_FIELDS = ('rent', 'food', 'his_income', 'her_income', 'other_income', 'foodstamps_amount')
-TEXT_FIELDS = ('name_en', 'name_yi', 'spouse_en', 'spouse_yi', 'street', 'city', 'state', 'zip')
+TEXT_FIELDS = ('name_en', 'name_yi', 'spouse_en', 'spouse_yi')
 
 def validate_intake(form):
     def text(key, limit=300):
