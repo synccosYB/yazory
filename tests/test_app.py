@@ -125,6 +125,20 @@ def test_language_keeps_user_content(client):
     post(client,'/families/new',{'name':'Original family name'})
     assert 'Original family name' in client.get('/families').text
 
+def test_family_address_parts_are_saved_and_displayed(app, client):
+    response = post(client, '/families/new', {
+        'name':'Address family', 'address':'12 Main Street', 'city':'Monroe',
+        'state':'NY', 'zip_code':'10950',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).where(Family.name == 'Address family'))
+        assert (family.address, family.city, family.state, family.zip_code) == (
+            '12 Main Street', 'Monroe', 'NY', '10950')
+        family_id = family.id
+    page = client.get(f'/families/{family_id}').text
+    assert '12 Main Street, Monroe, NY 10950' in page
+
 def test_roles_assignments_and_bootstrap_isolation(monkeypatch):
     """Roles are enforced from the database, including after an assignment is revoked."""
     for key in ['APP_ENV','DATABASE_URL','ADMIN_EMAIL','ADMIN_PASSWORD_HASH','SESSION_SECRET']:
