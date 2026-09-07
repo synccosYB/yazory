@@ -209,7 +209,17 @@ def create_app(test_config=None):
     demo = not password_hash
     if production and (demo or len(secret) < 32 or not admin_email or not database.startswith('postgresql+psycopg://') or not valid_werkzeug_password_hash(password_hash)):
         raise RuntimeError('Production requires PostgreSQL DATABASE_URL, ADMIN_EMAIL, a valid Werkzeug ADMIN_PASSWORD_HASH and SESSION_SECRET (32+ characters).')
-    app.config.update(SECRET_KEY=secret or secrets.token_hex(32), SQLALCHEMY_DATABASE_URI=database, SQLALCHEMY_TRACK_MODIFICATIONS=False, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=production, PERMANENT_SESSION_LIFETIME=timedelta(minutes=30), MAX_CONTENT_LENGTH=10*1024*1024, DEMO=demo, ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash)
+    app.config.update(SECRET_KEY=secret or secrets.token_hex(32), SQLALCHEMY_DATABASE_URI=database,
+                      SQLALCHEMY_TRACK_MODIFICATIONS=False,
+                      # Replit may restart its managed Postgres service while a
+                      # deployment is still serving. Validate pooled connections
+                      # before reuse and periodically replace long-lived ones.
+                      SQLALCHEMY_ENGINE_OPTIONS={'pool_pre_ping': True, 'pool_recycle': 300},
+                      SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
+                      SESSION_COOKIE_SECURE=production,
+                      PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+                      MAX_CONTENT_LENGTH=10*1024*1024, DEMO=demo,
+                      ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash)
     if test_config:
         app.config.update(test_config)
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
