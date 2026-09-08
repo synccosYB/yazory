@@ -74,7 +74,22 @@ def test_zero_pledge_defaults_to_valid_one_dollar_checkout_amount():
         contact_id = contact.id
     page = client.get(f'/supporters/{contact_id}').text
     assert 'value="1.00"' in page
+    assert 'method="get"' in page
     assert 'type="submit"' in page
+
+
+def test_checkout_can_open_through_plain_get_navigation(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+    monkeypatch.setattr(app_module, 'create_checkout_session',
+                        lambda *_args: {'id': 'cs_get_1',
+                                       'url': 'https://checkout.stripe.test/cs_get_1'})
+    response = client.get(
+        f'/supporters/{contact_id}/stripe-checkout?amount=1.00&frequency=One+time')
+    assert response.status_code == 303
+    assert response.location == 'https://checkout.stripe.test/cs_get_1'
 
 
 def test_checkout_failure_returns_to_supporter_with_visible_error(monkeypatch):

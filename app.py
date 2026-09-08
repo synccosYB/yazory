@@ -910,7 +910,7 @@ def create_app(test_config=None):
     def donation_policy():
         return public_page('donation-policy', 'Donation and recurring payment policy')
 
-    @app.post('/supporters/<int:contact_id>/stripe-checkout')
+    @app.route('/supporters/<int:contact_id>/stripe-checkout', methods=['GET', 'POST'])
     def stripe_checkout(contact_id):
         """Create a Stripe-hosted payment page; Yazory never receives card details."""
         require_capability(('family_admin', 'fundraiser'))
@@ -919,8 +919,19 @@ def create_app(test_config=None):
         contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
         if contact is None:
             abort(403, 'You are not assigned to this family.')
-        payment_amount = amount('amount')
-        frequency = field('frequency', True, 20)
+        if request.method == 'GET':
+            try:
+                entered_amount = Decimal(request.args.get('amount', ''))
+                if (not entered_amount.is_finite() or entered_amount <= 0 or
+                        entered_amount > 1000000 or entered_amount.as_tuple().exponent < -2):
+                    raise ValueError()
+                payment_amount = int(entered_amount * 100)
+            except (InvalidOperation, ValueError):
+                abort(400, 'Enter a valid amount with up to two decimal places, no greater than $1,000,000.')
+            frequency = request.args.get('frequency', '')[:20]
+        else:
+            payment_amount = amount('amount')
+            frequency = field('frequency', True, 20)
         if frequency not in PLEDGE_FREQUENCIES:
             abort(400, 'Choose a valid donation frequency.')
         # Do not write to the database before opening Checkout. A blocked
