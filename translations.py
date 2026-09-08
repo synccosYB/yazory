@@ -5,6 +5,35 @@ LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 # English | Hebrew | Heimish Yiddish
 _ROWS = '''
 Overview|לוח בקרה|איבערבליק
+COMMUNITY DIRECTORY|רשימת הקהילה|די קהילה ליסטעס
+Shul list|רשימת בתי כנסת|שול ליסטע
+Yeshivah list|רשימת ישיבות|ישיבה ליסטע
+Keep one central list and connect each person to the shuls and yeshivahs in their history.|נהלו רשימה מרכזית אחת וחברו כל אדם לבתי הכנסת ולישיבות שבהיסטוריה שלו.|האלט איין צענטראלע ליסטע און פארבינדט יעדן מענטש מיט זיינע שולן און ישיבות.
++ Add shul|+ הוספת בית כנסת|+ צולייגן א שול
++ Add yeshivah|+ הוספת ישיבה|+ צולייגן א ישיבה
+Search shuls|חיפוש בתי כנסת|זוכן שולן
+Search yeshivahs|חיפוש ישיבות|זוכן ישיבות
+Person|אדם|מענטש
+Person *|אדם *|מענטש *
+Type|סוג|סארט
+Family / context|משפחה / הקשר|משפחה / שייכות
+Under|תחת|אונטער
+Years attended|שנות לימוד|יארן געלערנט
+Grade *|כיתה *|כתה *
+From year|משנה|פון יאר
+To year|עד שנה|ביז יאר
+people|אנשים|מענטשן
+Connect a person|חיבור אדם|פארבינדן א מענטש
+Connect person|חיבור אדם|פארבינדן דעם מענטש
+No people connected yet.|עדיין לא חוברו אנשים.|נאך קיינער נישט פארבונדן.
+No institutions found.|לא נמצאו מוסדות.|מען האט נישט געטראפן קיין מוסדות.
+Unknown person|אדם לא ידוע|אומבאקאנטער מענטש
+Applicant|פונה|אפליקאנט
+Staff member|איש צוות|שטאב מיטגליד
+Institution added.|המוסד נוסף.|דער מוסד איז צוגעלייגט געווארן.
+Person connected.|האדם חובר.|דער מענטש איז פארבונדן געווארן.
+Connection removed.|החיבור הוסר.|די פארבינדונג איז אוועקגענומען געווארן.
+Institution deleted.|המוסד נמחק.|דער מוסד איז אויסגעמעקט געווארן.
 Families|משפחות|משפחות
 Family|משפחה|משפחה
 Expenses & approvals|הוצאות ואישורים|הוצאות און באשטעטיגונגען
