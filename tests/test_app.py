@@ -265,7 +265,7 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
                   'inlaws_maiden_name', 'inlaws_family', 'rabbi', 'rabbi_phone',
-                  'weekday_shul', 'shabbos_shul', 'circumstances'):
+                  'yeshivah', 'weekday_shul', 'shabbos_shul', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
@@ -348,6 +348,7 @@ def test_profile_fields_automatically_connect_directory_people(app, client):
     assert post(client, '/families/1/edit', {
         'name': 'Sample family', 'weekday_shul': 'Automatic Shul',
         'shabbos_shul': 'Automatic Shul', 'city': 'Monroe', 'state': 'NY',
+        'yeshivah': 'Applicant Yeshivah',
     }).status_code == 302
     assert post(client, '/families/1/children', {
         'name': 'Automatic Student', 'age': '13', 'school': 'Automatic Yeshivah',
@@ -358,6 +359,8 @@ def test_profile_fields_automatically_connect_directory_people(app, client):
             Institution.kind == 'Shul', Institution.name == 'Automatic Shul'))
         yeshivah = db.session.scalar(db.select(Institution).where(
             Institution.kind == 'Yeshivah', Institution.name == 'Automatic Yeshivah'))
+        applicant_yeshivah = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Yeshivah', Institution.name == 'Applicant Yeshivah'))
         student = db.session.scalar(db.select(Child).where(
             Child.name == 'Automatic Student'))
         shul_links = db.session.scalars(db.select(PersonAffiliation).where(
@@ -369,6 +372,10 @@ def test_profile_fields_automatically_connect_directory_people(app, client):
             PersonAffiliation.person_type == 'child',
             PersonAffiliation.person_id == student.id))
         assert len(shul_links) == 1
+        assert db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == applicant_yeshivah.id,
+            PersonAffiliation.person_type == 'family',
+            PersonAffiliation.person_id == 1))
         assert student_link.grade == 'Grade 8'
 
 def test_updating_child_adds_new_automatic_yeshivah_history(app, client):

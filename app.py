@@ -43,6 +43,7 @@ class Family(db.Model):
     rabbi_phone = db.Column(db.String(80), default='')
     weekday_shul = db.Column(db.String(160), default='')
     shabbos_shul = db.Column(db.String(160), default='')
+    yeshivah = db.Column(db.String(160), default='')
     shul_gabbai = db.Column(db.String(160), default='')
     shul_gabbai_phone = db.Column(db.String(80), default='')
     circumstances = db.Column(db.Text, default='')
@@ -522,6 +523,7 @@ def create_app(test_config=None):
             'inlaws_maiden_name': 'VARCHAR(160)',
             'inlaws_family': 'TEXT',
             'rabbi_phone': 'VARCHAR(80)',
+            'yeshivah': 'VARCHAR(160)',
             'shul_gabbai': 'VARCHAR(160)',
             'shul_gabbai_phone': 'VARCHAR(80)',
         }.items():
@@ -703,8 +705,9 @@ def create_app(test_config=None):
         return existing
 
     def connect_family_profile_directories(family):
-        """Connect the applicant to every shul named on the family profile."""
+        """Keep the applicant connected to profile shuls and yeshivah."""
         seen = set()
+        current_institution_ids = set()
         for label, shul_name in (('Weekday shul', family.weekday_shul),
                                  ('Shabbos shul', family.shabbos_shul)):
             normalized = (shul_name or '').strip().lower()
@@ -713,8 +716,24 @@ def create_app(test_config=None):
             seen.add(normalized)
             institution = find_or_create_institution(
                 'Shul', shul_name, family.city, family.state)
+            current_institution_ids.add(institution.id)
             ensure_profile_affiliation(
                 institution, 'family', family.id, note=label + ' · Family profile')
+        yeshivah = find_or_create_institution('Yeshivah', family.yeshivah)
+        if yeshivah is not None:
+            current_institution_ids.add(yeshivah.id)
+            ensure_profile_affiliation(
+                yeshivah, 'family', family.id, note='Applicant profile · Family profile')
+
+        # Replace only the automatic profile links; keep manually entered links.
+        automatic = db.session.scalars(select(PersonAffiliation).where(
+            PersonAffiliation.person_type == 'family',
+            PersonAffiliation.person_id == family.id,
+            PersonAffiliation.note.contains('Family profile'),
+        )).all()
+        for affiliation in automatic:
+            if affiliation.institution_id not in current_institution_ids:
+                db.session.delete(affiliation)
 
     def connect_child_profile_directory(child):
         """Connect a child to the yeshivah and grade saved on that child."""
@@ -1293,7 +1312,7 @@ def create_app(test_config=None):
 
     def intake_form(family, title, error=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
-            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
+            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
         if error:
             budget.update(request.form)
@@ -1323,7 +1342,7 @@ def create_app(test_config=None):
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
             limits = {'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
-            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
+            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
             connect_family_profile_directories(family)
@@ -1347,7 +1366,7 @@ def create_app(test_config=None):
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
             limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
-            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone','circumstances']:
+            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
             connect_family_profile_directories(family)
             save_intake(family, intake_data)
