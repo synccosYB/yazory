@@ -194,7 +194,7 @@ Payment reference|אסמכתת תשלום|באצאלונג רעפערענץ
 Complete|הושלם|פארטיג
 No expenses here.|אין הוצאות להצגה.|נישטא דא קיין הוצאות.
 ACCOUNTABILITY|שקיפות ומעקב|קלארקייט און חשבון
-The latest 200 changes, with the staff identity and UTC timestamp.|200 השינויים האחרונים, עם זהות איש הצוות ושעת UTC.|די לעצטע 200 ענדערונגען, ווער עס האט עס געטון און די צייט אין UTC.
+The latest 200 changes, with the staff identity and Eastern Time timestamp.|200 השינויים האחרונים, עם זהות איש הצוות ושעת החוף המזרחי.|די לעצטע 200 ענדערונגען, ווער עס האט עס געטון און די צייט לויט ניו יארק.
 View family →|צפייה במשפחה →|אריינקוקן אין דער משפחה →
 YAZORY STAFF|צוות יעזורי|די יעזורי שטאב
 Welcome back.|ברוכים השבים.|ברוכים הבאים.

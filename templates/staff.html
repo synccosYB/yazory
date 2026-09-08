@@ -30,7 +30,7 @@
     <dl class="staff-details">
       <div><dt>{{ _('Phone') }}</dt><dd>{{ user.phone or '—' }}</dd></div>
       <div><dt>{{ _('Address') }}</dt><dd>{{ user.address or '—' }}{% if user.city or user.state or user.zip_code %}<br>{{ user.city }}{% if user.city and user.state %}, {% endif %}{{ user.state }} {{ user.zip_code }}{% endif %}</dd></div>
-      <div><dt>{{ _('Last login') }}</dt><dd>{{ user.last_login_at.strftime('%Y-%m-%d %H:%M UTC') if user.last_login_at else '—' }}</dd></div>
+      <div><dt>{{ _('Last login') }}</dt><dd>{{ user.last_login_at|eastern_time('%m/%d/%Y %I:%M %p %Z') if user.last_login_at else '—' }}</dd></div>
     </dl>
     <details class="staff-edit-panel"><summary class="button small secondary staff-edit-button">✎ {{ _('Edit detailed information') }}</summary>
       <form method="post" action="{{ url_for('staff_details', user_id=user.id) }}">{{ token(csrf) }}

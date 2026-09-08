@@ -6,6 +6,7 @@ import hashlib
 from html import escape
 from io import BytesIO
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
@@ -873,6 +874,15 @@ def create_app(test_config=None):
         if not can_access_family(family_id):
             abort(403, 'You are not assigned to this family.')
         return db.get_or_404(Family, family_id)
+
+    @app.template_filter('eastern_time')
+    def eastern_time(value, format_string='%m/%d/%Y %I:%M %p %Z'):
+        """Render UTC database timestamps in the organization's Eastern timezone."""
+        if value is None:
+            return ''
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(ZoneInfo('America/New_York')).strftime(format_string)
 
     @app.context_processor
     def common():
