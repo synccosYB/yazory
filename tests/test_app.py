@@ -378,6 +378,30 @@ def test_profile_fields_automatically_connect_directory_people(app, client):
             PersonAffiliation.person_id == 1))
         assert student_link.grade == 'Grade 8'
 
+def test_family_form_offers_existing_institutions_and_accepts_new_names(app, client):
+    with app.app_context():
+        db.session.add_all([
+            Institution(kind='Shul', name='Listed Shul', city='Monroe'),
+            Institution(kind='Yeshivah', name='Listed Yeshivah'),
+        ])
+        db.session.commit()
+    page = client.get('/families/1/edit').text
+    assert 'name="yeshivah"' in page and 'list="yeshivah-options"' in page
+    assert 'name="weekday_shul"' in page and 'list="shul-options"' in page
+    assert 'name="shabbos_shul"' in page and 'list="shul-options"' in page
+    assert 'value="Listed Yeshivah"' in page
+    assert 'value="Listed Shul"' in page
+
+    assert post(client, '/families/1/edit', {
+        'name': 'Sample family', 'yeshivah': 'Brand New Yeshivah',
+        'weekday_shul': 'Brand New Shul',
+    }).status_code == 302
+    with app.app_context():
+        assert db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Yeshivah', Institution.name == 'Brand New Yeshivah'))
+        assert db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Shul', Institution.name == 'Brand New Shul'))
+
 def test_updating_child_adds_new_automatic_yeshivah_history(app, client):
     with app.app_context():
         child = db.session.scalar(db.select(Child).where(Child.family_id == 1))

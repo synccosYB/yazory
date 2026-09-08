@@ -1323,7 +1323,13 @@ def create_app(test_config=None):
                     budget[group] = entries if isinstance(entries, list) else []
                 except ValueError:
                     budget[group] = []
-        return render_template('family_form.html', family=family, title=title, values=values, budget=budget, intake_error=error)
+        shul_names = db.session.scalars(select(Institution.name).where(
+            Institution.kind == 'Shul').distinct().order_by(Institution.name)).all()
+        yeshivah_names = db.session.scalars(select(Institution.name).where(
+            Institution.kind == 'Yeshivah').distinct().order_by(Institution.name)).all()
+        return render_template('family_form.html', family=family, title=title,
+            values=values, budget=budget, intake_error=error,
+            shul_names=shul_names, yeshivah_names=yeshivah_names)
 
     def save_intake(family, data):
         if data is not None:
