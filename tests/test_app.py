@@ -156,10 +156,11 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
         assert post(client, f'/contacts/{contact_id}/children', {
             'name':name, 'spouse_name':spouse, 'phone':'845-555-0100'}).status_code == 302
     with app.app_context():
-        children = db.session.scalars(db.select(ContactChild).where(
-            ContactChild.contact_id == contact_id).order_by(ContactChild.id)).all()
-        assert [(child.name, child.spouse_name) for child in children] == [
-            ('Married child one', 'Spouse one'), ('Married child two', 'Spouse two')]
+        children = db.session.scalars(db.select(Contact).where(
+            Contact.parent_contact_id == contact_id).order_by(Contact.id)).all()
+        assert [(child.name, child.parent_connection) for child in children] == [
+            ('Married child one', 'Son'), ('Spouse one', 'Son-in-law'),
+            ('Married child two', 'Son'), ('Spouse two', 'Son-in-law')]
     supporter_page = client.get(f'/supporters/{contact_id}').text
     assert 'Married child one' in supporter_page
     assert 'Spouse one' in supporter_page
@@ -168,7 +169,13 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
     assert 'inline-children' in profile
     assert profile.index('Supporter parent') < profile.index('Married child one')
     assert post(client, f'/contacts/{contact_id}/children', {
-        'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
+        'name':'Married child one', 'spouse_name':'Different person'}).status_code == 302
+    with app.app_context():
+        same_name_children = db.session.scalars(db.select(Contact).where(
+            Contact.parent_contact_id == contact_id,
+            Contact.name == 'Married child one').order_by(Contact.id)).all()
+        assert len(same_name_children) == 2
+        assert same_name_children[-1].phone == ''
 
 @pytest.mark.parametrize('language,label', [
     ('en', 'Nephew'), ('he', 'אחיין'), ('yi', 'פלימעניק')])
@@ -230,6 +237,13 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert searched_list.index('Shlomo supporter') < searched_list.index('Hersh Levy')
     supporter_detail = client.get(f'/supporters/{hersh_id}').text
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_detail
+    assert 'Supporter hierarchy' in supporter_detail
+    assert supporter_detail.index('Shlomo supporter') < supporter_detail.index('Hersh Levy')
+    assert f'/supporters/{shlomo_id}' in supporter_detail
+    parent_detail = client.get(f'/supporters/{shlomo_id}').text
+    assert 'Supporter hierarchy' in parent_detail
+    assert 'Hersh Levy' in parent_detail
+    assert f'/supporters/{hersh_id}' in parent_detail
     profile = client.get('/families/1').text
     assert 'Manage supporters' in profile
     assert 'name="pledge_frequency"' in profile
@@ -275,8 +289,8 @@ def test_same_names_are_separate_people_and_children_can_share_names(app, client
         assert post(client, f'/contacts/{contact_id}/children', {
             'name': 'Same Child Name', 'spouse_name': '', 'phone': ''}).status_code == 302
     with app.app_context():
-        assert db.session.scalar(db.select(db.func.count(ContactChild.id)).where(
-            ContactChild.name == 'Same Child Name')) == 2
+        assert db.session.scalar(db.select(db.func.count(Contact.id)).where(
+            Contact.name == 'Same Child Name', Contact.parent_contact_id.is_not(None))) == 2
 
 def test_parent_picker_contains_nested_names_and_is_searchable(app, client):
     assert post(client, '/families/1/contacts', {

@@ -571,6 +571,39 @@ def create_app(test_config=None):
             ))
             # Nested supporters previously displayed as sons-in-law, so retain
             # that meaning for existing records while making it explicit.
+        # Older versions stored names entered through "Add another child" as
+        # display-only ContactChild rows. Promote them once into real supporter
+        # profiles so they have their own status, pledge, history, and page.
+        for legacy_child in db.session.scalars(select(ContactChild).order_by(ContactChild.id)).all():
+            parent = db.session.get(Contact, legacy_child.contact_id)
+            if parent is None:
+                continue
+            child_contact = Contact(
+                family_id=parent.family_id, name=legacy_child.name,
+                relationship='Nephew', phone=legacy_child.phone or '',
+                supporter_key=supporter_key(legacy_child.name, legacy_child.phone),
+                parent_contact_id=parent.id, parent_connection='Son',
+                monthly_cents=0, pledge_frequency='Monthly', status='To contact')
+            db.session.add(child_contact)
+            db.session.flush()
+            db.session.execute(db.update(PersonAffiliation).where(
+                PersonAffiliation.person_type == 'supporter_child',
+                PersonAffiliation.person_id == legacy_child.id).values(
+                    person_type='supporter', person_id=child_contact.id))
+            if legacy_child.spouse_name:
+                spouse_contact = Contact(
+                    family_id=parent.family_id, name=legacy_child.spouse_name,
+                    relationship='Nephew', phone='',
+                    supporter_key=supporter_key(legacy_child.spouse_name, ''),
+                    parent_contact_id=parent.id, parent_connection='Son-in-law',
+                    monthly_cents=0, pledge_frequency='Monthly', status='To contact')
+                db.session.add(spouse_contact)
+                db.session.flush()
+                db.session.execute(db.update(PersonAffiliation).where(
+                    PersonAffiliation.person_type == 'supporter_child_spouse',
+                    PersonAffiliation.person_id == legacy_child.id).values(
+                        person_type='supporter', person_id=spouse_contact.id))
+            db.session.delete(legacy_child)
         stripe_payment_columns = {column['name'] for column in inspect(db.engine).get_columns('stripe_payment')}
         if 'successful_charges' not in stripe_payment_columns:
             db.session.execute(text(
@@ -1794,14 +1827,18 @@ def create_app(test_config=None):
         name = field('name', True)
         spouse_name = field('spouse_name')
         phone = field('phone', limit=80)
-        duplicate = db.session.scalar(select(ContactChild.id).where(
-            ContactChild.contact_id == contact.id,
-            func.lower(ContactChild.name) == name.lower()))
-        if duplicate:
-            abort(400, 'This child is already listed under this supporter.')
-        db.session.add(ContactChild(contact_id=contact.id, name=name,
-                                    spouse_name=spouse_name, phone=phone))
-        audit(f'Added child under supporter: {contact.name}', contact.family_id)
+        db.session.add(Contact(
+            family_id=contact.family_id, name=name, relationship='Nephew',
+            phone=phone, supporter_key=supporter_key(name, phone),
+            parent_contact_id=contact.id, parent_connection='Son',
+            monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
+        if spouse_name:
+            db.session.add(Contact(
+                family_id=contact.family_id, name=spouse_name, relationship='Nephew',
+                phone='', supporter_key=supporter_key(spouse_name, ''),
+                parent_contact_id=contact.id, parent_connection='Son-in-law',
+                monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
+        audit(f'Added child as supporter under: {contact.name}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
 
@@ -2097,6 +2134,20 @@ def create_app(test_config=None):
         else:
             linked_statement = linked_statement.where(Contact.id == contact.id)
         linked_contacts = db.session.scalars(linked_statement.order_by(Contact.id)).all()
+        hierarchy_groups = []
+        seen_hierarchy_roots = set()
+        for linked_contact in linked_contacts:
+            root = linked_contact.parent_supporter or linked_contact
+            if root.id in seen_hierarchy_roots:
+                continue
+            seen_hierarchy_roots.add(root.id)
+            hierarchy_groups.append({
+                'family': root.family,
+                'root': root,
+                'children': sorted(
+                    root.nested_supporters,
+                    key=lambda row: row.name.casefold()),
+            })
         contact_ids = [row.id for row in linked_contacts]
         receipts = db.session.scalars(select(Receipt).where(
             Receipt.contact_id.in_(contact_ids)
@@ -2106,6 +2157,7 @@ def create_app(test_config=None):
         ).order_by(StripePayment.created_at.desc())).all() if contact_ids else []
         return render_template('supporter_detail.html', title='Supporter history',
                                supporter=contact, linked_contacts=linked_contacts,
+                               hierarchy_groups=hierarchy_groups,
                                receipts=receipts, payments=payments,
                                total_received=sum(receipt.amount_cents for receipt in receipts))
 
