@@ -386,21 +386,42 @@ def test_family_form_offers_existing_institutions_and_accepts_new_names(app, cli
         ])
         db.session.commit()
     page = client.get('/families/1/edit').text
-    assert 'name="yeshivah"' in page and 'list="yeshivah-options"' in page
-    assert 'name="weekday_shul"' in page and 'list="shul-options"' in page
-    assert 'name="shabbos_shul"' in page and 'list="shul-options"' in page
+    assert '<select name="yeshivah"' in page
+    assert '<select name="weekday_shul"' in page
+    assert '<select name="shabbos_shul"' in page
     assert 'value="Listed Yeshivah"' in page
     assert 'value="Listed Shul"' in page
 
     assert post(client, '/families/1/edit', {
-        'name': 'Sample family', 'yeshivah': 'Brand New Yeshivah',
-        'weekday_shul': 'Brand New Shul',
+        'name': 'Sample family', 'yeshivah': '__new__',
+        'yeshivah_new': 'Brand New Yeshivah',
+        'weekday_shul': '__new__', 'weekday_shul_new': 'Brand New Shul',
     }).status_code == 302
     with app.app_context():
         assert db.session.scalar(db.select(Institution).where(
             Institution.kind == 'Yeshivah', Institution.name == 'Brand New Yeshivah'))
         assert db.session.scalar(db.select(Institution).where(
             Institution.kind == 'Shul', Institution.name == 'Brand New Shul'))
+
+def test_schema_upgrade_merges_same_named_institutions(app):
+    with app.app_context():
+        first = Institution(kind='Yeshivah', name='Same Yeshivah', city='')
+        duplicate = Institution(kind='Yeshivah', name='same yeshivah', city='Monroe')
+        db.session.add_all([first, duplicate])
+        db.session.flush()
+        db.session.add(PersonAffiliation(
+            institution_id=duplicate.id, person_type='family', person_id=1,
+            note='Manual connection'))
+        db.session.commit()
+    result = app.test_cli_runner().invoke(args=['init-db'])
+    assert result.exit_code == 0
+    with app.app_context():
+        rows = db.session.scalars(db.select(Institution).where(
+            Institution.kind == 'Yeshivah',
+            db.func.lower(Institution.name) == 'same yeshivah')).all()
+        assert len(rows) == 1
+        assert rows[0].city == 'Monroe'
+        assert len(rows[0].affiliations) == 1
 
 def test_updating_child_adds_new_automatic_yeshivah_history(app, client):
     with app.app_context():
