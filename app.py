@@ -1834,6 +1834,31 @@ def create_app(test_config=None):
         if query:
             statement = statement.where(Contact.name.icontains(query, autoescape=True))
         contacts = db.session.scalars(statement).all()
+        # Never show a matching son or son-in-law as an orphaned top-level row.
+        # Include his parent as context, then keep nested supporters immediately
+        # beneath their parent in the organization-wide directory too.
+        contact_ids = {contact.id for contact in contacts}
+        missing_parent_ids = {
+            contact.parent_contact_id for contact in contacts
+            if contact.parent_contact_id and contact.parent_contact_id not in contact_ids
+        }
+        if missing_parent_ids:
+            parents = db.session.scalars(scoped_contacts_statement().where(
+                Contact.id.in_(missing_parent_ids))).all()
+            contacts.extend(parent for parent in parents if not family_id or parent.family_id == family_id)
+        children_by_parent = {}
+        roots = []
+        available_ids = {contact.id for contact in contacts}
+        for contact in contacts:
+            if contact.parent_contact_id and contact.parent_contact_id in available_ids:
+                children_by_parent.setdefault(contact.parent_contact_id, []).append(contact)
+            else:
+                roots.append(contact)
+        contacts = []
+        for parent in sorted(roots, key=lambda row: (row.family.name.lower(), row.name.lower())):
+            contacts.append(parent)
+            contacts.extend(sorted(children_by_parent.get(parent.id, []),
+                                   key=lambda row: row.name.lower()))
         family_statement = select(Family).order_by(Family.name)
         if not organization_admin():
             family_statement = family_statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
