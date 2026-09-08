@@ -270,7 +270,68 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
 
 def test_supporter_relationships_use_current_heimish_yiddish(client):
     client.get('/language/yi')
-    assert 'ברידער/שוואגער' in client.get('/supporters').text
+    page = client.get('/supporters').text
+    assert 'ברידער/שוואגער' in page
+    assert 'ליסטע פון ברידער / שוואגערס' in page
+    assert 'ליסטע פון פלימעניקעס' in page
+
+def test_supporter_list_filters_by_siblings_and_nephews(app, client):
+    for name, relationship in (
+        ('Only brother', 'Sibling'),
+        ('Only nephew', 'Nephew'),
+        ('Ordinary friend', 'Friend'),
+    ):
+        assert post(client, '/families/1/contacts', {
+            'name': name, 'relationship': relationship,
+            'status': 'To contact', 'monthly': '0'}).status_code == 302
+
+    siblings = client.get('/supporters?relationship_group=siblings').text
+    siblings_rows = siblings.split('<tbody>', 1)[1].split('</tbody>', 1)[0]
+    assert 'Only brother' in siblings_rows
+    assert 'Only nephew' not in siblings_rows and 'Ordinary friend' not in siblings_rows
+
+    nephews = client.get('/supporters?relationship_group=nephews').text
+    nephew_rows = nephews.split('<tbody>', 1)[1].split('</tbody>', 1)[0]
+    assert 'Only nephew' in nephew_rows
+    assert 'Only brother' not in nephew_rows and 'Ordinary friend' not in nephew_rows
+    assert client.get('/supporters?relationship_group=unknown').status_code == 400
+
+def test_all_four_directory_filters_are_linked(client):
+    supporter_page = client.get('/supporters').text
+    directory_page = client.get('/community-directories?kind=Shul').text
+    for page in (supporter_page, directory_page):
+        assert 'relationship_group=siblings' in page
+        assert 'relationship_group=nephews' in page
+        assert 'kind=Shul' in page
+        assert 'kind=Yeshivah' in page
+
+def test_all_four_lists_can_be_filtered_by_applicant(app, client):
+    assert post(client, '/families/new', {'name': 'Second applicant'}).status_code == 302
+    with app.app_context():
+        second_id = db.session.scalar(db.select(Family.id).where(
+            Family.name == 'Second applicant'))
+    assert post(client, f'/families/{second_id}/contacts', {
+        'name': 'Second brother', 'relationship': 'Sibling',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    assert post(client, '/community-directories/institutions', {
+        'kind': 'Shul', 'name': 'Second applicant shul'}).status_code == 302
+    with app.app_context():
+        shul_id = db.session.scalar(db.select(Institution.id).where(
+            Institution.name == 'Second applicant shul'))
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(shul_id), 'person': f'family:{second_id}',
+        'note': ''}).status_code == 302
+
+    supporter_page = client.get(
+        f'/supporters?relationship_group=siblings&family_id={second_id}').text
+    supporter_rows = supporter_page.split('<tbody>', 1)[1].split('</tbody>', 1)[0]
+    assert 'Second brother' in supporter_rows and 'Sample sibling' not in supporter_rows
+    assert f'kind=Shul&amp;family_id={second_id}' in supporter_page
+
+    shul_page = client.get(
+        f'/community-directories?kind=Shul&family_id={second_id}').text
+    assert 'Second applicant shul' in shul_page and 'Local shul' not in shul_page
+    assert f'relationship_group=siblings&amp;family_id={second_id}' in shul_page
 
 def test_nested_supporter_can_be_connected_when_first_added(app, client):
     assert post(client, '/families/1/contacts', {

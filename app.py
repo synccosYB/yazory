@@ -2087,6 +2087,13 @@ def create_app(test_config=None):
         require_capability(('family_admin', 'fundraiser'))
         query = request.args.get('q', '').strip()[:160]
         family_id = request.args.get('family_id', type=int)
+        relationship_group = request.args.get('relationship_group', '').strip()
+        relationship_filters = {
+            'siblings': ('Sibling',),
+            'nephews': ('Nephew',),
+        }
+        if relationship_group and relationship_group not in relationship_filters:
+            abort(400, 'Choose a valid supporter list.')
         statement = scoped_contacts_statement()
         if family_id:
             if not can_access_family(family_id):
@@ -2094,6 +2101,9 @@ def create_app(test_config=None):
             statement = statement.where(Contact.family_id == family_id)
         if query:
             statement = statement.where(Contact.name.icontains(query, autoescape=True))
+        if relationship_group:
+            statement = statement.where(
+                Contact.relationship.in_(relationship_filters[relationship_group]))
         contacts = db.session.scalars(statement).all()
         # Never show a matching son or son-in-law as an orphaned top-level row.
         # Include his parent as context, then keep nested supporters immediately
@@ -2102,7 +2112,7 @@ def create_app(test_config=None):
         missing_parent_ids = {
             contact.parent_contact_id for contact in contacts
             if contact.parent_contact_id and contact.parent_contact_id not in contact_ids
-        }
+        } if not relationship_group else set()
         if missing_parent_ids:
             parents = db.session.scalars(scoped_contacts_statement().where(
                 Contact.id.in_(missing_parent_ids))).all()
@@ -2141,7 +2151,8 @@ def create_app(test_config=None):
         ).where(Receipt.contact_id.in_(contact_ids)).group_by(Receipt.contact_id)).all()} if contact_ids else {}
         return render_template('supporters.html', title='Supporters', contacts=contacts,
                                received=totals, query=query, families=families,
-                               selected_family_id=family_id, possible_parents=possible_parents)
+                               selected_family_id=family_id, possible_parents=possible_parents,
+                               relationship_group=relationship_group)
 
     @app.get('/supporters/<int:contact_id>')
     def supporter_detail(contact_id):
@@ -2260,6 +2271,10 @@ def create_app(test_config=None):
         if kind not in ('Shul', 'Yeshivah'):
             abort(400, 'Choose a valid directory.')
         query = request.args.get('q', '').strip()[:160]
+        family_id = request.args.get('family_id', type=int)
+        families = db.session.scalars(select(Family).order_by(Family.name)).all()
+        if family_id and not any(family.id == family_id for family in families):
+            abort(404)
         statement = select(Institution).where(Institution.kind == kind).order_by(Institution.name)
         if query:
             statement = statement.where(Institution.name.icontains(query, autoescape=True))
@@ -2273,8 +2288,27 @@ def create_app(test_config=None):
             }),
         } for person_type, person_id, name, role, context in people}
         institutions = db.session.scalars(statement).all()
+        allowed_people = None
+        if family_id:
+            child_ids = set(db.session.scalars(select(Child.id).where(
+                Child.family_id == family_id)).all())
+            supporter_ids = set(db.session.scalars(select(Contact.id).where(
+                Contact.family_id == family_id)).all())
+            supporter_child_ids = set(db.session.scalars(select(ContactChild.id).where(
+                ContactChild.contact_id.in_(supporter_ids))).all()) if supporter_ids else set()
+            allowed_people = {('family', family_id), ('spouse', family_id)}
+            allowed_people.update((person_type, child_id) for child_id in child_ids
+                                  for person_type in ('child', 'child_spouse'))
+            allowed_people.update(('supporter', supporter_id) for supporter_id in supporter_ids)
+            allowed_people.update((person_type, child_id) for child_id in supporter_child_ids
+                                  for person_type in ('supporter_child', 'supporter_child_spouse'))
+        visible_institutions = []
         for institution in institutions:
-            rows = sorted(institution.affiliations, key=lambda row: (
+            rows = [row for row in institution.affiliations
+                    if allowed_people is None or (row.person_type, row.person_id) in allowed_people]
+            if family_id and not rows:
+                continue
+            rows = sorted(rows, key=lambda row: (
                 people_by_key.get((row.person_type, row.person_id), {}).get(
                     'sort_key', ('zz', row.id))))
             if kind == 'Yeshivah':
@@ -2305,9 +2339,12 @@ def create_app(test_config=None):
                     grades.items(), key=lambda item: item[0].lower())
             else:
                 institution.directory_groups = [('', rows)]
+            institution.directory_count = len(rows)
+            visible_institutions.append(institution)
         return render_template('directories.html', title=f'{kind} list', kind=kind,
-                               institutions=institutions,
-                               people=people, people_by_key=people_by_key, query=query)
+                               institutions=visible_institutions, families=families,
+                               selected_family_id=family_id, people=people,
+                               people_by_key=people_by_key, query=query)
 
     @app.post('/community-directories/institutions')
     def add_institution():

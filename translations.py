@@ -8,6 +8,11 @@ Overview|לוח בקרה|איבערבליק
 COMMUNITY DIRECTORY|רשימת הקהילה|די קהילה ליסטעס
 Shul list|רשימת בתי כנסת|שול ליסטע
 Yeshivah list|רשימת ישיבות|ישיבה ליסטע
+List filters|מסנני רשימות|ליסטע פילטערס
+Brothers / brothers-in-law list|רשימת אחים / גיסים|ליסטע פון ברידער / שוואגערס
+Nephews list|רשימת אחיינים|ליסטע פון פלימעניקעס
+All supporters|כל התומכים|אלע העלפער
+All applicants|כל הפונים|אלע אפליקאנטן
 Keep one central list and connect each person to the shuls and yeshivahs in their history.|נהלו רשימה מרכזית אחת וחברו כל אדם לבתי הכנסת ולישיבות שבהיסטוריה שלו.|האלט איין צענטראלע ליסטע און פארבינדט יעדן מענטש מיט זיינע שולן און ישיבות.
 + Add shul|+ הוספת בית כנסת|+ צולייגן א שול
 + Add yeshivah|+ הוספת ישיבה|+ צולייגן א ישיבה
