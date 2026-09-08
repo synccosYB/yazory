@@ -87,6 +87,7 @@ Edit family profile|עריכת פרופיל משפחה|ענדערן די פרט�
 Start with the household, then add schools, supporters, and expenses.|התחילו בפרטי המשפחה, ולאחר מכן הוסיפו מוסדות לימוד, תומכים והוצאות.|הייבט אן מיט די משפחה, דערנאך לייגט צו מוסדות, העלפער און הוצאות.
 Yeshivah attended by applicant|הישיבה שבה למד הפונה|די ישיבה וואו דער אפליקאנט האט געלערנט
 The applicant’s yeshivah and shuls are automatically connected to the community support network.|הישיבה ובתי הכנסת של הפונה מחוברים אוטומטית לרשת התמיכה הקהילתית.|די ישיבה און שולן פונעם אפליקאנט ווערן אויטאמאטיש פארבונדן מיטן קהילה־נעץ פון העלפער.
+Choose from the list or type a new yeshivah or shul.|בחרו מהרשימה או הקלידו ישיבה או בית כנסת חדשים.|קלויבט אויס פון דער ליסטע, אדער שרייבט אריין א נייע ישיבה אדער שול.
 Household & community|המשפחה והקהילה|די משפחה און די קהילה
 Family / individual name|שם המשפחה / הפונה|נאמען פון דער משפחה אדער דעם פונה
 Spouse name|שם בן/בת הזוג|נאמען פונעם מאן אדער די ווייב
