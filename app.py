@@ -2267,6 +2267,26 @@ def create_app(test_config=None):
                 people_by_key.get((row.person_type, row.person_id), {}).get(
                     'sort_key', ('zz', row.id))))
             if kind == 'Yeshivah':
+                applicant_rows = {
+                    row.person_id: row for row in rows
+                    if row.person_type == 'family' and row.year_from is not None
+                    and row.year_to is not None
+                }
+                for row in rows:
+                    row.applicant_overlap = None
+                    if row.person_type != 'supporter':
+                        continue
+                    supporter = db.session.get(Contact, row.person_id)
+                    applicant = applicant_rows.get(supporter.family_id) if supporter else None
+                    if applicant is None or row.year_from is None or row.year_to is None:
+                        row.applicant_overlap = {'status': 'missing'}
+                        continue
+                    overlap_from = max(row.year_from, applicant.year_from)
+                    overlap_to = min(row.year_to, applicant.year_to)
+                    row.applicant_overlap = ({
+                        'status': 'overlap', 'year_from': overlap_from,
+                        'year_to': overlap_to,
+                    } if overlap_from <= overlap_to else {'status': 'none'})
                 grades = {}
                 for row in rows:
                     grades.setdefault(row.grade, []).append(row)
@@ -2312,9 +2332,11 @@ def create_app(test_config=None):
                                'supporter_child', 'supporter_child_spouse', 'staff') or not valid_directory_person(person_type, person_id):
             abort(400, 'Choose a valid person.')
         grade = field('grade', required=institution.kind == 'Yeshivah', limit=80)
-        def optional_year(name):
+        def entered_year(name, required=False):
             value = request.form.get(name, '').strip()
             if not value:
+                if required:
+                    abort(400, 'Enter both the year in and year out.')
                 return None
             try:
                 year = int(value)
@@ -2323,7 +2345,9 @@ def create_app(test_config=None):
             if year < 1900 or year > 2100:
                 abort(400, 'Enter a valid year.')
             return year
-        year_from, year_to = optional_year('year_from'), optional_year('year_to')
+        years_required = institution.kind == 'Yeshivah'
+        year_from = entered_year('year_from', years_required)
+        year_to = entered_year('year_to', years_required)
         if year_from and year_to and year_from > year_to:
             abort(400, 'The ending year must not be before the starting year.')
         duplicate = db.session.scalar(select(PersonAffiliation.id).where(
@@ -2335,9 +2359,26 @@ def create_app(test_config=None):
             PersonAffiliation.year_to == year_to))
         if duplicate:
             abort(400, 'This connection is already recorded.')
-        db.session.add(PersonAffiliation(institution_id=institution.id,
-            person_type=person_type, person_id=person_id, grade=grade,
-            year_from=year_from, year_to=year_to, note=field('note', limit=300)))
+        note = field('note', limit=300)
+        profile_placeholder = None
+        if institution.kind == 'Yeshivah':
+            profile_placeholder = db.session.scalar(select(PersonAffiliation).where(
+                PersonAffiliation.institution_id == institution.id,
+                PersonAffiliation.person_type == person_type,
+                PersonAffiliation.person_id == person_id,
+                PersonAffiliation.grade == '',
+                PersonAffiliation.year_from.is_(None),
+                PersonAffiliation.year_to.is_(None),
+                PersonAffiliation.note.contains('Family profile')))
+        if profile_placeholder:
+            profile_placeholder.grade = grade
+            profile_placeholder.year_from = year_from
+            profile_placeholder.year_to = year_to
+            profile_placeholder.note = note or 'Applicant profile · Family profile'
+        else:
+            db.session.add(PersonAffiliation(institution_id=institution.id,
+                person_type=person_type, person_id=person_id, grade=grade,
+                year_from=year_from, year_to=year_to, note=note))
         audit(f'Connected person to {institution.kind.lower()}: {institution.name}')
         db.session.commit()
         flash('Person connected.')
