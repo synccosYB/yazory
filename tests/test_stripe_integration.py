@@ -26,6 +26,8 @@ def test_checkout_and_webhook_create_one_receipt(monkeypatch):
     with app.app_context():
         contact = db.session.scalar(db.select(Contact))
         contact_id = contact.id
+    page = client.get(f'/supporters/{contact_id}').text
+    assert 'value="180.00"' in page
 
     def checkout(_secret, params, idempotency_key):
         assert params['mode'] == 'subscription'
@@ -56,6 +58,19 @@ def test_checkout_and_webhook_create_one_receipt(monkeypatch):
         assert db.session.scalar(db.select(db.func.count()).select_from(StripeEvent)) == 1
         assert db.session.get(StripePayment, payment_id).status == 'active'
         assert db.session.get(StripePayment, payment_id).successful_charges == 1
+
+
+def test_zero_pledge_defaults_to_valid_one_dollar_checkout_amount():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact))
+        contact.monthly_cents = 0
+        db.session.commit()
+        contact_id = contact.id
+    page = client.get(f'/supporters/{contact_id}').text
+    assert 'value="1.00"' in page
+    assert 'type="submit"' in page
 
 
 def test_connect_onboarding_and_approved_expense_transfer(monkeypatch):

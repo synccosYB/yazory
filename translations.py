@@ -668,4 +668,5 @@ CATALOG.update({
     'Recurring charges are counted after Stripe confirms each successful payment.': {'he': 'חיובים חוזרים נספרים לאחר ש-Stripe מאשרת כל תשלום מוצלח.', 'yi': 'יעדע נאכאנאנדע טשארדזש ווערט געציילט נאכדעם וואס Stripe באשטעטיגט די באצאלונג.'},
     'Created': {'he': 'נוצר', 'yi': 'געמאכט'},
     'Successful charges': {'he': 'חיובים מוצלחים', 'yi': 'געלונגענע טשארדזשעס'},
+    'Enter at least $1.00.': {'he': 'יש להזין לפחות $1.00.', 'yi': 'לייגט אריין כאטש $1.00.'},
 })
