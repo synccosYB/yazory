@@ -88,6 +88,11 @@ Start with the household, then add schools, supporters, and expenses.|התחיל
 Yeshivah attended by applicant|הישיבה שבה למד הפונה|די ישיבה וואו דער אפליקאנט האט געלערנט
 The applicant’s yeshivah and shuls are automatically connected to the community support network.|הישיבה ובתי הכנסת של הפונה מחוברים אוטומטית לרשת התמיכה הקהילתית.|די ישיבה און שולן פונעם אפליקאנט ווערן אויטאמאטיש פארבונדן מיטן קהילה־נעץ פון העלפער.
 Choose from the list or type a new yeshivah or shul.|בחרו מהרשימה או הקלידו ישיבה או בית כנסת חדשים.|קלויבט אויס פון דער ליסטע, אדער שרייבט אריין א נייע ישיבה אדער שול.
+Choose an existing institution or use the add-new option.|בחרו מוסד קיים או השתמשו באפשרות להוסיף חדש.|קלויבט אויס אן עקזיסטירנדן מוסד, אדער נוצט די ברירה צו לייגן א נייעם.
+Add new yeshivah|הוספת ישיבה חדשה|צולייגן א נייע ישיבה
+Add new shul|הוספת בית כנסת חדש|צולייגן א נייע שול
+New yeshivah name|שם הישיבה החדשה|נאמען פון דער נייע ישיבה
+New shul name|שם בית הכנסת החדש|נאמען פון דער נייע שול
 Household & community|המשפחה והקהילה|די משפחה און די קהילה
 Family / individual name|שם המשפחה / הפונה|נאמען פון דער משפחה אדער דעם פונה
 Spouse name|שם בן/בת הזוג|נאמען פונעם מאן אדער די ווייב
