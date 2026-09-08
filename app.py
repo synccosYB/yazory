@@ -966,7 +966,7 @@ def create_app(test_config=None):
             line_item['price_data']['recurring'] = {
                 'interval': 'week' if frequency == 'Weekly' else 'month'}
         params = {
-            'ui_mode': 'embedded',
+            'ui_mode': 'embedded_page',
             'mode': 'payment' if frequency == 'One time' else 'subscription',
             'line_items': [line_item], 'metadata': metadata,
             'return_url': absolute_url('stripe_success') + '?session_id={CHECKOUT_SESSION_ID}',
