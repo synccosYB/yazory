@@ -153,6 +153,7 @@ def test_staff_details_status_and_delete(monkeypatch):
         assert (user.phone, user.city, user.job_title) == ('845-555-1212', 'Monroe', 'Coordinator')
     page = owner.get('/staff').text
     assert '845-555-1212' in page and '10 Main St' in page and 'Coordinator' in page
+    assert 'staff-edit-button' in page
     assert post(owner, f'/staff/{user_id}/details', {'name': 'Updated Staff',
         'email': 'updated@example.test', 'phone': '845-555-3434', 'address': '20 Main St',
         'city': 'Kiryas Joel', 'state': 'NY', 'zip_code': '10950',
