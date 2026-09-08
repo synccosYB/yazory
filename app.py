@@ -574,6 +574,13 @@ def create_app(test_config=None):
                 'ALTER TABLE stripe_payment ADD COLUMN successful_charges INTEGER NOT NULL DEFAULT 0'))
         if 'last_paid_at' not in stripe_payment_columns:
             db.session.execute(text('ALTER TABLE stripe_payment ADD COLUMN last_paid_at TIMESTAMP'))
+        # Backfill the central directories from every profile that already has
+        # shul or yeshivah details. The helpers are idempotent, so startup never
+        # creates duplicate people or institutions.
+        for family in db.session.scalars(select(Family)).all():
+            connect_family_profile_directories(family)
+        for child in db.session.scalars(select(Child)).all():
+            connect_child_profile_directory(child)
         db.session.commit()
 
     def current_user():
@@ -661,6 +668,61 @@ def create_app(test_config=None):
     def valid_directory_person(person_type, person_id):
         return any(kind == person_type and row_id == person_id
                    for kind, row_id, *_ in directory_people())
+
+    def find_or_create_institution(kind, name, city='', state=''):
+        """Reuse one central institution record when profile fields name it."""
+        name, city, state = (name or '').strip(), (city or '').strip(), (state or '').strip()
+        if not name:
+            return None
+        institution = db.session.scalar(select(Institution).where(
+            Institution.kind == kind,
+            func.lower(Institution.name) == name.lower(),
+            func.lower(Institution.city) == city.lower(),
+        ))
+        if institution is None:
+            institution = Institution(kind=kind, name=name, city=city, state=state)
+            db.session.add(institution)
+            db.session.flush()
+        return institution
+
+    def ensure_profile_affiliation(institution, person_type, person_id, grade='', note=''):
+        if institution is None:
+            return None
+        existing = db.session.scalar(select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == institution.id,
+            PersonAffiliation.person_type == person_type,
+            PersonAffiliation.person_id == person_id,
+            PersonAffiliation.grade == grade,
+        ))
+        if existing is None:
+            existing = PersonAffiliation(
+                institution_id=institution.id, person_type=person_type,
+                person_id=person_id, grade=grade, note=note)
+            db.session.add(existing)
+        return existing
+
+    def connect_family_profile_directories(family):
+        """Connect the applicant to every shul named on the family profile."""
+        seen = set()
+        for label, shul_name in (('Weekday shul', family.weekday_shul),
+                                 ('Shabbos shul', family.shabbos_shul)):
+            normalized = (shul_name or '').strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            institution = find_or_create_institution(
+                'Shul', shul_name, family.city, family.state)
+            ensure_profile_affiliation(
+                institution, 'family', family.id, note=label + ' · Family profile')
+
+    def connect_child_profile_directory(child):
+        """Connect a child to the yeshivah and grade saved on that child."""
+        if not (child.school or '').strip() or not (child.grade or '').strip():
+            return
+        institution = find_or_create_institution('Yeshivah', child.school)
+        ensure_profile_affiliation(
+            institution, 'child', child.id, grade=child.grade,
+            note='Child profile')
 
     def setting(key, default):
         row = db.session.get(OrganizationSetting, key)
@@ -885,11 +947,23 @@ def create_app(test_config=None):
         try:
             checkout = create_checkout_session(app.config['STRIPE_SECRET_KEY'], params,
                                                f'yazory-checkout-{payment.id}')
-        except Exception:
+        except Exception as exc:
             db.session.rollback()
-            abort(502, 'Stripe could not create the secure payment page. Try again shortly.')
+            # Stripe errors used to land on a generic 502 page, which made the
+            # Checkout button look as though it had done nothing. Return the
+            # supporter to the form and show Stripe's safe, user-facing reason.
+            user_message = getattr(exc, 'user_message', None)
+            app.logger.exception('Stripe Checkout session creation failed')
+            flash(user_message or
+                  'Stripe could not open the secure payment page. Check that the live Stripe account is activated and try again.',
+                  'error')
+            return redirect(url_for('supporter_detail', contact_id=contact.id))
         payment.checkout_session_id = stripe_value(checkout, 'id', '')
         payment.checkout_url = stripe_value(checkout, 'url', '')
+        if not payment.checkout_session_id or not payment.checkout_url:
+            db.session.rollback()
+            flash('Stripe did not return a secure payment page. Please try again.', 'error')
+            return redirect(url_for('supporter_detail', contact_id=contact.id))
         payment.status = 'open'
         audit(f'Created Stripe checkout for supporter: {contact.name}', contact.family_id)
         db.session.commit()
@@ -1134,6 +1208,7 @@ def create_app(test_config=None):
             family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
             db.session.add(family)
             db.session.flush()
+            connect_family_profile_directories(family)
             save_intake(family, intake_data)
             # An office intake never creates an unassigned household.
             if not organization_admin():
@@ -1156,6 +1231,7 @@ def create_app(test_config=None):
             limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
             for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','shul_gabbai','shul_gabbai_phone','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
+            connect_family_profile_directories(family)
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
             db.session.commit()
@@ -1304,9 +1380,12 @@ def create_app(test_config=None):
             if not 0 <= age <= 120: raise ValueError()
         except ValueError:
             abort(400, 'Age must be between 0 and 120.')
-        db.session.add(Child(family_id=family_id, name=field('name', True), age=age,
+        child = Child(family_id=family_id, name=field('name', True), age=age,
             grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300),
-            married=request.form.get('married') == 'yes', spouse_name=field('spouse_name')))
+            married=request.form.get('married') == 'yes', spouse_name=field('spouse_name'))
+        db.session.add(child)
+        db.session.flush()
+        connect_child_profile_directory(child)
         audit('Added child and school details', family_id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
@@ -1356,6 +1435,7 @@ def create_app(test_config=None):
         child.tuition_contact = field('tuition_contact', limit=300)
         child.married = request.form.get('married') == 'yes'
         child.spouse_name = field('spouse_name')
+        connect_child_profile_directory(child)
         audit('Updated child and spouse details', child.family_id)
         db.session.commit()
         flash('Child and spouse updated.')

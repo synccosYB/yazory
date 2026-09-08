@@ -336,6 +336,76 @@ def test_directories_render_grade_and_family_hierarchy(app, client):
     assert 'directory-person depth-1' in page
     assert 'Under Sample family' in page
 
+def test_profile_fields_automatically_connect_directory_people(app, client):
+    assert post(client, '/families/1/edit', {
+        'name': 'Sample family', 'weekday_shul': 'Automatic Shul',
+        'shabbos_shul': 'Automatic Shul', 'city': 'Monroe', 'state': 'NY',
+    }).status_code == 302
+    assert post(client, '/families/1/children', {
+        'name': 'Automatic Student', 'age': '13', 'school': 'Automatic Yeshivah',
+        'grade': 'Grade 8',
+    }).status_code == 302
+    with app.app_context():
+        shul = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Shul', Institution.name == 'Automatic Shul'))
+        yeshivah = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Yeshivah', Institution.name == 'Automatic Yeshivah'))
+        student = db.session.scalar(db.select(Child).where(
+            Child.name == 'Automatic Student'))
+        shul_links = db.session.scalars(db.select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == shul.id,
+            PersonAffiliation.person_type == 'family',
+            PersonAffiliation.person_id == 1)).all()
+        student_link = db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == yeshivah.id,
+            PersonAffiliation.person_type == 'child',
+            PersonAffiliation.person_id == student.id))
+        assert len(shul_links) == 1
+        assert student_link.grade == 'Grade 8'
+
+def test_updating_child_adds_new_automatic_yeshivah_history(app, client):
+    with app.app_context():
+        child = db.session.scalar(db.select(Child).where(Child.family_id == 1))
+        child_id = child.id
+    assert post(client, f'/children/{child_id}', {
+        'name': 'Sample child', 'age': '9', 'school': 'Later Yeshivah',
+        'grade': 'Grade 5',
+    }).status_code == 302
+    with app.app_context():
+        institution = db.session.scalar(db.select(Institution).where(
+            Institution.name == 'Later Yeshivah'))
+        link = db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == institution.id,
+            PersonAffiliation.person_type == 'child',
+            PersonAffiliation.person_id == child_id))
+        assert link.grade == 'Grade 5'
+
+def test_schema_upgrade_backfills_existing_profile_directories(app):
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        family.weekday_shul = 'Existing Profile Shul'
+        child = db.session.scalar(db.select(Child).where(Child.family_id == 1))
+        child.school = 'Existing Profile Yeshivah'
+        child.grade = 'Grade 4'
+        db.session.commit()
+        family_id, child_id = family.id, child.id
+    result = app.test_cli_runner().invoke(args=['init-db'])
+    assert result.exit_code == 0
+    with app.app_context():
+        shul = db.session.scalar(db.select(Institution).where(
+            Institution.name == 'Existing Profile Shul'))
+        yeshivah = db.session.scalar(db.select(Institution).where(
+            Institution.name == 'Existing Profile Yeshivah'))
+        assert db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == shul.id,
+            PersonAffiliation.person_type == 'family',
+            PersonAffiliation.person_id == family_id))
+        assert db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == yeshivah.id,
+            PersonAffiliation.person_type == 'child',
+            PersonAffiliation.person_id == child_id,
+            PersonAffiliation.grade == 'Grade 4'))
+
 def test_multiple_shul_gabbais_can_be_added_and_updated(app, client):
     assert post(client, '/families/1/gabbais', {
         'name': 'First Gabbai', 'phone': '845-555-0201'}).status_code == 302
