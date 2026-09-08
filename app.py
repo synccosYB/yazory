@@ -2313,8 +2313,20 @@ def create_app(test_config=None):
             statement = statement.where(Institution.name.icontains(query, autoescape=True))
         people = directory_people()
         hierarchy = directory_person_hierarchy()
+        phone_by_key = {}
+        for family in families:
+            phone_by_key[('family', family.id)] = family.phone
+            phone_by_key[('spouse', family.id)] = family.phone
+        for supporter in db.session.scalars(select(Contact)).all():
+            phone_by_key[('supporter', supporter.id)] = supporter.phone
+        for child in db.session.scalars(select(ContactChild)).all():
+            phone_by_key[('supporter_child', child.id)] = child.phone
+            phone_by_key[('supporter_child_spouse', child.id)] = child.phone
+        for user in db.session.scalars(select(StaffUser)).all():
+            phone_by_key[('staff', user.id)] = user.phone
         people_by_key = {(person_type, person_id): {
             'name': name, 'role': role, 'context': context,
+            'phone': phone_by_key.get((person_type, person_id), ''),
             **hierarchy.get((person_type, person_id), {
                 'depth': 0, 'parent_name': '',
                 'sort_key': (context.lower(), name.lower()),

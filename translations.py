@@ -9,6 +9,7 @@ COMMUNITY DIRECTORY|רשימת הקהילה|די קהילה ליסטעס
 Shul list|רשימת בתי כנסת|שול ליסטע
 Yeshivah list|רשימת ישיבות|ישיבה ליסטע
 List filters|מסנני רשימות|ליסטע פילטערס
+Print list|הדפסת הרשימה|דרוקן די ליסטע
 Brothers / brothers-in-law list|רשימת אחים / גיסים|ליסטע פון ברידער / שוואגערס
 Nephews list|רשימת אחיינים|ליסטע פון פלימעניקעס
 All supporters|כל התומכים|אלע העלפער

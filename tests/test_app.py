@@ -323,6 +323,37 @@ def test_all_four_directory_filters_are_linked(client):
         assert 'kind=Shul' in page
         assert 'kind=Yeshivah' in page
 
+def test_filtered_lists_show_phone_column_and_print_action(app, client):
+    with app.app_context():
+        supporter = db.session.scalar(db.select(Contact).where(
+            Contact.name == 'Sample sibling'))
+        supporter.phone = '845-555-0142'
+        family = db.session.get(Family, 1)
+        family.phone = '845-555-0100'
+        institution = Institution(kind='Shul', name='Printable shul')
+        db.session.add(institution)
+        db.session.flush()
+        db.session.add(PersonAffiliation(
+            institution_id=institution.id, person_type='family', person_id=1))
+        db.session.commit()
+    supporter_page = client.get(
+        '/supporters?relationship_group=siblings&family_id=1').text
+    assert '<th>Phone</th>' in supporter_page
+    assert '845-555-0142' in supporter_page
+    assert 'onclick="window.print()"' in supporter_page
+
+    directory_page = client.get(
+        '/community-directories?kind=Shul&family_id=1').text
+    assert '<th>Phone</th>' in directory_page
+    assert '845-555-0100' in directory_page
+    assert 'onclick="window.print()"' in directory_page
+
+@pytest.mark.parametrize('language,label', [
+    ('en', 'Print list'), ('he', 'הדפסת הרשימה'), ('yi', 'דרוקן די ליסטע')])
+def test_print_list_action_is_translated(client, language, label):
+    client.get('/language/' + language)
+    assert label in client.get('/supporters').text
+
 def test_all_four_lists_can_be_filtered_by_applicant(app, client):
     assert post(client, '/families/new', {'name': 'Second applicant'}).status_code == 302
     with app.app_context():
