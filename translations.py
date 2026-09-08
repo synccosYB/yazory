@@ -224,6 +224,7 @@ Children & spouses|ילדים ובני זוג|קינדער און זייערע �
 Niece / nephew of applicant|אחיין / אחיינית של הפונה|נעפיו אדער ניס פונעם אנפרעגער
 Supporter’s child|ילד של התומך|א קינד פונעם העלפער
 Add another child|הוספת ילד נוסף|צולייגן נאך א קינד
+Search names|חיפוש שמות|זוכן נעמען
 This child is already listed under this supporter.|הילד הזה כבר רשום תחת התומך הזה.|דאס קינד שטייט שוין אונטער דעם העלפער.
 Spouse’s sibling|אח/אחות של בן/בת הזוג|ברידער/שוואגער פון ווייב
 In-law’s maiden family|משפחת הנעורים של החותנים|די מיידל נאמען משפחה פון די מחותנים

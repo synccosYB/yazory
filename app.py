@@ -372,13 +372,12 @@ def create_app(test_config=None):
     def money(cents):
         return f'${(cents or 0)/100:,.2f}'
 
-    def supporter_key(name, phone):
-        """Identify one supporter across cases, preferring a normalized phone."""
+    def supporter_key(name, phone, fallback=None):
+        """Identify one supporter across cases by phone; names are not unique."""
         digits = re.sub(r'\D', '', phone or '')
         if len(digits) >= 7:
             return 'phone:' + digits[-10:]
-        normalized_name = re.sub(r'[^\w]+', '', (name or '').casefold())
-        return 'name:' + normalized_name
+        return fallback or 'record:' + secrets.token_hex(16)
 
     def utcnow():
         return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -1465,14 +1464,20 @@ def create_app(test_config=None):
         # supporter linked as a son or son-in-law belongs immediately beneath
         # the selected parent instead of appearing elsewhere in the flat list.
         top_level_contacts = [contact for contact in family.contacts if not contact.parent_contact_id]
-        nested_contact_ids = {nested.id for parent in top_level_contacts for nested in parent.nested_supporters}
+        included_contact_ids = set()
         contact_rows = []
+        def add_contact_branch(contact, depth=0):
+            if contact.id in included_contact_ids:
+                return
+            included_contact_ids.add(contact.id)
+            contact_rows.append((contact, depth))
+            for nested in sorted(contact.nested_supporters, key=lambda row: row.name.lower()):
+                add_contact_branch(nested, depth + 1)
         for contact in top_level_contacts:
-            contact_rows.append((contact, False))
-            contact_rows.extend((nested, True) for nested in contact.nested_supporters)
+            add_contact_branch(contact)
         # Preserve access to legacy/orphaned records whose parent is unavailable.
         contact_rows.extend((contact, False) for contact in family.contacts
-                            if contact.parent_contact_id and contact.id not in nested_contact_ids)
+                            if contact.parent_contact_id and contact.id not in included_contact_ids)
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                contact_rows=contact_rows,
                                budget=budget_totals(family),
@@ -1672,8 +1677,7 @@ def create_app(test_config=None):
         if parent_contact_id:
             parent = db.session.scalar(select(Contact).where(
                 Contact.id == parent_contact_id,
-                Contact.family_id == family_id,
-                Contact.parent_contact_id.is_(None)))
+                Contact.family_id == family_id))
             if parent is None:
                 abort(400, 'Choose a valid parent supporter.')
             if parent_connection not in ('Son', 'Son-in-law'):
@@ -1685,10 +1689,10 @@ def create_app(test_config=None):
         key = supporter_key(name, phone)
         existing = db.session.scalar(select(Contact).where(Contact.supporter_key == key).order_by(Contact.id))
         duplicate_case = db.session.scalar(select(Contact.id).where(
-            Contact.family_id == family_id, Contact.supporter_key == key))
+            Contact.family_id == family_id, Contact.supporter_key == key)) if key.startswith('phone:') else None
         if duplicate_case:
             abort(400, 'This supporter is already connected to this case.')
-        if existing:
+        if existing and key.startswith('phone:'):
             pledge, pledge_frequency, status = existing.monthly_cents, existing.pledge_frequency, existing.status
             if not phone:
                 phone = existing.phone
@@ -1732,9 +1736,14 @@ def create_app(test_config=None):
             abort(403, 'You are not assigned to this family.')
         possible_parents = db.session.scalars(select(Contact).where(
             Contact.family_id == contact.family_id,
-            Contact.id != contact.id,
-            Contact.parent_contact_id.is_(None)
+            Contact.id != contact.id
         ).order_by(Contact.name)).all()
+        descendants, pending = set(), [contact.id]
+        while pending:
+            found = db.session.scalars(select(Contact.id).where(Contact.parent_contact_id.in_(pending))).all()
+            pending = [row_id for row_id in found if row_id not in descendants]
+            descendants.update(pending)
+        possible_parents = [row for row in possible_parents if row.id not in descendants]
         if request.method == 'POST':
             relationship = field('relationship', True)
             status = field('status', True)
@@ -1753,15 +1762,9 @@ def create_app(test_config=None):
                 parent_connection = ''
             name = field('name', True)
             phone = field('phone', limit=80)
-            new_key = supporter_key(name, phone)
+            new_key = supporter_key(name, phone, contact.supporter_key)
             linked = db.session.scalars(select(Contact).where(
                 Contact.supporter_key == contact.supporter_key)).all() if contact.supporter_key else [contact]
-            duplicate = db.session.scalar(select(Contact.id).where(
-                Contact.family_id == contact.family_id,
-                Contact.supporter_key == new_key,
-                Contact.id.not_in([row.id for row in linked])))
-            if duplicate:
-                abort(400, 'This supporter is already connected to this case.')
             for linked_contact in linked:
                 linked_contact.name = name
                 linked_contact.phone = phone
@@ -2055,10 +2058,16 @@ def create_app(test_config=None):
             else:
                 roots.append(contact)
         contacts = []
-        for parent in sorted(roots, key=lambda row: (row.family.name.lower(), row.name.lower())):
+        included_ids = set()
+        def add_branch(parent):
+            if parent.id in included_ids:
+                return
+            included_ids.add(parent.id)
             contacts.append(parent)
-            contacts.extend(sorted(children_by_parent.get(parent.id, []),
-                                   key=lambda row: row.name.lower()))
+            for child in sorted(children_by_parent.get(parent.id, []), key=lambda row: row.name.lower()):
+                add_branch(child)
+        for parent in sorted(roots, key=lambda row: (row.family.name.lower(), row.name.lower())):
+            add_branch(parent)
         family_statement = select(Family).order_by(Family.name)
         if not organization_admin():
             family_statement = family_statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
@@ -2066,7 +2075,7 @@ def create_app(test_config=None):
         families = db.session.scalars(family_statement).all()
         family_ids = [family.id for family in families]
         possible_parents = db.session.scalars(select(Contact).where(
-            Contact.family_id.in_(family_ids), Contact.parent_contact_id.is_(None)
+            Contact.family_id.in_(family_ids)
         ).order_by(Contact.family_id, Contact.name)).all() if family_ids else []
         contact_ids = [contact.id for contact in contacts]
         totals = {contact_id: total for contact_id, total in db.session.execute(select(
