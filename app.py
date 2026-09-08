@@ -20,6 +20,9 @@ from intake import validate_intake, intake_for_form
 from budget_report import household_report
 import child_budget
 from email_service import deliver
+from stripe_gateway import (create_account_link, create_checkout_session,
+                            create_connected_account, create_transfer,
+                            construct_webhook_event, retrieve_connected_account)
 
 db = SQLAlchemy()
 
@@ -191,6 +194,67 @@ class Receipt(db.Model):
     recorded_by = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True)
     recorder = db.relationship('StaffUser', foreign_keys=[recorded_by])
 
+
+class StripePayment(db.Model):
+    """A Stripe Checkout attempt tied to one case-specific supporter pledge."""
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=False, index=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, index=True)
+    checkout_session_id = db.Column(db.String(255), unique=True, index=True)
+    checkout_url = db.Column(db.Text, default='')
+    payment_intent_id = db.Column(db.String(255), default='', index=True)
+    subscription_id = db.Column(db.String(255), default='', index=True)
+    customer_id = db.Column(db.String(255), default='', index=True)
+    amount_cents = db.Column(db.Integer, nullable=False)
+    currency = db.Column(db.String(3), nullable=False, default='usd')
+    frequency = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(30), nullable=False, default='creating', index=True)
+    successful_charges = db.Column(db.Integer, nullable=False, default=0)
+    last_paid_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    contact = db.relationship('Contact', backref=db.backref('stripe_payments', lazy=True))
+    family = db.relationship('Family')
+
+
+class StripeEvent(db.Model):
+    """Processed webhook IDs make financial side effects idempotent."""
+    id = db.Column(db.String(255), primary_key=True)
+    event_type = db.Column(db.String(100), nullable=False, index=True)
+    received_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class StripeRecipient(db.Model):
+    """A family or vendor that receives funds through a Stripe connected account."""
+    __table_args__ = (UniqueConstraint('kind', 'recipient_key', name='uq_stripe_recipient_kind_key'),)
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(20), nullable=False, index=True)
+    recipient_key = db.Column(db.String(200), nullable=False)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=True, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    email = db.Column(db.String(254), nullable=False)
+    stripe_account_id = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    details_submitted = db.Column(db.Boolean, nullable=False, default=False)
+    payouts_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    status = db.Column(db.String(30), nullable=False, default='onboarding', index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    family = db.relationship('Family')
+
+
+class StripeTransfer(db.Model):
+    """A transfer from Yazory to a verified connected-account balance."""
+    id = db.Column(db.Integer, primary_key=True)
+    expense_id = db.Column(db.Integer, db.ForeignKey('expense.id'), nullable=False, unique=True, index=True)
+    recipient_id = db.Column(db.Integer, db.ForeignKey('stripe_recipient.id'), nullable=False, index=True)
+    stripe_transfer_id = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    amount_cents = db.Column(db.Integer, nullable=False)
+    currency = db.Column(db.String(3), nullable=False, default='usd')
+    status = db.Column(db.String(30), nullable=False, default='transferred', index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    expense = db.relationship('Expense')
+    recipient = db.relationship('StripeRecipient')
+
 class Expense(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False)
@@ -264,7 +328,11 @@ def create_app(test_config=None):
                       ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash,
                       RESEND_API_KEY=os.getenv('RESEND_API_KEY', ''),
                       EMAIL_FROM=os.getenv('EMAIL_FROM', ''),
-                      APP_BASE_URL=os.getenv('APP_BASE_URL', '').rstrip('/'))
+                      APP_BASE_URL=os.getenv('APP_BASE_URL', '').rstrip('/'),
+                      STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY', ''),
+                      STRIPE_WEBHOOK_SECRET=os.getenv('STRIPE_WEBHOOK_SECRET', ''),
+                      STRIPE_CONNECT_COUNTRY=os.getenv('STRIPE_CONNECT_COUNTRY', 'US').upper(),
+                      STRIPE_CURRENCY=os.getenv('STRIPE_CURRENCY', 'usd').lower())
     if test_config:
         app.config.update(test_config)
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
@@ -476,6 +544,12 @@ def create_app(test_config=None):
             ))
             # Nested supporters previously displayed as sons-in-law, so retain
             # that meaning for existing records while making it explicit.
+        stripe_payment_columns = {column['name'] for column in inspect(db.engine).get_columns('stripe_payment')}
+        if 'successful_charges' not in stripe_payment_columns:
+            db.session.execute(text(
+                'ALTER TABLE stripe_payment ADD COLUMN successful_charges INTEGER NOT NULL DEFAULT 0'))
+        if 'last_paid_at' not in stripe_payment_columns:
+            db.session.execute(text('ALTER TABLE stripe_payment ADD COLUMN last_paid_at TIMESTAMP'))
         db.session.commit()
 
     def current_user():
@@ -565,19 +639,20 @@ def create_app(test_config=None):
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         user = current_user()
-        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=expense_categories(), relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, pledge_frequencies=PLEDGE_FREQUENCIES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
+        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], stripe_enabled=bool(app.config['STRIPE_SECRET_KEY']), categories=expense_categories(), relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, pledge_frequencies=PLEDGE_FREQUENCIES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
 
     @app.before_request
     def security():
         public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
                             'reset_password', 'accept_invitation', 'about', 'privacy',
-                            'terms', 'donation_policy')
+                            'terms', 'donation_policy', 'stripe_webhook',
+                            'stripe_success', 'stripe_cancel')
         if request.endpoint in ('static', 'health', 'set_language'):
             return
-        if request.method == 'POST' and not hmac.compare_digest(session.get('csrf', ''), request.form.get('csrf', '')):
-            abort(400, 'Your form expired. Reload the page and try again.')
-        if request.method == 'POST' and not session.get('csrf'):
-            abort(400)
+        if request.method == 'POST' and request.endpoint != 'stripe_webhook':
+            if not session.get('csrf') or not hmac.compare_digest(
+                    session.get('csrf', ''), request.form.get('csrf', '')):
+                abort(400, 'Your form expired. Reload the page and try again.')
         if not app.config['DEMO'] and request.endpoint not in public_endpoints:
             if not session.get('user_id'):
                 return redirect(url_for('login'))
@@ -623,6 +698,29 @@ def create_app(test_config=None):
         except (InvalidOperation, ValueError):
             abort(400, 'Enter a valid amount with up to two decimal places, no greater than $1,000,000.')
 
+    def stripe_value(value, key, default=None):
+        if value is None:
+            return default
+        if isinstance(value, dict):
+            return value.get(key, default)
+        return getattr(value, key, default)
+
+    def stripe_receipt(contact, amount_cents, reference, donor_email=''):
+        existing = db.session.scalar(select(Receipt).where(Receipt.reference == reference))
+        if existing:
+            return existing, False
+        receipt = Receipt(contact_id=contact.id, family_id=contact.family_id,
+                          amount_cents=amount_cents, received_on=date.today(),
+                          reference=reference, note='Processed securely by Stripe')
+        db.session.add(receipt)
+        if donor_email:
+            send_email('donation_receipt', donor_email, 'Your Yazory donation receipt',
+                       f'Thank you for your donation of ${amount_cents / 100:,.2f}.\n\n'
+                       f'Receipt reference: {reference}\n\n'
+                       'Yazory is developed and operated by Synccos Inc.',
+                       family_id=contact.family_id)
+        return receipt, True
+
     @app.get('/language/<language>')
     def set_language(language):
         if language not in LANGUAGES:
@@ -659,6 +757,130 @@ def create_app(test_config=None):
     @app.get('/donation-policy')
     def donation_policy():
         return public_page('donation-policy', 'Donation and recurring payment policy')
+
+    @app.post('/supporters/<int:contact_id>/stripe-checkout')
+    def stripe_checkout(contact_id):
+        """Create a Stripe-hosted payment page; Yazory never receives card details."""
+        require_capability(('family_admin', 'fundraiser'))
+        if not app.config['STRIPE_SECRET_KEY']:
+            abort(503, 'Stripe payments are not configured.')
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        payment_amount = amount('amount')
+        frequency = field('frequency', True, 20)
+        if frequency not in PLEDGE_FREQUENCIES:
+            abort(400, 'Choose a valid donation frequency.')
+        payment = StripePayment(contact_id=contact.id, family_id=contact.family_id,
+                                amount_cents=payment_amount,
+                                currency=app.config['STRIPE_CURRENCY'],
+                                frequency=frequency)
+        db.session.add(payment)
+        db.session.flush()
+        metadata = {'yazory_payment_id': str(payment.id), 'contact_id': str(contact.id),
+                    'family_id': str(contact.family_id)}
+        line_item = {'price_data': {'currency': payment.currency,
+                     'product_data': {'name': 'Yazory donation'},
+                     'unit_amount': payment.amount_cents}, 'quantity': 1}
+        params = {'mode': 'payment' if frequency == 'One time' else 'subscription',
+                  'line_items': [line_item], 'customer_creation': 'always' if frequency == 'One time' else None,
+                  'success_url': absolute_url('stripe_success') + '?session_id={CHECKOUT_SESSION_ID}',
+                  'cancel_url': absolute_url('stripe_cancel'), 'metadata': metadata,
+                  'payment_intent_data': {'metadata': metadata} if frequency == 'One time' else None,
+                  'subscription_data': {'metadata': metadata} if frequency != 'One time' else None}
+        if frequency != 'One time':
+            line_item['price_data']['recurring'] = {
+                'interval': 'week' if frequency == 'Weekly' else 'month'}
+        params = {key: value for key, value in params.items() if value is not None}
+        try:
+            checkout = create_checkout_session(app.config['STRIPE_SECRET_KEY'], params,
+                                               f'yazory-checkout-{payment.id}')
+        except Exception:
+            db.session.rollback()
+            abort(502, 'Stripe could not create the secure payment page. Try again shortly.')
+        payment.checkout_session_id = stripe_value(checkout, 'id', '')
+        payment.checkout_url = stripe_value(checkout, 'url', '')
+        payment.status = 'open'
+        audit(f'Created Stripe checkout for supporter: {contact.name}', contact.family_id)
+        db.session.commit()
+        return redirect(payment.checkout_url, code=303)
+
+    @app.get('/stripe/success')
+    def stripe_success():
+        payment = db.session.scalar(select(StripePayment).where(
+            StripePayment.checkout_session_id == request.args.get('session_id', '')[:255]))
+        return render_template('stripe_result.html', title='Donation received', success=True,
+                               payment=payment)
+
+    @app.get('/stripe/cancel')
+    def stripe_cancel():
+        return render_template('stripe_result.html', title='Donation not completed', success=False,
+                               payment=None)
+
+    @app.post('/stripe/webhook')
+    def stripe_webhook():
+        if not app.config['STRIPE_WEBHOOK_SECRET']:
+            abort(503, 'Stripe webhooks are not configured.')
+        try:
+            event = construct_webhook_event(request.get_data(), request.headers.get('Stripe-Signature', ''),
+                                            app.config['STRIPE_WEBHOOK_SECRET'])
+        except Exception:
+            abort(400, 'Invalid Stripe webhook signature.')
+        event_id, event_type = stripe_value(event, 'id', ''), stripe_value(event, 'type', '')
+        if not event_id or db.session.get(StripeEvent, event_id):
+            return {'received': True}
+        obj = stripe_value(stripe_value(event, 'data', {}), 'object', {})
+        metadata = stripe_value(obj, 'metadata', {}) or {}
+        if event_type.startswith('invoice.') and not metadata:
+            parent = stripe_value(obj, 'parent', {}) or {}
+            subscription_details = stripe_value(parent, 'subscription_details', {}) or {}
+            if not subscription_details:
+                subscription_details = stripe_value(obj, 'subscription_details', {}) or {}
+            metadata = stripe_value(subscription_details, 'metadata', {}) or {}
+        payment_id = stripe_value(metadata, 'yazory_payment_id', '')
+        try:
+            payment = db.session.get(StripePayment, int(payment_id)) if payment_id else None
+        except (TypeError, ValueError):
+            payment = None
+        if event_type == 'checkout.session.completed' and payment:
+            payment.checkout_session_id = stripe_value(obj, 'id', payment.checkout_session_id)
+            payment.payment_intent_id = stripe_value(obj, 'payment_intent', '') or ''
+            payment.subscription_id = stripe_value(obj, 'subscription', '') or ''
+            payment.customer_id = stripe_value(obj, 'customer', '') or ''
+            payment.status = 'active' if payment.subscription_id else 'paid'
+            payment.completed_at = utcnow()
+            if not payment.subscription_id:
+                details = stripe_value(obj, 'customer_details', {}) or {}
+                _, created = stripe_receipt(payment.contact, payment.amount_cents,
+                                            f'stripe:{payment.payment_intent_id or payment.checkout_session_id}',
+                                            stripe_value(details, 'email', '') or '')
+                if created:
+                    payment.successful_charges += 1
+                    payment.last_paid_at = utcnow()
+        elif event_type == 'invoice.paid' and payment:
+            payment.status = 'active'
+            payment.subscription_id = stripe_value(obj, 'subscription', payment.subscription_id) or payment.subscription_id
+            _, created = stripe_receipt(payment.contact, stripe_value(obj, 'amount_paid', payment.amount_cents),
+                                        f'stripe-invoice:{stripe_value(obj, "id", event_id)}',
+                                        stripe_value(obj, 'customer_email', '') or '')
+            if created:
+                payment.successful_charges += 1
+                payment.last_paid_at = utcnow()
+        elif event_type in ('invoice.payment_failed', 'customer.subscription.paused') and payment:
+            payment.status = 'past_due'
+        elif event_type == 'customer.subscription.deleted' and payment:
+            payment.status = 'cancelled'
+        elif event_type == 'account.updated':
+            recipient = db.session.scalar(select(StripeRecipient).where(
+                StripeRecipient.stripe_account_id == stripe_value(obj, 'id', '')))
+            if recipient:
+                recipient.details_submitted = bool(stripe_value(obj, 'details_submitted', False))
+                recipient.payouts_enabled = bool(stripe_value(obj, 'payouts_enabled', False))
+                recipient.status = 'ready' if recipient.payouts_enabled else ('restricted' if recipient.details_submitted else 'onboarding')
+                recipient.updated_at = utcnow()
+        db.session.add(StripeEvent(id=event_id, event_type=event_type))
+        db.session.commit()
+        return {'received': True}
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -860,20 +1082,7 @@ def create_app(test_config=None):
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
         for contact in family.contacts:
             contact.connected_cases = linked_contact_count(contact)
-        # Keep each supporter's household together in the profile table.  A
-        # supporter linked as a son or son-in-law belongs immediately beneath
-        # the selected parent instead of appearing elsewhere in the flat list.
-        top_level_contacts = [contact for contact in family.contacts if not contact.parent_contact_id]
-        nested_contact_ids = {nested.id for parent in top_level_contacts for nested in parent.nested_supporters}
-        contact_rows = []
-        for contact in top_level_contacts:
-            contact_rows.append((contact, False))
-            contact_rows.extend((nested, True) for nested in contact.nested_supporters)
-        # Preserve access to legacy/orphaned records whose parent is unavailable.
-        contact_rows.extend((contact, False) for contact in family.contacts
-                            if contact.parent_contact_id and contact.id not in nested_contact_ids)
         return render_template('family.html', title=family.name, family=family, activity=activity,
-                               contact_rows=contact_rows,
                                budget=budget_totals(family),
                                pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged'))
 
@@ -1439,9 +1648,12 @@ def create_app(test_config=None):
         receipts = db.session.scalars(select(Receipt).where(
             Receipt.contact_id.in_(contact_ids)
         ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if contact_ids else []
+        payments = db.session.scalars(select(StripePayment).where(
+            StripePayment.contact_id.in_(contact_ids)
+        ).order_by(StripePayment.created_at.desc())).all() if contact_ids else []
         return render_template('supporter_detail.html', title='Supporter history',
                                supporter=contact, linked_contacts=linked_contacts,
-                               receipts=receipts,
+                               receipts=receipts, payments=payments,
                                total_received=sum(receipt.amount_cents for receipt in receipts))
 
     @app.get('/approvals')
@@ -1518,6 +1730,124 @@ def create_app(test_config=None):
         if not organization_admin():
             statement = statement.where(Expense.family_id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
         return render_template('expenses.html', title='Expenses & approvals', expenses=db.session.scalars(statement).all(), selected_status=status)
+
+    @app.get('/payouts')
+    def payouts():
+        require_organization_admin()
+        recipients = db.session.scalars(select(StripeRecipient).order_by(
+            StripeRecipient.created_at.desc())).all()
+        transfers = db.session.scalars(select(StripeTransfer).order_by(
+            StripeTransfer.created_at.desc()).limit(250)).all()
+        families = db.session.scalars(select(Family).order_by(Family.name)).all()
+        approved_expenses = db.session.scalars(select(Expense).where(
+            Expense.status == 'Approved').order_by(Expense.id.desc())).all()
+        return render_template('payouts.html', title='Stripe payouts', recipients=recipients,
+                               transfers=transfers, families=families,
+                               approved_expenses=approved_expenses)
+
+    @app.post('/payouts/recipients')
+    def create_payout_recipient():
+        require_organization_admin()
+        if not app.config['STRIPE_SECRET_KEY']:
+            abort(503, 'Stripe payments are not configured.')
+        kind = field('kind', True, 20)
+        if kind not in ('family', 'vendor'):
+            abort(400, 'Choose family or vendor.')
+        family = None
+        if kind == 'family':
+            family = db.session.get(Family, request.form.get('family_id', type=int))
+            if family is None:
+                abort(400, 'Choose a valid family.')
+            recipient_name, recipient_key = family.name, str(family.id)
+        else:
+            recipient_name = field('name', True)
+            recipient_key = recipient_name.casefold()
+        recipient_email = email_field()
+        existing = db.session.scalar(select(StripeRecipient).where(
+            StripeRecipient.kind == kind, StripeRecipient.recipient_key == recipient_key))
+        if existing:
+            abort(400, 'This payout recipient already exists.')
+        try:
+            account = create_connected_account(app.config['STRIPE_SECRET_KEY'], {
+                'type': 'express', 'country': app.config['STRIPE_CONNECT_COUNTRY'],
+                'email': recipient_email, 'capabilities': {'transfers': {'requested': True}},
+                'metadata': {'yazory_kind': kind, 'yazory_recipient_key': recipient_key}},
+                f'yazory-recipient-{kind}-{recipient_key}')
+        except Exception:
+            abort(502, 'Stripe could not create the recipient account. Confirm that Connect is enabled and try again.')
+        recipient = StripeRecipient(kind=kind, recipient_key=recipient_key,
+            family_id=family.id if family else None, name=recipient_name, email=recipient_email,
+            stripe_account_id=stripe_value(account, 'id', ''))
+        db.session.add(recipient)
+        audit(f'Created Stripe payout recipient: {recipient_name}', family.id if family else None)
+        db.session.commit()
+        flash('Recipient created. Continue to secure Stripe verification.')
+        return redirect(url_for('payout_recipient_onboarding', recipient_id=recipient.id))
+
+    @app.get('/payouts/recipients/<int:recipient_id>/onboarding')
+    def payout_recipient_onboarding(recipient_id):
+        require_organization_admin()
+        recipient = db.get_or_404(StripeRecipient, recipient_id)
+        try:
+            link = create_account_link(app.config['STRIPE_SECRET_KEY'], {
+                'account': recipient.stripe_account_id,
+                'refresh_url': absolute_url('payout_recipient_onboarding', recipient_id=recipient.id),
+                'return_url': absolute_url('payout_recipient_return', recipient_id=recipient.id),
+                'type': 'account_onboarding'})
+        except Exception:
+            abort(502, 'Stripe could not open recipient verification. Try again shortly.')
+        return redirect(stripe_value(link, 'url', ''), code=303)
+
+    @app.get('/payouts/recipients/<int:recipient_id>/return')
+    def payout_recipient_return(recipient_id):
+        require_organization_admin()
+        recipient = db.get_or_404(StripeRecipient, recipient_id)
+        try:
+            account = retrieve_connected_account(app.config['STRIPE_SECRET_KEY'],
+                                                 recipient.stripe_account_id)
+        except Exception:
+            abort(502, 'Stripe could not refresh the verification status.')
+        recipient.details_submitted = bool(stripe_value(account, 'details_submitted', False))
+        recipient.payouts_enabled = bool(stripe_value(account, 'payouts_enabled', False))
+        recipient.status = 'ready' if recipient.payouts_enabled else ('restricted' if recipient.details_submitted else 'onboarding')
+        recipient.updated_at = utcnow()
+        db.session.commit()
+        flash('Stripe verification status refreshed.')
+        return redirect(url_for('payouts'))
+
+    @app.post('/expenses/<int:expense_id>/stripe-transfer')
+    def stripe_expense_transfer(expense_id):
+        require_organization_admin()
+        if not app.config['STRIPE_SECRET_KEY']:
+            abort(503, 'Stripe payments are not configured.')
+        expense = db.get_or_404(Expense, expense_id)
+        if expense.status != 'Approved':
+            abort(400, 'Only an approved expense can be sent through Stripe.')
+        if db.session.scalar(select(StripeTransfer.id).where(StripeTransfer.expense_id == expense.id)):
+            abort(400, 'This expense was already sent through Stripe.')
+        recipient = db.session.get(StripeRecipient, request.form.get('recipient_id', type=int))
+        if recipient is None or not recipient.payouts_enabled:
+            abort(400, 'Choose a Stripe-verified recipient with payouts enabled.')
+        try:
+            transfer = create_transfer(app.config['STRIPE_SECRET_KEY'], {
+                'amount': expense.amount_cents, 'currency': app.config['STRIPE_CURRENCY'],
+                'destination': recipient.stripe_account_id,
+                'transfer_group': f'YAZORY_EXPENSE_{expense.id}',
+                'metadata': {'yazory_expense_id': str(expense.id),
+                             'yazory_family_id': str(expense.family_id)}},
+                f'yazory-expense-{expense.id}')
+        except Exception:
+            abort(502, 'Stripe could not send this transfer. No Yazory payment record was changed.')
+        transfer_id = stripe_value(transfer, 'id', '')
+        db.session.add(StripeTransfer(expense_id=expense.id, recipient_id=recipient.id,
+            stripe_transfer_id=transfer_id, amount_cents=expense.amount_cents,
+            currency=app.config['STRIPE_CURRENCY']))
+        expense.status = 'Paid'
+        expense.payment_reference = transfer_id
+        audit(f'Sent expense #{expense.id} through Stripe to {recipient.name}', expense.family_id)
+        db.session.commit()
+        flash('Funds were transferred to the recipient’s Stripe balance for payout.')
+        return redirect(url_for('payouts'))
 
     @app.post('/expenses/<int:expense_id>/status')
     def expense_status(expense_id):

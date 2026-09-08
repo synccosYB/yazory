@@ -45,6 +45,10 @@ Deployment intentionally refuses to start without all of these Replit Secrets:
 | `APP_BASE_URL` | Public origin used in secure email links, for example `https://yazory.replit.app` |
 | `RESEND_API_KEY` | Resend API key for transactional email |
 | `EMAIL_FROM` | Verified sender, for example `Yazory <notifications@example.org>` |
+| `STRIPE_SECRET_KEY` | Yazory account live secret key; use a test key outside production |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the `/stripe/webhook` endpoint |
+| `STRIPE_CONNECT_COUNTRY` | Connected-account country; defaults to `US` |
+| `STRIPE_CURRENCY` | Donation and transfer currency; defaults to `usd` |
 
 Generate a session secret privately with `python -c "import secrets; print(secrets.token_hex(32))"`.
 Generate a password hash privately with:
@@ -63,7 +67,9 @@ The publishing command in `.replit` sets `APP_ENV=production`, runs the additive
 
 The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
 
-Staff invitations, account activation, password recovery, role/assignment notifications, case/expense notifications, and an administrator delivery log are implemented through Resend. Without email secrets, messages are retained as failed delivery records. Still not implemented: automated donation collection, donor PDF receipts, bank reconciliation, email replies/shared inbox, SMS delivery, full bookkeeping, recurring expense generation, or automated backups. No external financial actions are performed by this repository setup.
+Staff invitations, account activation, password recovery, role/assignment notifications, case/expense notifications, and an administrator delivery log are implemented through Resend. Without email secrets, messages are retained as failed delivery records. Stripe Checkout supports one-time, weekly, and monthly donations; verified webhooks create idempotent Yazory receipt records and the application sends its own email receipts. Stripe Connect Express onboarding keeps recipient bank and debit-card details at Stripe. Organization administrators can transfer an approved expense to a verified family or vendor connected account. Stripe Tax and Stripe invoices are not used. Still not implemented: donor PDF receipts, bank reconciliation, email replies/shared inbox, SMS delivery, full bookkeeping, recurring expense generation, or automated backups.
+
+Create a Stripe webhook destination for `https://yazory.replit.app/stripe/webhook` and subscribe it to `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, and `account.updated`. Connect must be enabled on the Yazory Stripe account before recipient onboarding can create Express connected accounts. Use Stripe test mode and test connected accounts before replacing the test key with the live key.
 
 ## Tests
 
