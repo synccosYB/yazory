@@ -108,6 +108,11 @@ New family intake|קליטת משפחה חדשה|ארייננעמען א ניי�
 Edit family profile|עריכת פרופיל משפחה|ענדערן די פרטים פון דער משפחה
 Start with the household, then add schools, supporters, and expenses.|התחילו בפרטי המשפחה, ולאחר מכן הוסיפו מוסדות לימוד, תומכים והוצאות.|הייבט אן מיט די משפחה, דערנאך לייגט צו מוסדות, העלפער און הוצאות.
 Yeshivah attended by applicant|הישיבה שבה למד הפונה|די ישיבה וואו דער אפליקאנט האט געלערנט
+Applicant yeshivah history|היסטוריית הישיבות של הפונה|די ישיבות וואו דער אפליקאנט האט געלערנט
+Enter every yeshivah separately so helpers can be matched by attendance years.|הזינו כל ישיבה בנפרד כדי להתאים תומכים לפי שנות הלימוד.|לייגט אריין יעדע ישיבה באזונדער, כדי צו קענען זען וועלכע העלפער האבן דארט געלערנט אין די זעלבע יארן.
++ Add another yeshivah|+ הוספת ישיבה נוספת|+ צולייגן נאך א ישיבה
+Yeshivah *|ישיבה *|ישיבה *
+Choose an existing institution or type a new yeshivah.|בחרו מוסד קיים או הקלידו ישיבה חדשה.|קלויבט אויס אן עקזיסטירנדע ישיבה, אדער שרייבט אריין א נייע ישיבה.
 The applicant’s yeshivah and shuls are automatically connected to the community support network.|הישיבה ובתי הכנסת של הפונה מחוברים אוטומטית לרשת התמיכה הקהילתית.|די ישיבה און שולן פונעם אפליקאנט ווערן אויטאמאטיש פארבונדן מיטן קהילה־נעץ פון העלפער.
 Choose from the list or type a new yeshivah or shul.|בחרו מהרשימה או הקלידו ישיבה או בית כנסת חדשים.|קלויבט אויס פון דער ליסטע, אדער שרייבט אריין א נייע ישיבה אדער שול.
 Choose an existing institution or use the add-new option.|בחרו מוסד קיים או השתמשו באפשרות להוסיף חדש.|קלויבט אויס אן עקזיסטירנדן מוסד, אדער נוצט די ברירה צו לייגן א נייעם.

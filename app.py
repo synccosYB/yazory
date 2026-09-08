@@ -772,7 +772,7 @@ def create_app(test_config=None):
             db.session.add(existing)
         return existing
 
-    def connect_family_profile_directories(family):
+    def connect_family_profile_directories(family, yeshivah_history=None):
         """Keep the applicant connected to profile shuls and yeshivah."""
         seen = set()
         current_institution_ids = set()
@@ -787,11 +787,26 @@ def create_app(test_config=None):
             current_institution_ids.add(institution.id)
             ensure_profile_affiliation(
                 institution, 'family', family.id, note=label + ' · Family profile')
-        yeshivah = find_or_create_institution('Yeshivah', family.yeshivah)
-        if yeshivah is not None:
-            current_institution_ids.add(yeshivah.id)
-            ensure_profile_affiliation(
-                yeshivah, 'family', family.id, note='Applicant profile · Family profile')
+        if yeshivah_history is not None:
+            db.session.execute(db.delete(PersonAffiliation).where(
+                PersonAffiliation.person_type == 'family',
+                PersonAffiliation.person_id == family.id,
+                PersonAffiliation.institution_id.in_(select(Institution.id).where(
+                    Institution.kind == 'Yeshivah'))))
+            for history in yeshivah_history:
+                yeshivah = find_or_create_institution('Yeshivah', history['name'])
+                current_institution_ids.add(yeshivah.id)
+                db.session.add(PersonAffiliation(
+                    institution_id=yeshivah.id, person_type='family',
+                    person_id=family.id, grade=history['grade'],
+                    year_from=history['year_from'], year_to=history['year_to'],
+                    note='Applicant profile · Family profile'))
+        else:
+            yeshivah = find_or_create_institution('Yeshivah', family.yeshivah)
+            if yeshivah is not None:
+                current_institution_ids.add(yeshivah.id)
+                ensure_profile_affiliation(
+                    yeshivah, 'family', family.id, note='Applicant profile · Family profile')
 
         # Replace only the automatic profile links; keep manually entered links.
         automatic = db.session.scalars(select(PersonAffiliation).where(
@@ -1422,9 +1437,68 @@ def create_app(test_config=None):
             Institution.kind == 'Shul').distinct().order_by(Institution.name)).all()
         yeshivah_names = db.session.scalars(select(Institution.name).where(
             Institution.kind == 'Yeshivah').distinct().order_by(Institution.name)).all()
+        if error and 'yeshivah_name' in request.form:
+            names = request.form.getlist('yeshivah_name')
+            grades = request.form.getlist('yeshivah_grade')
+            years_in = request.form.getlist('yeshivah_year_from')
+            years_out = request.form.getlist('yeshivah_year_to')
+            yeshivah_history = [
+                {'name': name, 'grade': grades[index] if index < len(grades) else '',
+                 'year_from': years_in[index] if index < len(years_in) else '',
+                 'year_to': years_out[index] if index < len(years_out) else ''}
+                for index, name in enumerate(names)
+            ] or [{'name': '', 'grade': '', 'year_from': '', 'year_to': ''}]
+        elif family:
+            affiliations = db.session.scalars(select(PersonAffiliation).join(Institution).where(
+                PersonAffiliation.person_type == 'family',
+                PersonAffiliation.person_id == family.id,
+                Institution.kind == 'Yeshivah').order_by(PersonAffiliation.year_from,
+                                                         PersonAffiliation.id)).all()
+            yeshivah_history = [
+                {'name': row.institution.name, 'grade': row.grade,
+                 'year_from': row.year_from or '', 'year_to': row.year_to or ''}
+                for row in affiliations
+            ]
+            if not yeshivah_history and family.yeshivah:
+                yeshivah_history = [{'name': family.yeshivah, 'grade': '',
+                                      'year_from': '', 'year_to': ''}]
+        else:
+            yeshivah_history = []
         return render_template('family_form.html', family=family, title=title,
             values=values, budget=budget, intake_error=error,
-            shul_names=shul_names, yeshivah_names=yeshivah_names)
+            shul_names=shul_names, yeshivah_names=yeshivah_names,
+            yeshivah_history=yeshivah_history)
+
+    def submitted_yeshivah_history():
+        """Validate the applicant's repeatable, structured yeshivah history."""
+        if 'yeshivah_name' not in request.form:
+            return None
+        columns = {key: request.form.getlist(key) for key in (
+            'yeshivah_name', 'yeshivah_grade', 'yeshivah_year_from',
+            'yeshivah_year_to')}
+        histories = []
+        for index, raw_name in enumerate(columns['yeshivah_name']):
+            values = {key: (rows[index].strip() if index < len(rows) else '')
+                      for key, rows in columns.items()}
+            if not any(values.values()):
+                continue
+            if not all(values.values()):
+                raise ValueError('For every yeshivah, enter the name, class entered, year in, and year out.')
+            if len(values['yeshivah_name']) > 160 or len(values['yeshivah_grade']) > 80:
+                raise ValueError('Yeshivah information is too long.')
+            try:
+                year_from = int(values['yeshivah_year_from'])
+                year_to = int(values['yeshivah_year_to'])
+            except ValueError:
+                raise ValueError('Enter valid yeshivah years.')
+            if not 1900 <= year_from <= 2100 or not 1900 <= year_to <= 2100:
+                raise ValueError('Enter valid yeshivah years.')
+            if year_from > year_to:
+                raise ValueError('The year out must not be before the year in.')
+            histories.append({'name': values['yeshivah_name'],
+                              'grade': values['yeshivah_grade'],
+                              'year_from': year_from, 'year_to': year_to})
+        return histories
 
     def institution_field(key):
         selected = request.form.get(key, '').strip()
@@ -1448,15 +1522,18 @@ def create_app(test_config=None):
         if request.method == 'POST':
             try:
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
+                yeshivah_history = submitted_yeshivah_history()
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
             limits = {'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
             family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
             for key in ('yeshivah', 'weekday_shul', 'shabbos_shul'):
                 setattr(family, key, institution_field(key))
+            if yeshivah_history is not None:
+                family.yeshivah = yeshivah_history[0]['name'] if yeshivah_history else ''
             db.session.add(family)
             db.session.flush()
-            connect_family_profile_directories(family)
+            connect_family_profile_directories(family, yeshivah_history)
             save_intake(family, intake_data)
             # An office intake never creates an unassigned household.
             if not organization_admin():
@@ -1474,6 +1551,7 @@ def create_app(test_config=None):
         if request.method == 'POST':
             try:
                 intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
+                yeshivah_history = submitted_yeshivah_history()
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
             limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
@@ -1481,7 +1559,9 @@ def create_app(test_config=None):
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
             for key in ('yeshivah', 'weekday_shul', 'shabbos_shul'):
                 setattr(family, key, institution_field(key))
-            connect_family_profile_directories(family)
+            if yeshivah_history is not None:
+                family.yeshivah = yeshivah_history[0]['name'] if yeshivah_history else ''
+            connect_family_profile_directories(family, yeshivah_history)
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
             db.session.commit()
