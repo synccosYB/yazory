@@ -927,7 +927,10 @@ def create_app(test_config=None):
         # database flush previously held the browser on "Opening Stripe…" even
         # though Stripe itself was reachable. Stripe returns the session first;
         # we then persist the local tracking record before redirecting the user.
-        metadata = {'contact_id': str(contact.id), 'family_id': str(contact.family_id)}
+        metadata = {
+            'contact_id': str(contact.id), 'family_id': str(contact.family_id),
+            'amount_cents': str(payment_amount), 'frequency': frequency,
+        }
         line_item = {'price_data': {'currency': app.config['STRIPE_CURRENCY'],
                      'product_data': {'name': 'Yazory donation'},
                      'unit_amount': payment_amount}, 'quantity': 1}
@@ -960,14 +963,8 @@ def create_app(test_config=None):
         if not checkout_session_id or not checkout_url:
             flash('Stripe did not return a secure payment page. Please try again.', 'error')
             return redirect(url_for('supporter_detail', contact_id=contact.id))
-        payment = StripePayment(
-            contact_id=contact.id, family_id=contact.family_id,
-            amount_cents=payment_amount, currency=app.config['STRIPE_CURRENCY'],
-            frequency=frequency, checkout_session_id=checkout_session_id,
-            checkout_url=checkout_url, status='open')
-        db.session.add(payment)
-        audit(f'Created Stripe checkout for supporter: {contact.name}', contact.family_id)
-        db.session.commit()
+        # Do not make the donor wait for a database write. The signed Stripe
+        # webhook creates the local payment record when Checkout completes.
         return redirect(checkout_url, code=303)
 
     @app.get('/stripe/success')
@@ -1020,6 +1017,24 @@ def create_app(test_config=None):
             if invoice_subscription:
                 payment = db.session.scalar(select(StripePayment).where(
                     StripePayment.subscription_id == invoice_subscription))
+        if payment is None and event_type == 'checkout.session.completed':
+            try:
+                contact_id = int(stripe_value(metadata, 'contact_id', ''))
+                family_id = int(stripe_value(metadata, 'family_id', ''))
+                amount_cents = int(stripe_value(metadata, 'amount_cents', ''))
+            except (TypeError, ValueError):
+                contact_id = family_id = amount_cents = 0
+            frequency = stripe_value(metadata, 'frequency', '')
+            contact = db.session.get(Contact, contact_id) if contact_id else None
+            if (contact and contact.family_id == family_id and amount_cents > 0 and
+                    frequency in PLEDGE_FREQUENCIES):
+                payment = StripePayment(
+                    contact_id=contact.id, family_id=family_id,
+                    amount_cents=amount_cents, currency=app.config['STRIPE_CURRENCY'],
+                    frequency=frequency,
+                    checkout_session_id=stripe_value(obj, 'id', ''), status='open')
+                db.session.add(payment)
+                db.session.flush()
         if event_type == 'checkout.session.completed' and payment:
             payment.checkout_session_id = stripe_value(obj, 'id', payment.checkout_session_id)
             payment.payment_intent_id = stripe_value(obj, 'payment_intent', '') or ''
