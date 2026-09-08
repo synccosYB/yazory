@@ -380,15 +380,39 @@ def test_directories_render_grade_and_family_hierarchy(app, client):
         institution_id, child_id = institution.id, child.id
     assert post(client, '/community-directories/affiliations', {
         'institution_id': str(institution_id), 'person': 'family:1',
-        'grade': 'Grade 8'}).status_code == 302
+        'grade': 'Grade 8', 'year_from': '2010', 'year_to': '2014'}).status_code == 302
     assert post(client, '/community-directories/affiliations', {
         'institution_id': str(institution_id), 'person': f'child:{child_id}',
-        'grade': 'Grade 8'}).status_code == 302
+        'grade': 'Grade 8', 'year_from': '2020', 'year_to': '2024'}).status_code == 302
     page = client.get('/community-directories?kind=Yeshivah').text
     assert 'directory-grade-row' in page
-    assert 'Grade: Grade 8' in page
+    assert 'Class entered: Grade 8' in page
     assert 'directory-person depth-1' in page
     assert 'Under Sample family' in page
+
+def test_yeshivah_years_are_required_and_supporter_overlap_is_visible(app, client):
+    assert post(client, '/community-directories/institutions', {
+        'kind': 'Yeshivah', 'name': 'Overlap Yeshivah'}).status_code == 302
+    assert post(client, '/families/1/contacts', {
+        'name': 'Yeshivah helper', 'relationship': 'Yeshivah / school friend',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    with app.app_context():
+        institution_id = db.session.scalar(db.select(Institution.id).where(
+            Institution.name == 'Overlap Yeshivah'))
+        supporter_id = db.session.scalar(db.select(Contact.id).where(
+            Contact.name == 'Yeshivah helper'))
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(institution_id), 'person': 'family:1',
+        'grade': 'Kitah 9'}).status_code == 400
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(institution_id), 'person': 'family:1',
+        'grade': 'Kitah 9', 'year_from': '2010', 'year_to': '2014'}).status_code == 302
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(institution_id), 'person': f'supporter:{supporter_id}',
+        'grade': 'Kitah 10', 'year_from': '2012', 'year_to': '2016'}).status_code == 302
+    page = client.get('/community-directories?kind=Yeshivah').text
+    assert 'Yeshivah helper' in page
+    assert 'Yes · 2012–2014' in page
 
 def test_profile_fields_automatically_connect_directory_people(app, client):
     assert post(client, '/families/1/edit', {
