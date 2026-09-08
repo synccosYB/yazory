@@ -3,7 +3,7 @@ import sqlite3
 from datetime import date
 
 import pytest
-from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, Institution, PersonAffiliation
+from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -53,6 +53,24 @@ def test_case_and_expense_workflow(app, client):
         assert expense.amount_cents==12550
         assert expense.payment_reference=='CHECK-123'
         assert len(db.session.scalars(db.select(Audit).where(Audit.family_id==family_id)).all())==8
+
+def test_add_and_view_provider_expense_without_edit_mode(app, client):
+    assert post(client, '/families/new', {'name':'Provider expense family'}).status_code == 302
+    with app.app_context():
+        family_id = db.session.scalar(db.select(Family.id).where(Family.name == 'Provider expense family'))
+    response = post(client, f'/families/{family_id}/provider-accounts', {
+        'kind':'utility', 'provider':'Electric company', 'child':'Family home',
+        'monthly_bill':'84.25', 'account':'A-123', 'phone':'845-555-0100',
+        'budget_treatment':'additional'
+    })
+    assert response.status_code == 302
+    page = client.get(f'/families/{family_id}')
+    assert 'Electric company' in page.text
+    assert 'Family home' in page.text
+    assert '$84.25' in page.text
+    with app.app_context():
+        account = db.session.get(HouseholdIntake, family_id).data['accounts'][0]
+        assert account['monthly_bill'] == 8425
         assert db.session.execute(db.select(Contact.monthly_cents).where(Contact.family_id==family_id)).scalar_one()==1825
 
 def test_married_child_records_spouse(app, client):
