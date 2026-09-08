@@ -490,7 +490,8 @@ CATALOG.update({
  'Monthly income': {'he':'הכנסה חודשית', 'yi':'חודש׳ליכע הכנסות'},
  'Monthly assistance': {'he':'סיוע חודשי', 'yi':'חודש׳ליכע הילף'},
  'Remaining monthly need': {'he':'צורך חודשי שנותר', 'yi':'וויפיל עס פעלט נאך א חודש'},
- 'Totals use entered amounts only. Save on the Review step to keep your changes.': {'he':'הסכומים מבוססים רק על הנתונים שהוזנו. שמרו בשלב הסקירה כדי לשמור את השינויים.', 'yi':'די סך הכל רעכנט נאר די אריינגעלייגטע סכומים. דריקט אויפן אפהיטן קנעפל ביים איבערקוקן צו האלטן די ענדערונגען.'}
+ 'Totals use entered amounts only. Save on the Review step to keep your changes.': {'he':'הסכומים מבוססים רק על הנתונים שהוזנו. שמרו בשלב הסקירה כדי לשמור את השינויים.', 'yi':'די סך הכל רעכנט נאר די אריינגעלייגטע סכומים. דריקט אויפן אפהיטן קנעפל ביים איבערקוקן צו האלטן די ענדערונגען.'},
+ 'Totals use entered amounts only. You can save your changes from any step.': {'he':'הסכומים מבוססים רק על הנתונים שהוזנו. אפשר לשמור את השינויים מכל שלב.', 'yi':'די סך הכל רעכנט נאר די אריינגעלייגטע סכומים. מען קען אפהיטן די ענדערונגען פון יעדן שריט.'}
 })
 
 CATALOG.update({
