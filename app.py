@@ -923,17 +923,14 @@ def create_app(test_config=None):
         frequency = field('frequency', True, 20)
         if frequency not in PLEDGE_FREQUENCIES:
             abort(400, 'Choose a valid donation frequency.')
-        payment = StripePayment(contact_id=contact.id, family_id=contact.family_id,
-                                amount_cents=payment_amount,
-                                currency=app.config['STRIPE_CURRENCY'],
-                                frequency=frequency)
-        db.session.add(payment)
-        db.session.flush()
-        metadata = {'yazory_payment_id': str(payment.id), 'contact_id': str(contact.id),
-                    'family_id': str(contact.family_id)}
-        line_item = {'price_data': {'currency': payment.currency,
+        # Do not write to the database before opening Checkout. A blocked
+        # database flush previously held the browser on "Opening Stripe…" even
+        # though Stripe itself was reachable. Stripe returns the session first;
+        # we then persist the local tracking record before redirecting the user.
+        metadata = {'contact_id': str(contact.id), 'family_id': str(contact.family_id)}
+        line_item = {'price_data': {'currency': app.config['STRIPE_CURRENCY'],
                      'product_data': {'name': 'Yazory donation'},
-                     'unit_amount': payment.amount_cents}, 'quantity': 1}
+                     'unit_amount': payment_amount}, 'quantity': 1}
         params = {'mode': 'payment' if frequency == 'One time' else 'subscription',
                   'line_items': [line_item], 'customer_creation': 'always' if frequency == 'One time' else None,
                   'success_url': absolute_url('stripe_success') + '?session_id={CHECKOUT_SESSION_ID}',
@@ -946,7 +943,7 @@ def create_app(test_config=None):
         params = {key: value for key, value in params.items() if value is not None}
         try:
             checkout = create_checkout_session(app.config['STRIPE_SECRET_KEY'], params,
-                                               f'yazory-checkout-{payment.id}')
+                                               f'yazory-checkout-{secrets.token_hex(16)}')
         except Exception as exc:
             db.session.rollback()
             # Stripe errors used to land on a generic 502 page, which made the
@@ -958,16 +955,20 @@ def create_app(test_config=None):
                   'Stripe could not open the secure payment page. Check that the live Stripe account is activated and try again.',
                   'error')
             return redirect(url_for('supporter_detail', contact_id=contact.id))
-        payment.checkout_session_id = stripe_value(checkout, 'id', '')
-        payment.checkout_url = stripe_value(checkout, 'url', '')
-        if not payment.checkout_session_id or not payment.checkout_url:
-            db.session.rollback()
+        checkout_session_id = stripe_value(checkout, 'id', '')
+        checkout_url = stripe_value(checkout, 'url', '')
+        if not checkout_session_id or not checkout_url:
             flash('Stripe did not return a secure payment page. Please try again.', 'error')
             return redirect(url_for('supporter_detail', contact_id=contact.id))
-        payment.status = 'open'
+        payment = StripePayment(
+            contact_id=contact.id, family_id=contact.family_id,
+            amount_cents=payment_amount, currency=app.config['STRIPE_CURRENCY'],
+            frequency=frequency, checkout_session_id=checkout_session_id,
+            checkout_url=checkout_url, status='open')
+        db.session.add(payment)
         audit(f'Created Stripe checkout for supporter: {contact.name}', contact.family_id)
         db.session.commit()
-        return redirect(payment.checkout_url, code=303)
+        return redirect(checkout_url, code=303)
 
     @app.get('/stripe/success')
     def stripe_success():
@@ -1006,6 +1007,19 @@ def create_app(test_config=None):
             payment = db.session.get(StripePayment, int(payment_id)) if payment_id else None
         except (TypeError, ValueError):
             payment = None
+        if payment is None and event_type == 'checkout.session.completed':
+            payment = db.session.scalar(select(StripePayment).where(
+                StripePayment.checkout_session_id == stripe_value(obj, 'id', '')))
+        if payment is None and event_type.startswith('invoice.'):
+            invoice_subscription = stripe_value(obj, 'subscription', '')
+            if not invoice_subscription:
+                invoice_parent = stripe_value(obj, 'parent', {}) or {}
+                invoice_subscription = stripe_value(
+                    stripe_value(invoice_parent, 'subscription_details', {}) or {},
+                    'subscription', '')
+            if invoice_subscription:
+                payment = db.session.scalar(select(StripePayment).where(
+                    StripePayment.subscription_id == invoice_subscription))
         if event_type == 'checkout.session.completed' and payment:
             payment.checkout_session_id = stripe_value(obj, 'id', payment.checkout_session_id)
             payment.payment_intent_id = stripe_value(obj, 'payment_intent', '') or ''
