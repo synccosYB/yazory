@@ -4,7 +4,15 @@ import stripe
 
 
 def create_checkout_session(secret_key, params, idempotency_key):
-    client = stripe.StripeClient(secret_key, max_network_retries=2)
+    # A Checkout click is an interactive request. Stripe's SDK defaults to an
+    # 80-second timeout and retries network failures, which can leave the user
+    # staring at "Opening Stripe…" for several minutes. Fail promptly instead;
+    # the idempotency key makes a safe retry possible from the form.
+    client = stripe.StripeClient(
+        secret_key,
+        max_network_retries=0,
+        http_client=stripe.RequestsClient(timeout=(3, 10)),
+    )
     return client.v1.checkout.sessions.create(
         params=params,
         options={'idempotency_key': idempotency_key},
