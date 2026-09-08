@@ -29,10 +29,13 @@ def test_checkout_and_webhook_create_one_receipt(monkeypatch):
     page = client.get(f'/supporters/{contact_id}').text
     assert 'value="180.00"' in page
 
+    created = {}
+
     def checkout(_secret, params, idempotency_key):
         assert params['mode'] == 'subscription'
         assert params['line_items'][0]['price_data']['recurring']['interval'] == 'month'
         assert idempotency_key.startswith('yazory-checkout-')
+        created['metadata'] = params['metadata']
         return {'id': 'cs_test_1', 'url': 'https://checkout.stripe.test/cs_test_1'}
 
     monkeypatch.setattr(app_module, 'create_checkout_session', checkout)
@@ -40,24 +43,25 @@ def test_checkout_and_webhook_create_one_receipt(monkeypatch):
         'csrf': csrf(client), 'amount': '18.00', 'frequency': 'Monthly'})
     assert response.status_code == 303
     assert response.location == 'https://checkout.stripe.test/cs_test_1'
-    with app.app_context():
-        payment = db.session.scalar(db.select(StripePayment))
-        payment_id = payment.id
-
-    event = {'id': 'evt_invoice_1', 'type': 'invoice.paid', 'data': {'object': {
-        'id': 'in_1', 'amount_paid': 1800, 'customer_email': 'donor@example.test',
-        'metadata': {'yazory_payment_id': str(payment_id)}}}}
-    monkeypatch.setattr(app_module, 'construct_webhook_event', lambda *_args: event)
+    checkout_event = {'id': 'evt_checkout_1', 'type': 'checkout.session.completed',
+                      'data': {'object': {'id': 'cs_test_1', 'subscription': 'sub_1',
+                                          'metadata': created['metadata']}}}
+    invoice_event = {'id': 'evt_invoice_1', 'type': 'invoice.paid', 'data': {'object': {
+        'id': 'in_1', 'subscription': 'sub_1', 'amount_paid': 1800,
+        'customer_email': 'donor@example.test', 'metadata': {}}}}
+    events = iter([checkout_event, invoice_event, invoice_event])
+    monkeypatch.setattr(app_module, 'construct_webhook_event', lambda *_args: next(events))
     webhook_client = app.test_client()  # Stripe sends no browser session or CSRF token.
-    for _ in range(2):
+    for _ in range(3):
         response = webhook_client.post('/stripe/webhook', data=b'{}',
                                        headers={'Stripe-Signature': 'test'})
         assert response.status_code == 200
     with app.app_context():
+        payment = db.session.scalar(db.select(StripePayment))
         assert db.session.scalar(db.select(db.func.count()).select_from(Receipt)) == 1
-        assert db.session.scalar(db.select(db.func.count()).select_from(StripeEvent)) == 1
-        assert db.session.get(StripePayment, payment_id).status == 'active'
-        assert db.session.get(StripePayment, payment_id).successful_charges == 1
+        assert db.session.scalar(db.select(db.func.count()).select_from(StripeEvent)) == 2
+        assert payment.status == 'active'
+        assert payment.successful_charges == 1
 
 
 def test_zero_pledge_defaults_to_valid_one_dollar_checkout_amount():
