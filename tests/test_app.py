@@ -224,6 +224,10 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     supporter_list = client.get('/supporters?family_id=1').text
     assert 'Hersh Levy' in supporter_list and 'Shlomo supporter' in supporter_list
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_list
+    assert 'nested-supporter-row' in supporter_list
+    assert supporter_list.index('Shlomo supporter') < supporter_list.index('Hersh Levy')
+    searched_list = client.get('/supporters?family_id=1&q=Hersh').text
+    assert searched_list.index('Shlomo supporter') < searched_list.index('Hersh Levy')
     supporter_detail = client.get(f'/supporters/{hersh_id}').text
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_detail
     profile = client.get('/families/1').text
@@ -232,6 +236,10 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in profile
     assert 'nested-supporter-row' in profile
     assert profile.index('Shlomo supporter') < profile.index('Hersh Levy')
+
+def test_supporter_relationships_use_current_heimish_yiddish(client):
+    client.get('/language/yi')
+    assert 'ברידער/שוואגער' in client.get('/supporters').text
 
 def test_nested_supporter_can_be_connected_when_first_added(app, client):
     assert post(client, '/families/1/contacts', {
