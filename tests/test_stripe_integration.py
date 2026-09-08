@@ -74,8 +74,7 @@ def test_zero_pledge_defaults_to_valid_one_dollar_checkout_amount():
         contact_id = contact.id
     page = client.get(f'/supporters/{contact_id}').text
     assert 'value="1.00"' in page
-    assert 'method="get"' in page
-    assert 'type="submit"' in page
+    assert f'/supporters/{contact_id}/stripe-checkout?amount=1.00&amp;frequency=One+time' in page
 
 
 def test_checkout_can_open_through_plain_get_navigation(monkeypatch):
