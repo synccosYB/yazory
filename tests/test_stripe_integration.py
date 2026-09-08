@@ -73,6 +73,26 @@ def test_zero_pledge_defaults_to_valid_one_dollar_checkout_amount():
     assert 'type="submit"' in page
 
 
+def test_checkout_failure_returns_to_supporter_with_visible_error(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+
+    class LiveAccountError(Exception):
+        user_message = 'Your Stripe account cannot currently make live charges.'
+
+    monkeypatch.setattr(app_module, 'create_checkout_session',
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(LiveAccountError()))
+    response = client.post(f'/supporters/{contact_id}/stripe-checkout', data={
+        'csrf': csrf(client), 'amount': '1.00', 'frequency': 'One time'},
+        follow_redirects=True)
+    assert response.status_code == 200
+    assert 'Your Stripe account cannot currently make live charges.' in response.text
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count()).select_from(StripePayment)) == 0
+
+
 def test_connect_onboarding_and_approved_expense_transfer(monkeypatch):
     app = make_app()
     client = app.test_client()
