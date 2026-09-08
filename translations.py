@@ -13,6 +13,14 @@ Brothers / brothers-in-law list|רשימת אחים / גיסים|ליסטע פו
 Nephews list|רשימת אחיינים|ליסטע פון פלימעניקעס
 All supporters|כל התומכים|אלע העלפער
 All applicants|כל הפונים|אלע אפליקאנטן
+All provider expenses are visible here. Add another one without opening edit mode.|כל הוצאות הספקים מוצגות כאן. ניתן להוסיף הוצאה נוספת בלי לפתוח מצב עריכה.|אלע הוצאות ביי די פירמעס זעט מען דא. מען קען צולייגן נאך איינס אן אריינגיין אין עדיט־מאוד.
+Edit full budget|עריכת התקציב המלא|עדיטן דעם גאנצן בודזשעט
+Provider expenses|הוצאות ספקים|הוצאות ביי די פירמעס
+For whom|עבור מי|פאר וועמען
+No provider expenses entered.|לא הוזנו הוצאות ספקים.|נישטא קיין הוצאות ביי פירמעס.
++ Add provider expense|+ הוספת הוצאת ספק|+ צולייגן א הוצאה
+Add provider expense|הוספת הוצאת ספק|צולייגן די הוצאה
+Provider expense added.|הוצאת הספק נוספה.|די הוצאה איז צוגעלייגט.
 Keep one central list and connect each person to the shuls and yeshivahs in their history.|נהלו רשימה מרכזית אחת וחברו כל אדם לבתי הכנסת ולישיבות שבהיסטוריה שלו.|האלט איין צענטראלע ליסטע און פארבינדט יעדן מענטש מיט זיינע שולן און ישיבות.
 + Add shul|+ הוספת בית כנסת|+ צולייגן א שול
 + Add yeshivah|+ הוספת ישיבה|+ צולייגן א ישיבה
@@ -374,6 +382,8 @@ _INTAKE_ROWS = '''
 Intake steps|שלבי קליטה|די טריט ביים ארייננעמען
 Household|משק הבית|די משפחה
 Community|קהילה|די קהילה
+Monthly budget|תקציב חודשי|חודש׳ליכער חשבון
+Assistance & accounts|סיוע וחשבונות|הילף און קאונטס
 Children & budget|ילדים ותקציב|קינדער און הוצאות
 Employment & income|תעסוקה והכנסות|ארבעט און הכנסות
 Assistance|סיוע|הילף
@@ -392,6 +402,16 @@ Her employer|מעסיק האישה|ביי וועמען זי ארבעט
 His monthly income ($)|הכנסת הבעל לחודש ($)|זיין חודש׳ליכע הכנסה ($)
 Her monthly income ($)|הכנסת האישה לחודש ($)|איר חודש׳ליכע הכנסה ($)
 Other monthly income ($)|הכנסה חודשית נוספת ($)|אנדערע חודש׳ליכע הכנסות ($)
+Type one amount on each line. Totals update automatically.|הזינו סכום אחד בכל שורה. הסיכומים מתעדכנים אוטומטית.|לייגט איין סכום אויף יעדע שורה. די סך הכל טוישט זיך אליין.
+Expense item|סעיף הוצאה|סארט הוצאה
+Income source|מקור הכנסה|פון וואו די הכנסה קומט
+Amount per month|סכום לחודש|סכום א חודש
+Rent / mortgage|שכירות / משכנתה|רענט / מארטגעדזש
+Food|מזון|עסן
+His income|הכנסת הבעל|זיין הכנסה
+Her income|הכנסת האישה|איר הכנסה
+Other income|הכנסה אחרת|אנדערע הכנסה
+Employment details|פרטי תעסוקה|פרטים פון די ארבעט
 Receiving food stamps?|מקבלים תלושי מזון?|באקומען זיי פוד סטעמפס?
 Monthly food stamps ($)|סכום תלושי מזון לחודש ($)|חודש׳ליכע פוד סטעמפס ($)
 Choose…|בחרו…|קלויבט אויס…
@@ -401,6 +421,7 @@ Other assistance|סיוע נוסף|אנדערע הילף
 Accounts|חשבונות|קאונטס
 Add assistance|הוספת סיוע|צולייגן הילף
 Add account|הוספת חשבון|צולייגן א קאונט
++ Add row|+ הוספת שורה|+ צולייגן א שורה
 No entries yet. Add only what applies.|אין רשומות עדיין. הוסיפו רק את הנדרש.|נאך גארנישט אריינגעלייגט. לייגט צו נאר וואס איז שייך.
 Account type|סוג חשבון|סארט קאונט
 Utility company|חברת שירותים|יוטיליטי פירמע
