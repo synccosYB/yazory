@@ -73,6 +73,30 @@ class ShulGabbai(db.Model):
     name = db.Column(db.String(160), nullable=False)
     phone = db.Column(db.String(80), default='')
 
+class Institution(db.Model):
+    """A shared shul or yeshivah record used across every person profile."""
+    __table_args__ = (UniqueConstraint('kind', 'name', 'city', name='uq_institution_kind_name_city'),)
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(20), nullable=False, index=True)
+    name = db.Column(db.String(160), nullable=False, index=True)
+    address = db.Column(db.String(240), nullable=False, default='')
+    city = db.Column(db.String(120), nullable=False, default='')
+    state = db.Column(db.String(80), nullable=False, default='')
+    phone = db.Column(db.String(80), nullable=False, default='')
+    affiliations = db.relationship('PersonAffiliation', backref='institution', lazy=True,
+                                   cascade='all, delete-orphan', order_by='PersonAffiliation.id')
+
+class PersonAffiliation(db.Model):
+    """Connect any Yazory person to a shul or a graded yeshivah history row."""
+    id = db.Column(db.Integer, primary_key=True)
+    institution_id = db.Column(db.Integer, db.ForeignKey('institution.id'), nullable=False, index=True)
+    person_type = db.Column(db.String(20), nullable=False, index=True)
+    person_id = db.Column(db.Integer, nullable=False, index=True)
+    grade = db.Column(db.String(80), nullable=False, default='')
+    year_from = db.Column(db.Integer, nullable=True)
+    year_to = db.Column(db.Integer, nullable=True)
+    note = db.Column(db.String(300), nullable=False, default='')
+
 class OrganizationSetting(db.Model):
     key = db.Column(db.String(80), primary_key=True)
     value = db.Column(db.JSON, nullable=False)
@@ -571,6 +595,72 @@ def create_app(test_config=None):
 
     def can_manage_supporters():
         return has_role('family_admin', 'fundraiser')
+
+    def directory_people():
+        """Return every connectable person without merging people who share a name."""
+        people = []
+        for family in db.session.scalars(select(Family).order_by(Family.name)).all():
+            people.append(('family', family.id, family.name, 'Applicant', family.name))
+            if family.spouse:
+                people.append(('spouse', family.id, family.spouse, 'Spouse', family.name))
+        for child in db.session.scalars(select(Child).order_by(Child.name)).all():
+            people.append(('child', child.id, child.name, 'Child', child.family.name))
+            if child.spouse_name:
+                people.append(('child_spouse', child.id, child.spouse_name, 'Spouse', child.name))
+        for supporter in db.session.scalars(select(Contact).order_by(Contact.name)).all():
+            people.append(('supporter', supporter.id, supporter.name, 'Supporter', supporter.family.name))
+        for child in db.session.scalars(select(ContactChild).order_by(ContactChild.name)).all():
+            people.append(('supporter_child', child.id, child.name, 'Supporter’s child', child.contact.name))
+            if child.spouse_name:
+                people.append(('supporter_child_spouse', child.id, child.spouse_name, 'Spouse', child.name))
+        for user in db.session.scalars(select(StaffUser).order_by(StaffUser.name, StaffUser.email)).all():
+            people.append(('staff', user.id, user.name or user.email, 'Staff member', user.email))
+        return people
+
+    def directory_person_hierarchy():
+        """Describe how directory people nest beneath their household or parent."""
+        hierarchy = {}
+        for family in db.session.scalars(select(Family).order_by(Family.name)).all():
+            root = ('family', family.id)
+            hierarchy[root] = {'depth': 0, 'parent_name': '',
+                               'sort_key': (family.name.lower(), 0, family.name.lower())}
+            if family.spouse:
+                hierarchy[('spouse', family.id)] = {
+                    'depth': 1, 'parent_name': family.name,
+                    'sort_key': (family.name.lower(), 1, family.spouse.lower())}
+            for child in sorted(family.children, key=lambda row: row.name.lower()):
+                hierarchy[('child', child.id)] = {
+                    'depth': 1, 'parent_name': family.name,
+                    'sort_key': (family.name.lower(), 2, child.name.lower(), 0)}
+                if child.spouse_name:
+                    hierarchy[('child_spouse', child.id)] = {
+                        'depth': 2, 'parent_name': child.name,
+                        'sort_key': (family.name.lower(), 2, child.name.lower(), 1,
+                                     child.spouse_name.lower())}
+        for supporter in db.session.scalars(select(Contact).order_by(Contact.name)).all():
+            parent = supporter.parent_supporter
+            root_name = parent.name if parent else supporter.name
+            hierarchy[('supporter', supporter.id)] = {
+                'depth': 1 if parent else 0,
+                'parent_name': parent.name if parent else '',
+                'sort_key': ('supporter', supporter.family.name.lower(), root_name.lower(),
+                             1 if parent else 0, supporter.name.lower())}
+            for child in supporter.children:
+                hierarchy[('supporter_child', child.id)] = {
+                    'depth': 1, 'parent_name': supporter.name,
+                    'sort_key': ('supporter', supporter.family.name.lower(),
+                                 supporter.name.lower(), 2, child.name.lower(), 0)}
+                if child.spouse_name:
+                    hierarchy[('supporter_child_spouse', child.id)] = {
+                        'depth': 2, 'parent_name': child.name,
+                        'sort_key': ('supporter', supporter.family.name.lower(),
+                                     supporter.name.lower(), 2, child.name.lower(), 1,
+                                     child.spouse_name.lower())}
+        return hierarchy
+
+    def valid_directory_person(person_type, person_id):
+        return any(kind == person_type and row_id == person_id
+                   for kind, row_id, *_ in directory_people())
 
     def setting(key, default):
         row = db.session.get(OrganizationSetting, key)
@@ -1082,7 +1172,20 @@ def create_app(test_config=None):
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
         for contact in family.contacts:
             contact.connected_cases = linked_contact_count(contact)
+        # Keep each supporter's household together in the profile table.  A
+        # supporter linked as a son or son-in-law belongs immediately beneath
+        # the selected parent instead of appearing elsewhere in the flat list.
+        top_level_contacts = [contact for contact in family.contacts if not contact.parent_contact_id]
+        nested_contact_ids = {nested.id for parent in top_level_contacts for nested in parent.nested_supporters}
+        contact_rows = []
+        for contact in top_level_contacts:
+            contact_rows.append((contact, False))
+            contact_rows.extend((nested, True) for nested in contact.nested_supporters)
+        # Preserve access to legacy/orphaned records whose parent is unavailable.
+        contact_rows.extend((contact, False) for contact in family.contacts
+                            if contact.parent_contact_id and contact.id not in nested_contact_ids)
         return render_template('family.html', title=family.name, family=family, activity=activity,
+                               contact_rows=contact_rows,
                                budget=budget_totals(family),
                                pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged'))
 
@@ -1416,6 +1519,11 @@ def create_app(test_config=None):
             abort(400, 'This supporter cannot be deleted because donation receipts are recorded.')
         family_id = contact.family_id
         name = contact.name
+        child_ids = [child.id for child in contact.children]
+        db.session.execute(db.delete(PersonAffiliation).where(
+            ((PersonAffiliation.person_type == 'supporter') & (PersonAffiliation.person_id == contact.id)) |
+            ((PersonAffiliation.person_type.in_(('supporter_child', 'supporter_child_spouse'))) &
+             (PersonAffiliation.person_id.in_(child_ids)))))
         db.session.delete(contact)
         audit(f'Deleted supporter: {name}', family_id)
         db.session.commit()
@@ -1714,6 +1822,130 @@ def create_app(test_config=None):
         return render_template('controls.html', title='Controls', categories=expense_categories(),
                                bands_json=json.dumps(child_bands(), indent=2))
 
+    @app.get('/community-directories')
+    def community_directories():
+        require_organization_admin()
+        kind = request.args.get('kind', 'Shul')
+        if kind not in ('Shul', 'Yeshivah'):
+            abort(400, 'Choose a valid directory.')
+        query = request.args.get('q', '').strip()[:160]
+        statement = select(Institution).where(Institution.kind == kind).order_by(Institution.name)
+        if query:
+            statement = statement.where(Institution.name.icontains(query, autoescape=True))
+        people = directory_people()
+        hierarchy = directory_person_hierarchy()
+        people_by_key = {(person_type, person_id): {
+            'name': name, 'role': role, 'context': context,
+            **hierarchy.get((person_type, person_id), {
+                'depth': 0, 'parent_name': '',
+                'sort_key': (context.lower(), name.lower()),
+            }),
+        } for person_type, person_id, name, role, context in people}
+        institutions = db.session.scalars(statement).all()
+        for institution in institutions:
+            rows = sorted(institution.affiliations, key=lambda row: (
+                people_by_key.get((row.person_type, row.person_id), {}).get(
+                    'sort_key', ('zz', row.id))))
+            if kind == 'Yeshivah':
+                grades = {}
+                for row in rows:
+                    grades.setdefault(row.grade, []).append(row)
+                institution.directory_groups = sorted(
+                    grades.items(), key=lambda item: item[0].lower())
+            else:
+                institution.directory_groups = [('', rows)]
+        return render_template('directories.html', title=f'{kind} list', kind=kind,
+                               institutions=institutions,
+                               people=people, people_by_key=people_by_key, query=query)
+
+    @app.post('/community-directories/institutions')
+    def add_institution():
+        require_organization_admin()
+        kind = field('kind', True, 20)
+        if kind not in ('Shul', 'Yeshivah'):
+            abort(400, 'Choose a valid directory.')
+        name = field('name', True)
+        city = field('city', limit=120)
+        duplicate = db.session.scalar(select(Institution.id).where(
+            Institution.kind == kind, func.lower(Institution.name) == name.lower(),
+            func.lower(Institution.city) == city.lower()))
+        if duplicate:
+            abort(400, 'This institution is already in the list.')
+        db.session.add(Institution(kind=kind, name=name, city=city,
+            address=field('address', limit=240), state=field('state', limit=80),
+            phone=field('phone', limit=80)))
+        audit(f'Added {kind.lower()}: {name}')
+        db.session.commit()
+        flash('Institution added.')
+        return redirect(url_for('community_directories', kind=kind))
+
+    @app.post('/community-directories/affiliations')
+    def add_person_affiliation():
+        require_organization_admin()
+        institution = db.get_or_404(Institution, request.form.get('institution_id', type=int))
+        person_value = field('person', True, 60)
+        try:
+            person_type, person_id_text = person_value.split(':', 1)
+            person_id = int(person_id_text)
+        except (ValueError, TypeError):
+            abort(400, 'Choose a valid person.')
+        if person_type not in ('family', 'spouse', 'child', 'child_spouse', 'supporter',
+                               'supporter_child', 'supporter_child_spouse', 'staff') or not valid_directory_person(person_type, person_id):
+            abort(400, 'Choose a valid person.')
+        grade = field('grade', required=institution.kind == 'Yeshivah', limit=80)
+        def optional_year(name):
+            value = request.form.get(name, '').strip()
+            if not value:
+                return None
+            try:
+                year = int(value)
+            except ValueError:
+                abort(400, 'Enter a valid year.')
+            if year < 1900 or year > 2100:
+                abort(400, 'Enter a valid year.')
+            return year
+        year_from, year_to = optional_year('year_from'), optional_year('year_to')
+        if year_from and year_to and year_from > year_to:
+            abort(400, 'The ending year must not be before the starting year.')
+        duplicate = db.session.scalar(select(PersonAffiliation.id).where(
+            PersonAffiliation.institution_id == institution.id,
+            PersonAffiliation.person_type == person_type,
+            PersonAffiliation.person_id == person_id,
+            PersonAffiliation.grade == grade,
+            PersonAffiliation.year_from == year_from,
+            PersonAffiliation.year_to == year_to))
+        if duplicate:
+            abort(400, 'This connection is already recorded.')
+        db.session.add(PersonAffiliation(institution_id=institution.id,
+            person_type=person_type, person_id=person_id, grade=grade,
+            year_from=year_from, year_to=year_to, note=field('note', limit=300)))
+        audit(f'Connected person to {institution.kind.lower()}: {institution.name}')
+        db.session.commit()
+        flash('Person connected.')
+        return redirect(url_for('community_directories', kind=institution.kind))
+
+    @app.post('/community-directories/affiliations/<int:affiliation_id>/delete')
+    def delete_person_affiliation(affiliation_id):
+        require_organization_admin()
+        affiliation = db.get_or_404(PersonAffiliation, affiliation_id)
+        kind = affiliation.institution.kind
+        db.session.delete(affiliation)
+        db.session.commit()
+        flash('Connection removed.')
+        return redirect(url_for('community_directories', kind=kind))
+
+    @app.post('/community-directories/institutions/<int:institution_id>/delete')
+    def delete_institution(institution_id):
+        require_organization_admin()
+        institution = db.get_or_404(Institution, institution_id)
+        if institution.affiliations:
+            abort(400, 'Remove the connected people before deleting this institution.')
+        kind = institution.kind
+        db.session.delete(institution)
+        db.session.commit()
+        flash('Institution deleted.')
+        return redirect(url_for('community_directories', kind=kind))
+
     @app.route('/people-access', methods=['GET', 'POST'])
     def people_access():
         require_organization_admin()
@@ -1965,6 +2197,8 @@ def create_app(test_config=None):
         db.session.execute(db.update(EmailMessage).where(EmailMessage.staff_user_id == user.id).values(staff_user_id=None))
         db.session.execute(db.update(Receipt).where(Receipt.recorded_by == user.id).values(recorded_by=None))
         db.session.execute(db.delete(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id))
+        db.session.execute(db.delete(PersonAffiliation).where(
+            PersonAffiliation.person_type == 'staff', PersonAffiliation.person_id == user.id))
         db.session.delete(user)
         audit(f'Deleted staff user: {email}')
         db.session.commit()

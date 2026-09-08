@@ -3,7 +3,7 @@ import sqlite3
 from datetime import date
 
 import pytest
-from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment
+from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, Institution, PersonAffiliation
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -24,7 +24,7 @@ def post(client, path, data):
     return client.post(path, data={**data, 'csrf':csrf})
 
 def test_pages(client):
-    for path in ['/', '/families', '/families/new', '/families/1', '/families/1/edit', '/expenses', '/expenses?status=Requested', '/activity', '/health', '/login']:
+    for path in ['/', '/families', '/families/new', '/families/1', '/families/1/edit', '/expenses', '/expenses?status=Requested', '/activity', '/community-directories?kind=Shul', '/community-directories?kind=Yeshivah', '/health', '/login']:
         assert client.get(path).status_code == 200, path
     assert client.get('/families/999').status_code == 404
 
@@ -276,6 +276,65 @@ def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):
     profile = client.get('/families/1').text
     rabbi_block = profile[profile.index('Rabbi Rubin'):profile.index('Rabbi Rubin') + 500]
     assert '845-555-0101' in rabbi_block
+
+def test_shul_and_yeshivah_directories_connect_all_person_types(app, client):
+    assert post(client, '/community-directories/institutions', {
+        'kind': 'Shul', 'name': 'Congregation Example', 'city': 'Monroe',
+        'state': 'NY', 'phone': '845-555-0301'}).status_code == 302
+    assert post(client, '/community-directories/institutions', {
+        'kind': 'Yeshivah', 'name': 'Yeshivah Example', 'city': 'Brooklyn',
+        'state': 'NY'}).status_code == 302
+    with app.app_context():
+        shul = db.session.scalar(db.select(Institution).where(Institution.kind == 'Shul'))
+        yeshivah = db.session.scalar(db.select(Institution).where(Institution.kind == 'Yeshivah'))
+        child = db.session.scalar(db.select(Child).where(Child.family_id == 1))
+        shul_id, yeshivah_id, child_id = shul.id, yeshivah.id, child.id
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(shul_id), 'person': 'family:1', 'note': 'Weekday minyan'}).status_code == 302
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(yeshivah_id), 'person': f'child:{child_id}',
+        'grade': 'Grade 4', 'year_from': '2025', 'year_to': '2026'}).status_code == 302
+    with app.app_context():
+        connections = db.session.scalars(db.select(PersonAffiliation).order_by(PersonAffiliation.id)).all()
+        assert [(row.person_type, row.person_id, row.grade) for row in connections] == [
+            ('family', 1, ''), ('child', child_id, 'Grade 4')]
+    shul_page = client.get('/community-directories?kind=Shul').text
+    assert 'Congregation Example' in shul_page and 'Sample family' in shul_page
+    yeshivah_page = client.get('/community-directories?kind=Yeshivah').text
+    assert 'Yeshivah Example' in yeshivah_page and 'Sample child' in yeshivah_page
+    assert 'Grade 4' in yeshivah_page and '2025–2026' in yeshivah_page
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(yeshivah_id), 'person': 'family:1'}).status_code == 400
+
+@pytest.mark.parametrize('language,shul_label,yeshivah_label', [
+    ('en', 'Shul list', 'Yeshivah list'),
+    ('he', 'רשימת בתי כנסת', 'רשימת ישיבות'),
+    ('yi', 'שול ליסטע', 'ישיבה ליסטע'),
+])
+def test_community_directory_navigation_is_all_locales(client, language, shul_label, yeshivah_label):
+    client.get('/language/' + language)
+    page = client.get('/community-directories?kind=Shul').text
+    assert shul_label in page and yeshivah_label in page
+
+def test_directories_render_grade_and_family_hierarchy(app, client):
+    assert post(client, '/community-directories/institutions', {
+        'kind': 'Yeshivah', 'name': 'Hierarchy Yeshivah'}).status_code == 302
+    with app.app_context():
+        institution = db.session.scalar(db.select(Institution).where(
+            Institution.name == 'Hierarchy Yeshivah'))
+        child = db.session.scalar(db.select(Child).where(Child.family_id == 1))
+        institution_id, child_id = institution.id, child.id
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(institution_id), 'person': 'family:1',
+        'grade': 'Grade 8'}).status_code == 302
+    assert post(client, '/community-directories/affiliations', {
+        'institution_id': str(institution_id), 'person': f'child:{child_id}',
+        'grade': 'Grade 8'}).status_code == 302
+    page = client.get('/community-directories?kind=Yeshivah').text
+    assert 'directory-grade-row' in page
+    assert 'Grade: Grade 8' in page
+    assert 'directory-person depth-1' in page
+    assert 'Under Sample family' in page
 
 def test_multiple_shul_gabbais_can_be_added_and_updated(app, client):
     assert post(client, '/families/1/gabbais', {
