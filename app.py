@@ -570,7 +570,8 @@ def create_app(test_config=None):
     @app.before_request
     def security():
         public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
-                            'reset_password', 'accept_invitation')
+                            'reset_password', 'accept_invitation', 'about', 'privacy',
+                            'terms', 'donation_policy')
         if request.endpoint in ('static', 'health', 'set_language'):
             return
         if request.method == 'POST' and not hmac.compare_digest(session.get('csrf', ''), request.form.get('csrf', '')):
@@ -639,6 +640,25 @@ def create_app(test_config=None):
     def health():
         db.session.execute(select(1))
         return {'status': 'ok'}
+
+    def public_page(page, title):
+        return render_template('public_site.html', page=page, title=title)
+
+    @app.get('/about')
+    def about():
+        return public_page('about', 'About Yazory')
+
+    @app.get('/privacy')
+    def privacy():
+        return public_page('privacy', 'Privacy policy')
+
+    @app.get('/terms')
+    def terms():
+        return public_page('terms', 'Terms of service')
+
+    @app.get('/donation-policy')
+    def donation_policy():
+        return public_page('donation-policy', 'Donation and recurring payment policy')
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
