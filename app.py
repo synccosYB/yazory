@@ -8,9 +8,10 @@ from io import BytesIO
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, abort, flash, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import select, func, UniqueConstraint, inspect, text
+from sqlalchemy import case, select, func, UniqueConstraint, inspect, text
+from sqlalchemy.orm import selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -745,8 +746,13 @@ def create_app(test_config=None):
             note='Child profile')
 
     def setting(key, default):
+        cache = g.setdefault('_settings_cache', {})
+        if key in cache:
+            return cache[key]
         row = db.session.get(OrganizationSetting, key)
-        return row.value if row and isinstance(row.value, type(default)) else default
+        value = row.value if row and isinstance(row.value, type(default)) else default
+        cache[key] = value
+        return value
 
     def expense_categories():
         values = setting('expense_categories', DEFAULT_CATEGORIES)
@@ -774,10 +780,13 @@ def create_app(test_config=None):
         spans.sort()
         return all(previous[1] < following[0] for previous, following in zip(spans, spans[1:]))
 
-    def budget_totals(family):
+    budget_not_provided = object()
+
+    def budget_totals(family, budget_record=budget_not_provided):
         """One authoritative calculation shared by every budget-facing screen."""
         intake = family.intake_record.data if family.intake_record else {}
-        record = db.session.get(HouseholdBudget, family.id)
+        record = (db.session.get(HouseholdBudget, family.id)
+                  if budget_record is budget_not_provided else budget_record)
         report = child_budget.calculate(record.data if record else {}, intake, family.children, child_bands())
         return {'income': report['earnings'] + report['usable_help'],
                 'bills': report['household_bills'],
@@ -843,7 +852,12 @@ def create_app(test_config=None):
             "script-src 'self' https://js.stripe.com; connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
             "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com; "
             "img-src 'self' data: https://*.stripe.com; base-uri 'self'; form-action 'self' https://checkout.stripe.com; frame-ancestors 'none'")
-        response.headers['Cache-Control'] = 'no-store'
+        # Versioned static URLs are safe to retain locally. Previously every
+        # navigation downloaded the stylesheet, scripts and logo again.
+        if request.endpoint == 'static':
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+        else:
+            response.headers['Cache-Control'] = 'no-store'
         if production:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000'
         return response
@@ -966,7 +980,7 @@ def create_app(test_config=None):
             line_item['price_data']['recurring'] = {
                 'interval': 'week' if frequency == 'Weekly' else 'month'}
         params = {
-            'ui_mode': 'embedded_page',
+            'ui_mode': 'embedded',
             'mode': 'payment' if frequency == 'One time' else 'subscription',
             'line_items': [line_item], 'metadata': metadata,
             'return_url': absolute_url('stripe_success') + '?session_id={CHECKOUT_SESSION_ID}',
@@ -1275,11 +1289,16 @@ def create_app(test_config=None):
     def dashboard():
         if current_user() and current_user().role == 'fundraiser':
             return redirect(url_for('fundraising'))
-        statement = select(Family).order_by(Family.id.desc())
+        statement = select(Family).options(
+            selectinload(Family.children), selectinload(Family.intake_record)
+        ).order_by(Family.id.desc())
         if not organization_admin():
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
         families = db.session.scalars(statement).all()
         family_ids = [family.id for family in families]
+        budget_records = {record.family_id: record for record in db.session.scalars(
+            select(HouseholdBudget).where(HouseholdBudget.family_id.in_(family_ids))).all()
+        } if family_ids else {}
         month = datetime.now().strftime('%Y-%m')
         expenses = db.session.scalars(select(Expense).where(Expense.month == month, Expense.family_id.in_(family_ids))).all()
         network_visible = organization_admin() or bool(current_user() and current_user().role in ('family_admin', 'fundraiser'))
@@ -1292,7 +1311,7 @@ def create_app(test_config=None):
         requested = db.session.scalars(requested_statement).all()
         received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
             Receipt.family_id.in_(family_ids))) if family_ids and network_visible else 0
-        return render_template('dashboard.html', title='Overview', families=families, active=sum(f.status=='Active' for f in families), pledged=pledged, received=received, network_visible=network_visible, shortfall=sum(budget_totals(f)['shortfall'] for f in families), approved=sum(e.amount_cents for e in expenses if e.status in ('Approved','Paid')), paid=sum(e.amount_cents for e in expenses if e.status=='Paid'), requested=requested)
+        return render_template('dashboard.html', title='Overview', families=families, active=sum(f.status=='Active' for f in families), pledged=pledged, received=received, network_visible=network_visible, shortfall=sum(budget_totals(f, budget_records.get(f.id))['shortfall'] for f in families), approved=sum(e.amount_cents for e in expenses if e.status in ('Approved','Paid')), paid=sum(e.amount_cents for e in expenses if e.status=='Paid'), requested=requested)
 
     @app.get('/families')
     def families():
@@ -1323,13 +1342,7 @@ def create_app(test_config=None):
                     budget[group] = entries if isinstance(entries, list) else []
                 except ValueError:
                     budget[group] = []
-        shul_names = db.session.scalars(select(Institution.name).where(
-            Institution.kind == 'Shul').distinct().order_by(Institution.name)).all()
-        yeshivah_names = db.session.scalars(select(Institution.name).where(
-            Institution.kind == 'Yeshivah').distinct().order_by(Institution.name)).all()
-        return render_template('family_form.html', family=family, title=title,
-            values=values, budget=budget, intake_error=error,
-            shul_names=shul_names, yeshivah_names=yeshivah_names)
+        return render_template('family_form.html', family=family, title=title, values=values, budget=budget, intake_error=error)
 
     def save_intake(family, data):
         if data is not None:
@@ -1385,12 +1398,24 @@ def create_app(test_config=None):
     @app.get('/families/<int:family_id>')
     def family_detail(family_id):
         require_capability(('family_admin', 'office_employee'))
-        family = accessible_family_or_404(family_id)
+        if not can_access_family(family_id):
+            abort(403, 'You are not assigned to this family.')
+        family = db.session.scalar(select(Family).options(
+            selectinload(Family.children), selectinload(Family.contacts).selectinload(Contact.nested_supporters),
+            selectinload(Family.expenses), selectinload(Family.documents),
+            selectinload(Family.gabbais), selectinload(Family.intake_record)
+        ).where(Family.id == family_id))
+        if family is None:
+            abort(404)
         if current_user() and current_user().role == 'office_employee':
             return render_template('family_office_with_documents.html', title=family.name, family=family)
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
+        supporter_keys = {contact.supporter_key for contact in family.contacts if contact.supporter_key}
+        connected_counts = dict(db.session.execute(select(
+            Contact.supporter_key, func.count(func.distinct(Contact.family_id))
+        ).where(Contact.supporter_key.in_(supporter_keys)).group_by(Contact.supporter_key)).all()) if supporter_keys else {}
         for contact in family.contacts:
-            contact.connected_cases = linked_contact_count(contact)
+            contact.connected_cases = connected_counts.get(contact.supporter_key, 1)
         # Keep each supporter's household together in the profile table.  A
         # supporter linked as a son or son-in-law belongs immediately beneath
         # the selected parent instead of appearing elsewhere in the flat list.
@@ -1836,25 +1861,37 @@ def create_app(test_config=None):
     @app.get('/fundraising')
     def fundraising():
         require_capability(('fundraiser', 'family_admin'))
-        statement = select(Family.id.label('id'), Family.name.label('name')).order_by(Family.id.desc())
+        statement = select(Family).options(
+            selectinload(Family.children), selectinload(Family.intake_record)
+        ).order_by(Family.id.desc())
         if not organization_admin():
             statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(
                 FamilyAssignment.staff_user_id == current_user().id)))
-        families = db.session.execute(statement).all()
+        families = db.session.scalars(statement).all()
         # Each case still shows the supporter commitment attributed to it. The
         # organization dashboard/billing rollup de-duplicates the shared person.
-        pledged = {
-            family.id: sum(contact.monthly_equivalent_cents for contact in db.session.scalars(select(Contact).where(
-                Contact.family_id == family.id, Contact.status == 'Pledged')).all())
-            for family in families
-        }
-        received = {family.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
-            Receipt.family_id == family.id)) for family in families}
+        family_ids = [family.id for family in families]
+        budget_records = {record.family_id: record for record in db.session.scalars(
+            select(HouseholdBudget).where(HouseholdBudget.family_id.in_(family_ids))).all()
+        } if family_ids else {}
+        monthly_pledge = case(
+            (Contact.pledge_frequency == 'Weekly', Contact.monthly_cents * 52 / 12),
+            (Contact.pledge_frequency == 'One time', 0),
+            else_=Contact.monthly_cents,
+        )
+        pledged = {family_id: total for family_id, total in db.session.execute(select(
+            Contact.family_id, func.round(func.coalesce(func.sum(monthly_pledge), 0))
+        ).where(Contact.family_id.in_(family_ids), Contact.status == 'Pledged').group_by(Contact.family_id)).all()}
+        received = {family_id: total for family_id, total in db.session.execute(select(
+            Receipt.family_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
+        ).where(Receipt.family_id.in_(family_ids)).group_by(Receipt.family_id)).all()}
+        pledged = {family_id: pledged.get(family_id, 0) for family_id in family_ids}
+        received = {family_id: received.get(family_id, 0) for family_id in family_ids}
         # Fundraisers receive no target/shortfall: even an aggregate may disclose
         # confidential household budget information. Authorized family/admin users
         # may use the saved shortfall as an internal planning target.
         show_targets = not (current_user() and current_user().role == 'fundraiser')
-        targets = ({family.id: budget_totals(db.session.get(Family, family.id))['shortfall'] for family in families}
+        targets = ({family.id: budget_totals(family, budget_records.get(family.id))['shortfall'] for family in families}
                    if show_targets else {})
         return render_template('fundraising.html', title='Fundraising workspace', families=families,
                                pledged=pledged, received=received, targets=targets,
@@ -1877,7 +1914,9 @@ def create_app(test_config=None):
                                contacts=contacts, pledged=pledged)
 
     def scoped_contacts_statement():
-        statement = select(Contact).order_by(Contact.id.desc())
+        statement = select(Contact).options(
+            selectinload(Contact.family), selectinload(Contact.parent_supporter)
+        ).order_by(Contact.id.desc())
         if not organization_admin():
             statement = statement.where(Contact.family_id.in_(select(FamilyAssignment.family_id).where(
                 FamilyAssignment.staff_user_id == current_user().id)))
@@ -1904,8 +1943,10 @@ def create_app(test_config=None):
         received_by_contact = {}
         for receipt in receipts:
             received_by_contact[receipt.contact_id] = received_by_contact.get(receipt.contact_id, 0) + receipt.amount_cents
-        lifetime_by_contact = {contact.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
-            Receipt.contact_id == contact.id)) for contact in contacts}
+        contact_ids = [contact.id for contact in contacts]
+        lifetime_by_contact = {contact_id: total for contact_id, total in db.session.execute(select(
+            Receipt.contact_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
+        ).where(Receipt.contact_id.in_(contact_ids)).group_by(Receipt.contact_id)).all()} if contact_ids else {}
         return render_template('collections.html', title='Collections', contacts=contacts,
                                receipts=receipts, received_by_contact=received_by_contact,
                                lifetime_by_contact=lifetime_by_contact, month=month)
@@ -1982,8 +2023,10 @@ def create_app(test_config=None):
         possible_parents = db.session.scalars(select(Contact).where(
             Contact.family_id.in_(family_ids), Contact.parent_contact_id.is_(None)
         ).order_by(Contact.family_id, Contact.name)).all() if family_ids else []
-        totals = {c.id: db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
-            Receipt.contact_id == c.id)) for c in contacts}
+        contact_ids = [contact.id for contact in contacts]
+        totals = {contact_id: total for contact_id, total in db.session.execute(select(
+            Receipt.contact_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
+        ).where(Receipt.contact_id.in_(contact_ids)).group_by(Receipt.contact_id)).all()} if contact_ids else {}
         return render_template('supporters.html', title='Supporters', contacts=contacts,
                                received=totals, query=query, families=families,
                                selected_family_id=family_id, possible_parents=possible_parents)
@@ -2021,21 +2064,34 @@ def create_app(test_config=None):
     @app.get('/reports')
     def reports():
         require_organization_admin()
-        families = db.session.scalars(select(Family).order_by(Family.name)).all()
+        families = db.session.scalars(select(Family).options(
+            selectinload(Family.children), selectinload(Family.contacts),
+            selectinload(Family.intake_record)
+        ).order_by(Family.name)).all()
+        family_ids = [family.id for family in families]
+        budget_records = {record.family_id: record for record in db.session.scalars(
+            select(HouseholdBudget).where(HouseholdBudget.family_id.in_(family_ids))).all()
+        } if family_ids else {}
+        received_totals = dict(db.session.execute(select(
+            Receipt.family_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
+        ).where(Receipt.family_id.in_(family_ids)).group_by(Receipt.family_id)).all()) if family_ids else {}
+        expense_totals = {(family_id, status, is_org): total
+            for family_id, status, is_org, total in db.session.execute(select(
+                Expense.family_id, Expense.status,
+                case((Expense.category == 'Organization expense', True), else_=False).label('is_org'),
+                func.coalesce(func.sum(Expense.amount_cents), 0),
+            ).where(Expense.family_id.in_(family_ids)).group_by(
+                Expense.family_id, Expense.status,
+                case((Expense.category == 'Organization expense', True), else_=False)
+            )).all()} if family_ids else {}
         rows = []
         for family in families:
-            totals = budget_totals(family)
+            totals = budget_totals(family, budget_records.get(family.id))
             pledged = sum(c.monthly_equivalent_cents for c in family.contacts if c.status == 'Pledged')
-            received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(Receipt.family_id == family.id))
-            approved = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
-                Expense.family_id == family.id, Expense.status == 'Approved',
-                Expense.category != 'Organization expense'))
-            paid = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
-                Expense.family_id == family.id, Expense.status == 'Paid',
-                Expense.category != 'Organization expense'))
-            org_costs = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
-                Expense.family_id == family.id, Expense.category == 'Organization expense',
-                Expense.status == 'Paid'))
+            received = received_totals.get(family.id, 0)
+            approved = expense_totals.get((family.id, 'Approved', False), 0)
+            paid = expense_totals.get((family.id, 'Paid', False), 0)
+            org_costs = expense_totals.get((family.id, 'Paid', True), 0)
             rows.append(dict(family=family, **totals, pledged=pledged, received=received,
                              approved=approved, paid=paid, organization_costs=org_costs))
         return render_template('reports.html', title='Reports', rows=rows)
