@@ -17,7 +17,7 @@ def test_connected_routes_languages_receipts_and_controls(monkeypatch):
     for language in ('en', 'he', 'yi'):
         client.get('/language/' + language)
         for path in ('/', '/cases', '/supporters', '/fundraising', '/collections',
-                     '/expenses', '/approvals', '/reports', '/people-access', '/controls'):
+                     '/expenses', '/payouts', '/approvals', '/reports', '/people-access', '/controls'):
             assert client.get(path).status_code == 200, (language, path)
     with app.app_context():
         contact = db.session.scalar(db.select(Contact))
