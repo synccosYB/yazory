@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="{{ language }}" dir="{{ direction }}">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ family.name }} · {{ _('Profile report') }}</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ family.name }} · {{ _('Profile report') }}</title><link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}"><link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}"><link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}"><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
 <body class="print-report" data-print-report="true">
 <main>
   <div class="report-actions no-print"><a class="button secondary" href="{{ url_for('family_detail', family_id=family.id) }}">{{ _('Back to profile') }}</a><button type="button" data-print>{{ _('Print / Save PDF') }}</button></div>
