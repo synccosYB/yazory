@@ -164,6 +164,9 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
     assert 'Married child one' in supporter_page
     assert 'Spouse one' in supporter_page
     assert 'Niece / nephew of applicant' in supporter_page
+    profile = client.get('/families/1').text
+    assert 'inline-children' in profile
+    assert profile.index('Supporter parent') < profile.index('Married child one')
     assert post(client, f'/contacts/{contact_id}/children', {
         'name':'Married child one', 'spouse_name':'Duplicate'}).status_code == 400
 
@@ -227,6 +230,8 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert 'Manage supporters' in profile
     assert 'name="pledge_frequency"' in profile
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in profile
+    assert 'nested-supporter-row' in profile
+    assert profile.index('Shlomo supporter') < profile.index('Hersh Levy')
 
 def test_nested_supporter_can_be_connected_when_first_added(app, client):
     assert post(client, '/families/1/contacts', {

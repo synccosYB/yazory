@@ -860,7 +860,20 @@ def create_app(test_config=None):
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
         for contact in family.contacts:
             contact.connected_cases = linked_contact_count(contact)
+        # Keep each supporter's household together in the profile table.  A
+        # supporter linked as a son or son-in-law belongs immediately beneath
+        # the selected parent instead of appearing elsewhere in the flat list.
+        top_level_contacts = [contact for contact in family.contacts if not contact.parent_contact_id]
+        nested_contact_ids = {nested.id for parent in top_level_contacts for nested in parent.nested_supporters}
+        contact_rows = []
+        for contact in top_level_contacts:
+            contact_rows.append((contact, False))
+            contact_rows.extend((nested, True) for nested in contact.nested_supporters)
+        # Preserve access to legacy/orphaned records whose parent is unavailable.
+        contact_rows.extend((contact, False) for contact in family.contacts
+                            if contact.parent_contact_id and contact.id not in nested_contact_ids)
         return render_template('family.html', title=family.name, family=family, activity=activity,
+                               contact_rows=contact_rows,
                                budget=budget_totals(family),
                                pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged'))
 
