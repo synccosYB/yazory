@@ -177,6 +177,23 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
         assert len(same_name_children) == 2
         assert same_name_children[-1].phone == ''
 
+def test_supporter_child_can_be_added_as_son_in_law(app, client):
+    assert post(client, '/families/1/contacts', {
+        'name': 'Parent supporter', 'relationship': 'Sibling',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    with app.app_context():
+        parent_id = db.session.scalar(db.select(Contact.id).where(
+            Contact.name == 'Parent supporter'))
+    assert post(client, f'/contacts/{parent_id}/children', {
+        'name': 'Named son-in-law', 'parent_connection': 'Son-in-law'}).status_code == 302
+    with app.app_context():
+        person = db.session.scalar(db.select(Contact).where(
+            Contact.name == 'Named son-in-law'))
+        assert person.parent_contact_id == parent_id
+        assert person.parent_connection == 'Son-in-law'
+    assert 'Son-in-law of Parent supporter' in client.get('/families/1').text
+
+
 @pytest.mark.parametrize('language,label', [
     ('en', 'Nephew'), ('he', 'אחיין'), ('yi', 'פלימעניק')])
 def test_nephew_is_available_as_applicant_relationship(app, client, language, label):
