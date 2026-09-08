@@ -605,6 +605,13 @@ def create_app(test_config=None):
                     PersonAffiliation.person_id == legacy_child.id).values(
                         person_type='supporter', person_id=spouse_contact.id))
             db.session.delete(legacy_child)
+        # Correct this known legacy entry: it was entered through the old
+        # child-only form, but he is the supporter's son-in-law.
+        for contact in db.session.scalars(select(Contact).where(
+                Contact.name == 'נתן גרינפעלד')).all():
+            if (contact.parent_supporter and
+                    contact.parent_supporter.name == 'חיים אלעזר מנחם מענדל באכנער'):
+                contact.parent_connection = 'Son-in-law'
         stripe_payment_columns = {column['name'] for column in inspect(db.engine).get_columns('stripe_payment')}
         if 'successful_charges' not in stripe_payment_columns:
             db.session.execute(text(
@@ -1837,16 +1844,20 @@ def create_app(test_config=None):
         name = field('name', True)
         spouse_name = field('spouse_name')
         phone = field('phone', limit=80)
+        parent_connection = field('parent_connection') or 'Son'
+        if parent_connection not in ('Son', 'Son-in-law'):
+            abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+        spouse_connection = 'Son-in-law' if parent_connection == 'Son' else 'Son'
         db.session.add(Contact(
             family_id=contact.family_id, name=name, relationship='Nephew',
             phone=phone, supporter_key=supporter_key(name, phone),
-            parent_contact_id=contact.id, parent_connection='Son',
+            parent_contact_id=contact.id, parent_connection=parent_connection,
             monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
         if spouse_name:
             db.session.add(Contact(
                 family_id=contact.family_id, name=spouse_name, relationship='Nephew',
                 phone='', supporter_key=supporter_key(spouse_name, ''),
-                parent_contact_id=contact.id, parent_connection='Son-in-law',
+                parent_contact_id=contact.id, parent_connection=spouse_connection,
                 monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
         audit(f'Added child as supporter under: {contact.name}', contact.family_id)
         db.session.commit()
