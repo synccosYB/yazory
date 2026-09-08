@@ -261,6 +261,38 @@ def test_nested_supporter_can_be_connected_when_first_added(app, client):
         'status': 'To contact', 'monthly': '0'})
     assert response.status_code == 400
 
+def test_same_names_are_separate_people_and_children_can_share_names(app, client):
+    for phone in ('', ''):
+        assert post(client, '/families/1/contacts', {
+            'name': 'Same Name', 'phone': phone, 'relationship': 'Sibling',
+            'status': 'To contact', 'monthly': '0'}).status_code == 302
+    with app.app_context():
+        contacts = db.session.scalars(db.select(Contact).where(Contact.name == 'Same Name')).all()
+        assert len(contacts) == 2
+        assert contacts[0].supporter_key != contacts[1].supporter_key
+        contact_ids = [contact.id for contact in contacts]
+    for contact_id in contact_ids:
+        assert post(client, f'/contacts/{contact_id}/children', {
+            'name': 'Same Child Name', 'spouse_name': '', 'phone': ''}).status_code == 302
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count(ContactChild.id)).where(
+            ContactChild.name == 'Same Child Name')) == 2
+
+def test_parent_picker_contains_nested_names_and_is_searchable(app, client):
+    assert post(client, '/families/1/contacts', {
+        'name': 'Parent', 'relationship': 'Sibling',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    with app.app_context():
+        parent_id = db.session.scalar(db.select(Contact.id).where(Contact.name == 'Parent'))
+    assert post(client, '/families/1/contacts', {
+        'name': 'Nested Parent', 'relationship': 'Nephew',
+        'parent_contact_id': str(parent_id), 'parent_connection': 'Son',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    page = client.get('/supporters?family_id=1').text
+    assert 'data-select-filter="new-parent-contact"' in page
+    assert 'Nested Parent' in page
+    assert 'action="/contacts/' in page and 'Add another child' in page
+
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
