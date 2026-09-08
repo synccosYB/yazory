@@ -1623,6 +1623,39 @@ def create_app(test_config=None):
             report=report, budget=data, categories=child_budget.CATEGORIES, components=child_budget.COMPONENTS,
             bands=child_budget.BANDS, error=error), 400 if error else 200
 
+    @app.post('/families/<int:family_id>/provider-accounts')
+    def add_provider_account(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        kind = field('kind', True)
+        if kind not in ('utility', 'grocery', 'mosdos', 'other'):
+            abort(400, 'Choose an account type.')
+        treatment = field('budget_treatment')
+        if treatment not in ('', 'additional', 'food', 'rent'):
+            abort(400, 'Invalid account or assistance entry.')
+        monthly_bill = amount('monthly_bill')
+        record = db.session.get(HouseholdIntake, family_id)
+        if record is None:
+            record = HouseholdIntake(family_id=family_id, data={})
+            db.session.add(record)
+        data = dict(record.data or {})
+        accounts = list(data.get('accounts') or [])
+        accounts.append({
+            'kind': kind,
+            'provider': field('provider', True, 300),
+            'account': field('account', limit=300),
+            'phone': field('phone', limit=300),
+            'child': field('child', limit=300),
+            'monthly_bill': monthly_bill,
+            'budget_treatment': treatment,
+        })
+        data['accounts'] = accounts
+        record.data = data
+        audit('Added provider account expense', family_id)
+        db.session.commit()
+        flash('Provider expense added.')
+        return redirect(url_for('family_detail', family_id=family.id) + '#provider-expenses')
+
     @app.post('/families/<int:family_id>/status')
     def family_status(family_id):
         require_organization_admin()
