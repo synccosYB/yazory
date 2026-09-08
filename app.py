@@ -21,7 +21,7 @@ from budget_report import household_report
 import child_budget
 from email_service import deliver
 from stripe_gateway import (create_account_link, create_checkout_session,
-                            create_connected_account, create_transfer,
+                            create_billing_portal_session, create_connected_account, create_transfer,
                             construct_webhook_event, retrieve_connected_account)
 
 db = SQLAlchemy()
@@ -354,6 +354,7 @@ def create_app(test_config=None):
                       EMAIL_FROM=os.getenv('EMAIL_FROM', ''),
                       APP_BASE_URL=os.getenv('APP_BASE_URL', '').rstrip('/'),
                       STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY', ''),
+                      STRIPE_PUBLISHABLE_KEY=os.getenv('STRIPE_PUBLISHABLE_KEY', ''),
                       STRIPE_WEBHOOK_SECRET=os.getenv('STRIPE_WEBHOOK_SECRET', ''),
                       STRIPE_CONNECT_COUNTRY=os.getenv('STRIPE_CONNECT_COUNTRY', 'US').upper(),
                       STRIPE_CURRENCY=os.getenv('STRIPE_CURRENCY', 'usd').lower())
@@ -819,7 +820,10 @@ def create_app(test_config=None):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self'; script-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        response.headers['Content-Security-Policy'] = ("default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' https://js.stripe.com; connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
+            "frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com; "
+            "img-src 'self' data: https://*.stripe.com; base-uri 'self'; form-action 'self' https://checkout.stripe.com; frame-ancestors 'none'")
         response.headers['Cache-Control'] = 'no-store'
         if production:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000'
@@ -909,6 +913,80 @@ def create_app(test_config=None):
     @app.get('/donation-policy')
     def donation_policy():
         return public_page('donation-policy', 'Donation and recurring payment policy')
+
+    @app.get('/supporters/<int:contact_id>/donate')
+    def supporter_donation(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        return render_template(
+            'donation_checkout.html', title='Donation checkout', supporter=contact,
+            default_amount=contact.monthly_cents / 100 if contact.monthly_cents >= 100 else 1,
+            default_frequency=contact.pledge_frequency if contact.monthly_cents >= 100 else 'One time',
+            stripe_publishable_key=app.config['STRIPE_PUBLISHABLE_KEY'])
+
+    @app.post('/supporters/<int:contact_id>/embedded-checkout-session')
+    def embedded_checkout_session(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        if not app.config['STRIPE_SECRET_KEY'] or not app.config['STRIPE_PUBLISHABLE_KEY']:
+            return {'error': 'Embedded Stripe Checkout is not configured.'}, 503
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            return {'error': 'You are not assigned to this family.'}, 403
+        payment_amount = amount('amount')
+        frequency = field('frequency', True, 20)
+        if frequency not in PLEDGE_FREQUENCIES:
+            return {'error': 'Choose a valid donation frequency.'}, 400
+        metadata = {'contact_id': str(contact.id), 'family_id': str(contact.family_id),
+                    'amount_cents': str(payment_amount), 'frequency': frequency}
+        line_item = {'price_data': {'currency': app.config['STRIPE_CURRENCY'],
+                     'product_data': {'name': 'Yazory donation'},
+                     'unit_amount': payment_amount}, 'quantity': 1}
+        if frequency != 'One time':
+            line_item['price_data']['recurring'] = {
+                'interval': 'week' if frequency == 'Weekly' else 'month'}
+        params = {
+            'ui_mode': 'embedded',
+            'mode': 'payment' if frequency == 'One time' else 'subscription',
+            'line_items': [line_item], 'metadata': metadata,
+            'return_url': absolute_url('stripe_success') + '?session_id={CHECKOUT_SESSION_ID}',
+            'payment_intent_data': {'metadata': metadata} if frequency == 'One time' else None,
+            'subscription_data': {'metadata': metadata} if frequency != 'One time' else None,
+        }
+        try:
+            checkout = create_checkout_session(
+                app.config['STRIPE_SECRET_KEY'],
+                {key: value for key, value in params.items() if value is not None},
+                f'yazory-embedded-{secrets.token_hex(16)}')
+        except Exception as exc:
+            app.logger.exception('Embedded Stripe Checkout creation failed')
+            return {'error': getattr(exc, 'user_message', None) or
+                    'Stripe could not prepare the payment form.'}, 502
+        client_secret = stripe_value(checkout, 'client_secret', '')
+        if not client_secret:
+            return {'error': 'Stripe did not return an embedded payment form.'}, 502
+        return {'client_secret': client_secret}
+
+    @app.get('/stripe-payments/<int:payment_id>/manage')
+    def manage_stripe_payment(payment_id):
+        require_capability(('family_admin', 'fundraiser'))
+        payment = db.get_or_404(StripePayment, payment_id)
+        if not can_access_family(payment.family_id):
+            abort(403, 'You are not assigned to this family.')
+        if not payment.subscription_id or not payment.customer_id:
+            flash('This donation does not have an active recurring billing account.', 'error')
+            return redirect(url_for('supporter_detail', contact_id=payment.contact_id))
+        try:
+            portal = create_billing_portal_session(
+                app.config['STRIPE_SECRET_KEY'], payment.customer_id,
+                absolute_url('supporter_detail', contact_id=payment.contact_id))
+        except Exception as exc:
+            app.logger.exception('Stripe billing portal creation failed')
+            flash(getattr(exc, 'user_message', None) or
+                  'Stripe could not open recurring-donation management.', 'error')
+            return redirect(url_for('supporter_detail', contact_id=payment.contact_id))
+        return redirect(stripe_value(portal, 'url', ''), code=303)
 
     @app.route('/supporters/<int:contact_id>/stripe-checkout', methods=['GET', 'POST'])
     def stripe_checkout(contact_id):

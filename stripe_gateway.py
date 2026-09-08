@@ -41,3 +41,11 @@ def retrieve_connected_account(secret_key, account_id):
 def create_transfer(secret_key, params, idempotency_key):
     client = stripe.StripeClient(secret_key, max_network_retries=2)
     return client.v1.transfers.create(params=params, options={'idempotency_key': idempotency_key})
+
+
+def create_billing_portal_session(secret_key, customer_id, return_url):
+    client = stripe.StripeClient(
+        secret_key, max_network_retries=0,
+        http_client=stripe.RequestsClient(timeout=(3, 10)))
+    return client.v1.billing_portal.sessions.create(params={
+        'customer': customer_id, 'return_url': return_url})

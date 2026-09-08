@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import token %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">{{ _('SECURE DONATION') }}</div><h1>{{ supporter.name }}</h1><p>{{ _('Edit the donation before entering the card.') }}</p></div><a class="button secondary" href="{{ url_for('supporter_detail', contact_id=supporter.id) }}">{{ _('Back to supporter') }}</a></div>
+<section class="card padded"><form id="donation-options" action="{{ url_for('embedded_checkout_session', contact_id=supporter.id) }}" data-stripe-key="{{ stripe_publishable_key }}">{{ token(csrf) }}<div class="form-grid"><label>{{ _('Amount ($)') }}<input name="amount" type="number" min="1" max="1000000" step="0.01" value="{{ '%.2f'|format(default_amount) }}" required></label><label>{{ _('Frequency') }}<select name="frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency == default_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label></div><button type="submit">{{ _('Show secure payment form') }}</button><p id="donation-error" class="flash error" role="alert" hidden></p></form></section>
+<section class="card padded" id="embedded-payment" hidden><h2>{{ _('Secure card payment') }}</h2><div id="checkout"></div></section>
+<script src="https://js.stripe.com/v3/"></script><script src="{{ url_for('static', filename='donation.js') }}" defer></script>
+{% endblock %}
