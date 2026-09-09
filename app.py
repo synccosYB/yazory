@@ -103,6 +103,48 @@ class FamilyRabbiPreference(_app.db.Model):
     rabbi_person = _app.db.relationship('RabbiPerson')
 
 
+class HelperPerson(_app.db.Model):
+    """One reusable helper identity that may serve any number of shuls."""
+    __tablename__ = 'helper_person'
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    name = _app.db.Column(_app.db.String(160), nullable=False)
+    normalized_name = _app.db.Column(
+        _app.db.String(160), nullable=False, unique=True, index=True)
+
+
+class HelperPhone(_app.db.Model):
+    """Phone numbers belong to the helper, rather than to one shul link."""
+    __tablename__ = 'helper_phone'
+    __table_args__ = (
+        UniqueConstraint('helper_person_id', 'phone', name='uq_helper_phone'),
+    )
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    helper_person_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('helper_person.id'), nullable=False, index=True)
+    phone = _app.db.Column(_app.db.String(80), nullable=False)
+    helper_person = _app.db.relationship('HelperPerson')
+
+
+class ShulHelperAssociation(_app.db.Model):
+    """Many-to-many shul/helper link, with the helper's role at that shul."""
+    __tablename__ = 'shul_helper_association'
+    __table_args__ = (
+        UniqueConstraint('institution_id', 'helper_person_id', 'role',
+                         name='uq_shul_helper_association'),
+    )
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    institution_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('institution.id'), nullable=False, index=True)
+    helper_person_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('helper_person.id'), nullable=False, index=True)
+    role = _app.db.Column(_app.db.String(40), nullable=False)
+    institution = _app.db.relationship(
+        'Institution', backref=_app.db.backref(
+            'helper_associations', cascade='all, delete-orphan',
+            order_by='ShulHelperAssociation.id'))
+    helper_person = _app.db.relationship('HelperPerson')
+
+
 class FamilyPhone(_app.db.Model):
     """Additional home phone numbers for an applicant household."""
     __tablename__ = 'family_phone'
@@ -201,6 +243,79 @@ def _canonical_rabbi(name, phone=''):
     return person
 
 
+def _canonical_helper(name, phones=()):
+    name = ' '.join((name or '').split())[:160]
+    if not name:
+        return None
+    normalized = _normalize_rabbi_name(name)
+    person = _app.db.session.scalar(select(HelperPerson).where(
+        HelperPerson.normalized_name == normalized))
+    if person is None:
+        person = HelperPerson(name=name, normalized_name=normalized)
+        _app.db.session.add(person)
+        _app.db.session.flush()
+    else:
+        person.name = name
+    saved = {row.phone.casefold() for row in _app.db.session.scalars(
+        select(HelperPhone).where(HelperPhone.helper_person_id == person.id)).all()}
+    for phone in _clean_phones(phones):
+        if phone.casefold() not in saved:
+            _app.db.session.add(HelperPhone(helper_person_id=person.id, phone=phone))
+            saved.add(phone.casefold())
+    return person
+
+
+def _attach_helper(institution, person, role):
+    association = _app.db.session.scalar(select(ShulHelperAssociation).where(
+        ShulHelperAssociation.institution_id == institution.id,
+        ShulHelperAssociation.helper_person_id == person.id,
+        ShulHelperAssociation.role == role))
+    if association is None:
+        association = ShulHelperAssociation(
+            institution_id=institution.id, helper_person_id=person.id, role=role)
+        _app.db.session.add(association)
+        _app.db.session.flush()
+    return association
+
+
+def _sync_helper_associations(institution, role, people):
+    current = _app.db.session.scalars(select(ShulHelperAssociation).where(
+        ShulHelperAssociation.institution_id == institution.id,
+        ShulHelperAssociation.role == role)).all()
+    desired_ids = {person.id for person in people}
+    for association in current:
+        if association.helper_person_id not in desired_ids:
+            _app.db.session.delete(association)
+    for person in people:
+        _attach_helper(institution, person, role)
+
+
+def _helper_phones(person):
+    return [row.phone for row in _app.db.session.scalars(select(HelperPhone).where(
+        HelperPhone.helper_person_id == person.id).order_by(HelperPhone.id)).all()]
+
+
+def _sync_legacy_helper_phones(person):
+    """Keep compatibility rows aligned while helper phones are globally owned."""
+    phones = _helper_phones(person)
+    normalized = person.normalized_name
+    for row in _app.db.session.scalars(select(ShulGabbaiDirectory)).all():
+        if _normalize_rabbi_name(row.name) == normalized:
+            row.phone = phones[0] if phones else ''
+            _replace_gabbai_phones(row, phones)
+    for assistant in _app.db.session.scalars(select(ShulRabbiAssistant)).all():
+        if _normalize_rabbi_name(assistant.name) != normalized:
+            continue
+        existing = _app.db.session.scalars(select(ShulRabbiAssistantPhone).where(
+            ShulRabbiAssistantPhone.assistant_id == assistant.id)).all()
+        for row in existing:
+            _app.db.session.delete(row)
+        _app.db.session.flush()
+        for phone in phones:
+            _app.db.session.add(ShulRabbiAssistantPhone(
+                assistant_id=assistant.id, phone=phone))
+
+
 def _primary_association(institution_id):
     return _app.db.session.scalar(select(ShulRabbiAssociation).where(
         ShulRabbiAssociation.institution_id == institution_id,
@@ -260,6 +375,31 @@ def _migrate_canonical_rabbis():
                 family_id=family.id,
                 rabbi_person_id=person.id if person else None,
                 overridden=bool(family.rabbi or family.rabbi_phone)))
+    _app.db.session.add(_app.OrganizationSetting(key=marker_key, value={'completed': True}))
+    _app.db.session.commit()
+
+
+def _migrate_canonical_helpers():
+    marker_key = 'canonical_helpers_v1'
+    if _app.db.session.get(_app.OrganizationSetting, marker_key) is not None:
+        return
+    for row in _app.db.session.scalars(select(ShulGabbaiDirectory).order_by(
+            ShulGabbaiDirectory.id)).all():
+        person = _canonical_helper(row.name, _gabbai_phones(row))
+        if person is not None:
+            _attach_helper(row.institution, person, 'shul_gabbai')
+    for row in _app.db.session.scalars(select(ShulRabbiAssistant).order_by(
+            ShulRabbiAssistant.id)).all():
+        phones = [phone.phone for phone in _app.db.session.scalars(
+            select(ShulRabbiAssistantPhone).where(
+                ShulRabbiAssistantPhone.assistant_id == row.id
+            ).order_by(ShulRabbiAssistantPhone.id)).all()]
+        person = _canonical_helper(row.name, phones)
+        if person is not None:
+            _attach_helper(row.institution, person, 'rabbi_assistant')
+    for person in _app.db.session.scalars(select(HelperPerson).order_by(
+            HelperPerson.id)).all():
+        _sync_legacy_helper_phones(person)
     _app.db.session.add(_app.OrganizationSetting(key=marker_key, value={'completed': True}))
     _app.db.session.commit()
 
@@ -409,6 +549,7 @@ def _replace_rabbi_assistants(institution, names, phone_lists):
         ShulRabbiAssistant.institution_id == institution.id).order_by(ShulRabbiAssistant.id)).all()
     existing = {row.name.casefold(): row for row in current}
     keep_ids = set()
+    helper_people = []
     for index, raw_name in enumerate(names):
         name = (raw_name or '').strip()[:160]
         if not name:
@@ -422,6 +563,9 @@ def _replace_rabbi_assistants(institution, names, phone_lists):
             assistant.name = name
         keep_ids.add(assistant.id)
         phones = phone_lists[index] if index < len(phone_lists) else []
+        helper = _canonical_helper(name, phones)
+        if helper is not None:
+            helper_people.append(helper)
         old_phones = _app.db.session.scalars(select(ShulRabbiAssistantPhone).where(
             ShulRabbiAssistantPhone.assistant_id == assistant.id)).all()
         for row in old_phones:
@@ -429,12 +573,15 @@ def _replace_rabbi_assistants(institution, names, phone_lists):
         for phone in phones:
             _app.db.session.add(ShulRabbiAssistantPhone(
                 assistant_id=assistant.id, phone=phone))
+        if helper is not None:
+            _sync_legacy_helper_phones(helper)
     for assistant in current:
         if assistant.id not in keep_ids:
             for phone in _app.db.session.scalars(select(ShulRabbiAssistantPhone).where(
                     ShulRabbiAssistantPhone.assistant_id == assistant.id)).all():
                 _app.db.session.delete(phone)
             _app.db.session.delete(assistant)
+    _sync_helper_associations(institution, 'rabbi_assistant', helper_people)
 
 
 def _save_shul_rabbi_connections(family_id):
@@ -650,7 +797,11 @@ def _replace_shul_gabbais(institution, submitted_rows):
     existing_by_name = {row.name.casefold(): row for row in current}
     keep_ids = set()
     result = []
+    helper_people = []
     for name, phones in submitted_rows:
+        helper = _canonical_helper(name, phones)
+        if helper is not None:
+            helper_people.append(helper)
         row = existing_by_name.get(name.casefold())
         first_phone = phones[0] if phones else ''
         if row is None:
@@ -662,6 +813,8 @@ def _replace_shul_gabbais(institution, submitted_rows):
             row.name = name
             row.phone = first_phone
         _replace_gabbai_phones(row, phones)
+        if helper is not None:
+            _sync_legacy_helper_phones(helper)
         keep_ids.add(row.id)
         result.append(row)
     for row in current:
@@ -673,6 +826,7 @@ def _replace_shul_gabbais(institution, submitted_rows):
                         ShulGabbaiPhone.gabbai_id == row.id)).all():
                     _app.db.session.delete(phone)
                 _app.db.session.delete(row)
+    _sync_helper_associations(institution, 'shul_gabbai', helper_people)
     return result
 
 
@@ -759,6 +913,7 @@ def create_app(test_config=None):
         # application has initialized its database.
         _app.db.create_all()
         _migrate_canonical_rabbis()
+        _migrate_canonical_helpers()
 
     @app.get('/api/shul-rabbis')
     def shul_rabbis_api():

@@ -6,10 +6,13 @@ from app import (
     Family,
     FamilyGabbaiConnection,
     FamilyRabbiConnection,
+    HelperPerson,
+    HelperPhone,
     Institution,
     RabbiPerson,
     ShulGabbaiDirectory,
     ShulGabbaiPhone,
+    ShulHelperAssociation,
     ShulRabbi,
     ShulRabbiAssistant,
     ShulRabbiAssistantPhone,
@@ -192,6 +195,34 @@ def test_reselecting_existing_shul_reuses_its_rabbi_and_all_gabbais(app, client)
         assert sorted(row.gabbai.name for row in connections) == [
             'First Gabbai', 'Second Gabbai'
         ]
+
+
+def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
+    add_shuls(app)
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'weekday_shul_gabbai_name': ['Shared Helper'],
+        'weekday_shul_gabbai_phone': ['845-555-4101'],
+        'shabbos_shul': 'Shabbos Test Shul',
+        'shabbos_shul_gabbai_name': ['Shared Helper'],
+        'shabbos_shul_gabbai_phone': ['845-555-4102'],
+    })
+    assert response.status_code == 302
+
+    with app.app_context():
+        helpers = db.session.scalars(db.select(HelperPerson).where(
+            HelperPerson.normalized_name == 'shared helper')).all()
+        assert len(helpers) == 1
+        links = db.session.scalars(db.select(ShulHelperAssociation).where(
+            ShulHelperAssociation.helper_person_id == helpers[0].id,
+            ShulHelperAssociation.role == 'shul_gabbai')).all()
+        assert {link.institution.name for link in links} == {
+            'Weekday Test Shul', 'Shabbos Test Shul'
+        }
+        phones = db.session.scalars(db.select(HelperPhone).where(
+            HelperPhone.helper_person_id == helpers[0].id).order_by(HelperPhone.id)).all()
+        assert [row.phone for row in phones] == ['845-555-4101', '845-555-4102']
 
 
 def test_shul_directory_apis_return_saved_rabbi_and_gabbais(app, client):
