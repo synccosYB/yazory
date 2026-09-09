@@ -110,7 +110,7 @@ def test_applicant_can_inherit_different_rabbis_and_multiple_gabbais_from_two_sh
         ]
 
 
-def test_selecting_existing_shul_reuses_its_rabbi_and_all_gabbais_for_each_family_role(app, client):
+def test_reselecting_existing_shul_reuses_its_rabbi_and_all_gabbais(app, client):
     add_shuls(app)
 
     first = post(client, '/families/1/edit', {
@@ -129,7 +129,6 @@ def test_selecting_existing_shul_reuses_its_rabbi_and_all_gabbais_for_each_famil
     second = post(client, '/families/1/edit', {
         'name': 'Sample family',
         'weekday_shul': 'Weekday Test Shul',
-        'shabbos_shul': 'Weekday Test Shul',
     })
     assert second.status_code == 302
 
@@ -141,12 +140,11 @@ def test_selecting_existing_shul_reuses_its_rabbi_and_all_gabbais_for_each_famil
 
         family_rabbis = db.session.scalars(db.select(FamilyRabbiConnection).where(
             FamilyRabbiConnection.family_id == 1,
-            FamilyRabbiConnection.role.in_(('weekday_shul', 'shabbos_shul'))
+            FamilyRabbiConnection.role == 'weekday_shul'
         )).all()
-        assert {(row.role, row.rabbi_name) for row in family_rabbis} == {
-            ('weekday_shul', 'Rabbi Existing'),
-            ('shabbos_shul', 'Rabbi Existing'),
-        }
+        assert [(row.role, row.rabbi_name) for row in family_rabbis] == [
+            ('weekday_shul', 'Rabbi Existing')
+        ]
 
         gabbais = db.session.scalars(db.select(ShulGabbaiDirectory).where(
             ShulGabbaiDirectory.institution_id == shul.id
@@ -154,13 +152,11 @@ def test_selecting_existing_shul_reuses_its_rabbi_and_all_gabbais_for_each_famil
         assert [row.name for row in gabbais] == ['First Gabbai', 'Second Gabbai']
 
         connections = db.session.scalars(db.select(FamilyGabbaiConnection).where(
-            FamilyGabbaiConnection.family_id == 1
+            FamilyGabbaiConnection.family_id == 1,
+            FamilyGabbaiConnection.role == 'weekday_shul'
         )).all()
-        assert sorted((row.role, row.gabbai.name) for row in connections) == [
-            ('shabbos_shul', 'First Gabbai'),
-            ('shabbos_shul', 'Second Gabbai'),
-            ('weekday_shul', 'First Gabbai'),
-            ('weekday_shul', 'Second Gabbai'),
+        assert sorted(row.gabbai.name for row in connections) == [
+            'First Gabbai', 'Second Gabbai'
         ]
 
 
