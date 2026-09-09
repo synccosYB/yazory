@@ -125,6 +125,19 @@ def _save_shul_rabbi_connections(family_id):
 def create_app(test_config=None):
     app = _app.create_app(test_config)
 
+    @app.get('/api/shul-rabbis')
+    def shul_rabbis_api():
+        rows = _app.db.session.execute(select(_app.Institution, ShulRabbi).join(
+            ShulRabbi, ShulRabbi.institution_id == _app.Institution.id, isouter=True).where(
+            _app.Institution.kind == 'Shul')).all()
+        return {
+            institution.name: {
+                'name': assignment.rabbi_name if assignment else '',
+                'phone': assignment.rabbi_phone if assignment else '',
+            }
+            for institution, assignment in rows
+        }
+
     @app.context_processor
     def shul_rabbi_context():
         rows = _app.db.session.execute(select(_app.Institution, ShulRabbi).join(
