@@ -285,6 +285,20 @@ class StripeTransfer(db.Model):
     recipient = db.relationship('StripeRecipient')
 
 
+class CheckBankAccount(db.Model):
+    """An encrypted check-writing account with its own number sequence."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    bank_name = db.Column(db.String(160), nullable=False)
+    routing_number_encrypted = db.Column(db.Text, nullable=False)
+    account_number_encrypted = db.Column(db.Text, nullable=False)
+    account_last4 = db.Column(db.String(4), nullable=False, default='')
+    next_check_number = db.Column(db.String(12), nullable=False)
+    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class ApplicantPayout(db.Model):
     """A direct family payout and, for checks, its complete lifecycle."""
     id = db.Column(db.Integer, primary_key=True)
@@ -299,6 +313,11 @@ class ApplicantPayout(db.Model):
     stripe_reference = db.Column(db.String(255), nullable=False, default='', index=True)
     routing_number_encrypted = db.Column(db.Text, nullable=False, default='')
     account_number_encrypted = db.Column(db.Text, nullable=False, default='')
+    check_bank_account_id = db.Column(db.Integer, db.ForeignKey('check_bank_account.id'), nullable=True, index=True)
+    check_bank_account_name = db.Column(db.String(160), nullable=False, default='')
+    check_bank_name = db.Column(db.String(160), nullable=False, default='')
+    prior_case_check_count = db.Column(db.Integer, nullable=False, default=0)
+    recipient_message = db.Column(db.String(500), nullable=False, default='')
     status = db.Column(db.String(30), nullable=False, default='created', index=True)
     mailed_at = db.Column(db.DateTime, nullable=True)
     cleared_at = db.Column(db.DateTime, nullable=True)
@@ -307,6 +326,7 @@ class ApplicantPayout(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True)
     family = db.relationship('Family', backref=db.backref('applicant_payouts', lazy=True))
     creator = db.relationship('StaffUser')
+    check_bank_account = db.relationship('CheckBankAccount')
 
 class Expense(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -722,6 +742,16 @@ def create_app(test_config=None):
             if column not in payout_columns:
                 db.session.execute(text(
                     f"ALTER TABLE applicant_payout ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"))
+        payout_columns = {column['name'] for column in inspect(db.engine).get_columns('applicant_payout')}
+        for column, definition in {
+            'check_bank_account_id': 'INTEGER REFERENCES check_bank_account(id)',
+            'check_bank_account_name': "VARCHAR(160) NOT NULL DEFAULT ''",
+            'check_bank_name': "VARCHAR(160) NOT NULL DEFAULT ''",
+            'prior_case_check_count': 'INTEGER NOT NULL DEFAULT 0',
+            'recipient_message': "VARCHAR(500) NOT NULL DEFAULT ''",
+        }.items():
+            if column not in payout_columns:
+                db.session.execute(text(f'ALTER TABLE applicant_payout ADD COLUMN {column} {definition}'))
         # Backfill the central directories from every profile that already has
         # shul or yeshivah details. The helpers are idempotent, so startup never
         # creates duplicate people or institutions.
@@ -2880,47 +2910,38 @@ def create_app(test_config=None):
             Expense.status == 'Approved').order_by(Expense.id.desc())).all()
         applicant_payouts = db.session.scalars(select(ApplicantPayout).order_by(
             ApplicantPayout.created_at.desc()).limit(250)).all()
-        bank_setting = db.session.get(OrganizationSetting, 'check_bank_details')
-        bank_details = bank_setting.value if bank_setting and isinstance(bank_setting.value, dict) else {}
+        bank_accounts = db.session.scalars(select(CheckBankAccount).where(
+            CheckBankAccount.active.is_(True)).order_by(CheckBankAccount.name)).all()
         return render_template('payouts.html', title='Payouts', recipients=recipients,
                                transfers=transfers, families=families,
                                approved_expenses=approved_expenses,
                                applicant_payouts=applicant_payouts, today=date.today(),
-                               bank_configured=bool(bank_details.get('routing') and bank_details.get('account')),
-                               bank_account_last4=bank_details.get('account_last4', ''))
+                               bank_accounts=bank_accounts)
 
-    def check_bank_details():
-        row = db.session.get(OrganizationSetting, 'check_bank_details')
-        values = row.value if row and isinstance(row.value, dict) else {}
-        try:
-            return (decrypt_api_key(values.get('routing', ''), app.config['SECRET_KEY']),
-                    decrypt_api_key(values.get('account', ''), app.config['SECRET_KEY']))
-        except Exception:
-            abort(400, 'Save the check routing and account numbers again.')
-
-    @app.post('/payouts/check-settings')
-    def save_check_settings():
+    @app.post('/payouts/check-accounts')
+    def save_check_account():
         require_organization_admin()
+        account_name = field('account_name', True, 160)
+        bank_name = field('bank_name', True, 160)
         routing_number = re.sub(r'\D', '', field('routing_number', True, 20))
         account_number = re.sub(r'\D', '', field('account_number', True, 30))
+        next_check_number = field('next_check_number', True, 12)
         if len(routing_number) != 9 or sum(int(digit) * weight for digit, weight in
                 zip(routing_number, (3, 7, 1, 3, 7, 1, 3, 7, 1))) % 10:
             abort(400, 'Enter a valid 9-digit ABA routing number.')
         if not 4 <= len(account_number) <= 17:
             abort(400, 'Enter a valid bank account number.')
-        value = {
-            'routing': encrypt_api_key(routing_number, app.config['SECRET_KEY']),
-            'account': encrypt_api_key(account_number, app.config['SECRET_KEY']),
-            'account_last4': account_number[-4:],
-        }
-        row = db.session.get(OrganizationSetting, 'check_bank_details')
-        if row:
-            row.value = value
-        else:
-            db.session.add(OrganizationSetting(key='check_bank_details', value=value))
-        audit('Updated secure check-printing bank details')
+        if not next_check_number.isdigit():
+            abort(400, 'Enter a valid starting check number.')
+        bank_account = CheckBankAccount(
+            name=account_name, bank_name=bank_name,
+            routing_number_encrypted=encrypt_api_key(routing_number, app.config['SECRET_KEY']),
+            account_number_encrypted=encrypt_api_key(account_number, app.config['SECRET_KEY']),
+            account_last4=account_number[-4:], next_check_number=next_check_number)
+        db.session.add(bank_account)
+        audit(f'Added secure check-writing account: {account_name}')
         db.session.commit()
-        flash('Check routing and account numbers saved securely.')
+        flash('Check-writing account saved securely.')
         return redirect(url_for('payouts'))
 
     @app.post('/payouts/checks')
@@ -2931,12 +2952,26 @@ def create_app(test_config=None):
             abort(400, 'Choose a valid family.')
         if family.status != 'Active':
             abort(400, 'Payouts can only be created for an active family.')
-        check_number = field('check_number', True, 40)
+        bank_account_id = request.form.get('check_bank_account_id', type=int)
+        bank_account = db.session.execute(select(CheckBankAccount).where(
+            CheckBankAccount.id == bank_account_id,
+            CheckBankAccount.active.is_(True)).with_for_update()).scalar_one_or_none()
+        if bank_account is None:
+            abort(400, 'Choose a valid issuing account.')
+        try:
+            routing_number = decrypt_api_key(bank_account.routing_number_encrypted, app.config['SECRET_KEY'])
+            account_number = decrypt_api_key(bank_account.account_number_encrypted, app.config['SECRET_KEY'])
+        except Exception:
+            abort(400, 'Save the issuing account details again.')
+        check_number = bank_account.next_check_number
+        if not check_number.isdigit():
+            abort(400, 'Set the next automatic check number in bank information.')
         existing = db.session.scalar(select(ApplicantPayout.id).where(
-            ApplicantPayout.method == 'check', ApplicantPayout.check_number == check_number,
+            ApplicantPayout.method == 'check', ApplicantPayout.check_bank_account_id == bank_account.id,
+            ApplicantPayout.check_number == check_number,
             ApplicantPayout.status != 'voided'))
         if existing:
-            abort(400, 'This check number is already in use.')
+            abort(409, 'The next automatic check number is already in use for this account.')
         try:
             check_date = date.fromisoformat(field('check_date', True, 10))
         except ValueError:
@@ -2947,7 +2982,6 @@ def create_app(test_config=None):
         mailing_address = '\n'.join(part for part in (family.address, locality) if part)
         if not mailing_address:
             abort(400, 'Add the applicant mailing address before creating a check.')
-        routing_number, account_number = check_bank_details()
         payee_name = field('payee_name', True)
         if not re.search(r'[A-Za-z]', payee_name) or re.search(r'[^A-Za-z0-9 .,&\'()-]', payee_name):
             abort(400, 'Enter the check payee name in English.')
@@ -2955,12 +2989,20 @@ def create_app(test_config=None):
             family_id=family.id, method='check', amount_cents=amount('amount'),
             payee_name=payee_name, mailing_address=mailing_address,
             memo=field('memo', limit=160), check_number=check_number,
+            recipient_message=field('recipient_message', limit=500),
             check_date=check_date, status='created',
             routing_number_encrypted=encrypt_api_key(routing_number, app.config['SECRET_KEY']),
             account_number_encrypted=encrypt_api_key(account_number, app.config['SECRET_KEY']),
+            check_bank_account_id=bank_account.id, check_bank_account_name=bank_account.name,
+            check_bank_name=bank_account.bank_name,
+            prior_case_check_count=db.session.scalar(select(db.func.count(ApplicantPayout.id)).where(
+                ApplicantPayout.family_id == family.id, ApplicantPayout.method == 'check',
+                ApplicantPayout.status != 'voided')) or 0,
             created_by=current_user().id if current_user() else None)
         db.session.add(payout)
         db.session.flush()
+        bank_account.next_check_number = str(int(check_number) + 1).zfill(len(check_number))
+        bank_account.updated_at = utcnow()
         audit(f'Created applicant payout check #{check_number} for ${payout.amount_cents / 100:,.2f}', family.id)
         db.session.commit()
         flash('Check created. Download the PDF to print it.')
@@ -3016,8 +3058,8 @@ def create_app(test_config=None):
             routing_number = decrypt_api_key(payout.routing_number_encrypted, app.config['SECRET_KEY'])
             account_number = decrypt_api_key(payout.account_number_encrypted, app.config['SECRET_KEY'])
         except Exception:
-            routing_number, account_number = check_bank_details()
-        return send_file(build_check_pdf(payout, routing_number, account_number),
+            abort(400, 'The saved bank details for this check cannot be read.')
+        return send_file(build_check_pdf(payout, routing_number, account_number, payout.check_bank_name),
                          mimetype='application/pdf', as_attachment=True,
                          download_name=f'Yazory-check-{secure_filename(payout.check_number)}.pdf')
 

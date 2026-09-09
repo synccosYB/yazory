@@ -8,6 +8,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import simpleSplit
 
 
 ONES = ('Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight',
@@ -48,7 +49,7 @@ MICR_FONT_PATH = ASSET_ROOT / 'fonts' / 'Nimra-MICR.ttf'
 LOGO_PATH = ASSET_ROOT / 'yazory-logo.png'
 
 
-def build_check_pdf(payout, routing_number, account_number):
+def build_check_pdf(payout, routing_number, account_number, bank_name=''):
     """Return an in-memory US Letter top-check ready for preprinted check stock."""
     stream = BytesIO()
     pdf = canvas.Canvas(stream, pagesize=letter)
@@ -61,6 +62,9 @@ def build_check_pdf(payout, routing_number, account_number):
     pdf.rect(left, bottom, right - left, top - bottom, stroke=1, fill=0)
     pdf.drawImage(ImageReader(LOGO_PATH), left + 10, top - 67, width=58, height=58,
                   preserveAspectRatio=True, anchor='c', mask='auto')
+    if bank_name:
+        pdf.setFont('Helvetica-Bold', 9)
+        pdf.drawString(left + 78, top - 28, bank_name[:55])
     pdf.setFillColorRGB(0, 0, 0)
     pdf.setFont('Helvetica-Bold', 11)
     pdf.drawRightString(right - 12, top - 22, payout.check_number)
@@ -105,6 +109,26 @@ def build_check_pdf(payout, routing_number, account_number):
     pdf.setFont('Helvetica', 8)
     pdf.drawCentredString(width / 2, bottom - 32,
                          'Print at Actual Size (100%) on compatible top-check stock. Do not use Fit to Page.')
+    stub_top = bottom - 56
+    pdf.setStrokeColorRGB(.72, .72, .72)
+    pdf.rect(left, stub_top - 132, right - left, 132, stroke=1, fill=0)
+    pdf.setFillColorRGB(0, 0, 0)
+    pdf.setFont('Helvetica-Bold', 10)
+    pdf.drawString(left + 12, stub_top - 20, 'CHECK STUB')
+    pdf.setFont('Helvetica', 9)
+    case_number = f'YZ-{payout.family_id:04d}'
+    previous = payout.prior_case_check_count or 0
+    pdf.drawString(left + 12, stub_top - 40, f'Case number: {case_number}')
+    pdf.drawString(left + 180, stub_top - 40, f'Check number: {payout.check_number}')
+    pdf.drawString(left + 340, stub_top - 40, f'Check date: {payout.check_date:%m/%d/%Y}')
+    pdf.drawString(left + 12, stub_top - 58, f'Payee: {payout.payee_name[:55]}')
+    pdf.drawString(left + 340, stub_top - 58, f'Amount: ${payout.amount_cents / 100:,.2f}')
+    pdf.drawString(left + 12, stub_top - 76,
+                   f'Check sequence for this case: {previous + 1}  |  Previously issued: {previous}')
+    message = payout.recipient_message or 'Please find the enclosed support payment. Wishing you and your family continued strength and success.'
+    pdf.setFont('Helvetica-Oblique', 8)
+    for index, line in enumerate(simpleSplit(message, 'Helvetica-Oblique', 8, right - left - 24)[:3]):
+        pdf.drawString(left + 12, stub_top - 96 - index * 11, line)
     pdf.showPage()
     pdf.save()
     stream.seek(0)
