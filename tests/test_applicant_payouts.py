@@ -140,6 +140,32 @@ def test_voided_check_cannot_be_downloaded(tmp_path):
     assert client.get(f'/payouts/{payout_id}/check.pdf').status_code == 400
 
 
+def test_only_voided_checks_can_be_deleted(tmp_path):
+    app = payout_app(tmp_path, 'delete-check.sqlite')
+    client = app.test_client()
+    client.get('/payouts')
+    with client.session_transaction() as session:
+        csrf = session['csrf']
+    with app.app_context():
+        family = db.session.scalar(db.select(Family))
+        payout = ApplicantPayout(family_id=family.id, method='check', amount_cents=100,
+            payee_name='Test Applicant', mailing_address='1 Main St', check_number='9',
+            check_date=date.today(), status='created')
+        db.session.add(payout)
+        db.session.commit()
+        payout_id = payout.id
+    assert client.post(f'/payouts/{payout_id}/delete', data={'csrf': csrf}).status_code == 400
+    voided = client.post(f'/payouts/{payout_id}/status', data={
+        'csrf': csrf, 'status': 'voided'})
+    assert voided.status_code == 302
+    assert voided.location.endswith('/payouts?panel=3')
+    deleted = client.post(f'/payouts/{payout_id}/delete', data={'csrf': csrf})
+    assert deleted.status_code == 302
+    assert deleted.location.endswith('/payouts?panel=3')
+    with app.app_context():
+        assert db.session.get(ApplicantPayout, payout_id) is None
+
+
 def test_direct_stripe_payout_is_recorded(monkeypatch, tmp_path):
     app = create_app({'TESTING': True, 'DEMO': True,
                       'SQLALCHEMY_DATABASE_URI': f'sqlite:///{tmp_path / "stripe.sqlite"}',

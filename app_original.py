@@ -3102,7 +3102,20 @@ def create_app(test_config=None):
         db.session.commit()
         flash({'mailed': 'Check marked as mailed.', 'cleared': 'Check marked as cleared.',
                'voided': 'Check voided.'}[next_status])
-        return redirect(url_for('payouts'))
+        return redirect(url_for('payouts', panel=3))
+
+    @app.post('/payouts/<int:payout_id>/delete')
+    def delete_voided_payout_check(payout_id):
+        require_organization_admin()
+        payout = db.get_or_404(ApplicantPayout, payout_id)
+        if payout.method != 'check' or payout.status != 'voided':
+            abort(400, 'Only a voided check can be deleted.')
+        check_number, family_id = payout.check_number, payout.family_id
+        db.session.delete(payout)
+        audit(f'Deleted voided applicant payout check #{check_number}', family_id)
+        db.session.commit()
+        flash('Voided check deleted.')
+        return redirect(url_for('payouts', panel=3))
 
     @app.post('/payouts/recipients')
     def create_payout_recipient():

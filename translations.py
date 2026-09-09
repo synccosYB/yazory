@@ -51,6 +51,8 @@ _EXTRA = {
     'Mark mailed': {'he': 'סימון כנשלח', 'yi': 'צייכן ארויסגעשיקט'},
     'Mark cleared': {'he': 'סימון כנפרע', 'yi': 'צייכן געקלירט'},
     'Void check': {'he': 'ביטול המחאה', 'yi': 'מבטל דעם טשעק'},
+    'Delete check': {'he': 'מחיקת המחאה', 'yi': 'אויסמעקן דעם טשעק'},
+    'Delete this voided check permanently?': {'he': 'למחוק לצמיתות את ההמחאה המבוטלת?', 'yi': 'אויסמעקן דעם מבוטל געווארענעם טשעק אויף אייביג?'},
     'No applicant checks yet.': {'he': 'עדיין אין המחאות לפונים.', 'yi': 'נאכנישטא קיין טשעקס פאר אפליקאנטן.'},
     'Stripe applicant setup': {'he': 'הגדרת Stripe לפונה', 'yi': 'Stripe אנשטעלן פארן אפליקאנט'},
     'Send applicant payout through Stripe': {'he': 'שליחת תשלום לפונה דרך Stripe', 'yi': 'שיק א באצאלונג צום אפליקאנט דורך Stripe'},
