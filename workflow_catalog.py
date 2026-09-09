@@ -51,7 +51,7 @@ FIELDS = {
  'disclosure':('text','Approved family story',True), 'monthly_goal':('money','Monthly fundraising goal ($)',True),
  'overall_goal':('money','Overall fundraising goal ($)',True),
 }
-CHOICES = {'expense_type':['Family assistance','Organization expense'], 'frequency':['Monthly','One-time'],
+CHOICES = {'expense_type':['Family assistance','Organization expense'], 'frequency':['Monthly','Weekly','One-time'],
            'new_role':['family_admin','office_employee','fundraiser','organization_admin'], 'access_change':['Deactivate','Role change'], 'document_privacy':['Household','Medical','Finance','Restricted']}
 
 
@@ -82,7 +82,7 @@ CATALOG={
  'expense':definition(15,'Expense request','Finance',[step('Submitted'),CASE,FIN,step('Approved'),step('Scheduled','payment_approver'),step('Payment release','payment_releaser'),step('Paid','finance'),step('Reconciled')], 'plan_id vendor_id amount invoice month category expense_type related_party cash direct_family reason',evidence=True),
  'exception_approval':definition(16,'Expense exception approval','Finance',[FIN,TWO,RABBI,step('Executive review','executive'),APPROVED], 'source_id reason',evidence=True),
  'allocation':definition(17,'Organization-expense allocation','Finance',[CASE,FIN,APPROVED], 'source_id allocation amount',evidence=True),
- 'vendor':definition(18,'Vendor approval','Finance',[VERIFY,step('Payment details verified','finance'),APPROVED], 'payee banking summary',org=True,evidence=False),
+ 'vendor':definition(18,'Vendor approval','Finance',[VERIFY,step('Payment details verified','finance'),APPROVED], 'payee banking stripe_account summary',org=True,evidence=False),
  'payment_batch':definition(19,'Payment batch','Finance',[FIN,step('Batch approved','payment_approver'),step('Release recorded','payment_releaser'),DONE], 'summary reference batch_items',org=True,evidence=True),
  'reconciliation':definition(20,'Bank reconciliation','Finance',[FIN,step('Matched','finance'),step('Reconciled')], 'ledger_id bank_ref bank_date bank_amount',evidence=True),
  'refund':definition(21,'Refund or chargeback','Finance',[FIN,TWO,step('Release recorded','payment_releaser'),DONE], 'source_id amount reason reference notification',evidence=True),
@@ -109,3 +109,5 @@ for key,label in [('verify_income','Income verification'),('verify_housing','Hou
     FIELDS[key]=('choice',label,True)
     CHOICES[key]=['Verified','Partially verified','Documentation requested','Unable to verify','Not applicable']
 CHOICES['review_decision']=['Continue unchanged','Reassess assistance','Request documents','Pause assistance','Pause fundraising','Begin closure']
+
+FIELDS['stripe_account']=('text','Stripe connected account ID',False)

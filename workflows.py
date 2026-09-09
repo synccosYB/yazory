@@ -37,7 +37,7 @@ def install_workflows(app, db, entities, helpers):
 
     def active_user(user):
         status=db.session.get(Access,user.id) if user else None
-        return bool(user and (not status or status.active))
+        return bool(user and getattr(user, 'status', 'active') == 'active' and (not status or status.active))
 
     def actor():
         user=current_user()
@@ -242,6 +242,10 @@ def install_workflows(app, db, entities, helpers):
         p=db.session.scalar(select(Policy).order_by(Policy.id.desc()))
         return p.data if p else {}
 
+    def enforced():
+        # Approval of governance is the durable cutover; expiration never turns controls off.
+        return not app.config['DEMO'] and bool(app.config.get('WORKFLOW_ENFORCEMENT') or policy())
+
     def conflict(item,uid):
         for c in db.session.scalars(select(Work).where(Work.kind=='conflict',Work.family_id==item.family_id,Work.disposition.notin_(['Rejected','Canceled']))):
             if c.data.get('conflict_user')==uid: return True
@@ -402,6 +406,19 @@ def install_workflows(app, db, entities, helpers):
         if item.kind=='supporter' and next_label=='Ready for outreach':
             link=db.session.get(Link,item.data['contact_id'])
             if not link or not link.verified or link.permission!='Permitted' or not link.assigned_to: fail('Verify the relationship, contact permission and fundraiser assignment first.')
+        if item.kind=='pledge' and next_label=='Active':
+            contact=db.session.get(Contact,item.data['contact_id'])
+            for other in db.session.scalars(select(Work).where(Work.kind=='pledge',Work.disposition=='Complete',Work.id!=item.id)):
+                oc=db.session.get(Contact,other.data.get('contact_id'))
+                if other.data.get('end','')<date.today().isoformat():continue
+                if oc and oc.id==contact.id:fail('Pause the previous pledge before confirming a replacement.')
+                if oc and contact.supporter_key and oc.supporter_key==contact.supporter_key and any(other.data.get(k)!=item.data.get(k) for k in ('amount','frequency')):
+                    fail('Linked cases must use the same shared donation amount and frequency.')
+        if item.kind=='closure' and next_label=='Closed' and 'StripePayment' in entities:
+            payment=entities['StripePayment']
+            if db.session.scalar(select(payment.id).join(Contact,Contact.id==payment.contact_id).where(
+                Contact.family_id==item.family_id,payment.frequency!='One time',payment.status.in_(['pending','active']))):
+                fail('Stop the active Stripe subscription before closing this case.')
         if item.kind=='expense' and next_label in ('Approved','Scheduled','Payment release','Paid'): check_budget(item)
         if item.kind in ('expense','emergency','refund') and next_label in ('Paid','Documentation review','Completed'):
             if item.kind=='refund' and item.stage!=3: return
@@ -460,15 +477,21 @@ def install_workflows(app, db, entities, helpers):
             check_budget(w);result.append(w)
         return result
 
-    def monthly_pledged(fid,user=None):
-        today=date.today().isoformat();total=0
-        for w in db.session.scalars(select(Work).where(Work.kind=='pledge',Work.family_id==fid,Work.disposition=='Complete')):
-            if w.data.get('frequency')=='Monthly' and w.data.get('start','')<=today<=w.data.get('end',''):
-                if user and user.role=='fundraiser':
-                    link=db.session.get(Link,w.data.get('contact_id'))
-                    if not link or link.assigned_to!=user.id:continue
-                total+=w.data.get('amount',0)
-        return total
+    def monthly_pledged(fid=None,user=None,family_ids=None):
+        today=date.today().isoformat();totals={}
+        query=select(Work).where(Work.kind=='pledge',Work.disposition=='Complete')
+        if fid is not None:query=query.where(Work.family_id==fid)
+        if family_ids is not None:query=query.where(Work.family_id.in_(family_ids))
+        for w in db.session.scalars(query.order_by(Work.id)):
+            if w.data.get('frequency') in ('Monthly','Weekly') and w.data.get('start','')<=today<=w.data.get('end',''):
+                link=db.session.get(Link,w.data.get('contact_id'))
+                if user and user.role=='fundraiser' and (not link or link.assigned_to!=user.id):continue
+                contact=db.session.get(Contact,w.data.get('contact_id'))
+                identity=(contact.supporter_key or str(contact.id)) if contact and fid is None else str(w.id)
+                amount=w.data.get('amount',0)
+                if w.data['frequency']=='Weekly':amount=round(amount*52/12)
+                totals[identity]=amount
+        return sum(totals.values())
 
     def deactivate(item):
         uid=item.data['user_id'];user=db.session.get(StaffUser,uid)
@@ -513,7 +536,7 @@ def install_workflows(app, db, entities, helpers):
                 review.disposition='Canceled';emit(review,'Canceled',{'closure_id':item.id})
         if item.kind=='reopening' and next_label=='Reopened': family.status='Under review'
         if item.kind=='pledge' and next_label=='Active':
-            contact=db.session.get(Contact,data['contact_id']);contact.status='Pledged';contact.monthly_cents=data['amount'] if data['frequency']=='Monthly' else 0
+            contact=db.session.get(Contact,data['contact_id']);contact.status='Pledged';contact.monthly_cents=data['amount'];contact.pledge_frequency='One time' if data['frequency']=='One-time' else data['frequency']
         if item.kind=='payment_batch' and next_label=='Completed':
             for w in batch_expenses(item,True):
                 w.data={**w.data,'reference':data['reference']+':'+str(w.id),'payment_result':data['payment_result'],'batch_id':item.id}
@@ -577,7 +600,7 @@ def install_workflows(app, db, entities, helpers):
     @app.context_processor
     def workflow_context():
         user=current_user()
-        return dict(workflow_roles=ROLES,workflow_user_roles=roles(),workflow_active=active_user(user),work_status=status,
+        return dict(workflow_roles=ROLES,workflow_user_roles=roles(),workflow_active=active_user(user) and not app.config['DEMO'],workflow_enforced=enforced(),work_status=status,
                     workflow_can_sign=can_sign,workflow_catalog=CATALOG)
 
     @app.get('/operations')
@@ -716,7 +739,7 @@ def install_workflows(app, db, entities, helpers):
         file=db.get_or_404(File,file_id);item=get_item(file.item_id);emit(item,'Evidence downloaded',{'file_id':file.id});save()
         return send_file(BytesIO(file.data),mimetype=file.content_type,as_attachment=True,download_name=file.filename,max_age=0)
 
-    @app.get('/reports')
+    @app.get('/operations/reports')
     def operating_reports():
         user=actor()
         if user.role in ('fundraiser','office_employee'):abort(403)
@@ -788,6 +811,42 @@ def install_workflows(app, db, entities, helpers):
         db.session.add(w);db.session.flush();emit(w,'Legacy expense linked',{'expense_id':e.id,'legacy_status':e.status});save()
         return redirect(url_for('work_detail',item_id=w.id,edit=1))
 
+    def prepare_stripe_release(expense, recipient, currency):
+        item = next((w for w in db.session.scalars(select(Work).where(
+            Work.kind=='expense', Work.family_id==expense.family_id).with_for_update())
+            if w.data.get('expense_id')==expense.id), None)
+        if not item or item.disposition!='Open' or item.stage!=6:
+            fail('Complete the expense workflow through payment release before sending through Stripe.')
+        if not readable(item) or not can_sign(item):
+            abort(403,'This step requires a different authorized reviewer.')
+        lock_family(item.family_id)
+        complete_fields(item)
+        check_budget(item)
+        if currency.lower()!='usd' or expense.amount_cents!=item.data['amount'] or expense.month!=item.data['month']:
+            fail('The payment must match the approved expense amount, month and currency.')
+        vendor=db.session.get(Work,item.data['vendor_id'])
+        if not vendor or vendor.disposition!='Complete' or vendor.data.get('stripe_account')!=recipient.stripe_account_id:
+            fail('The Stripe recipient must match the connected account in the approved vendor record.')
+        if item.data.get('cash'):
+            fail('A cash approval cannot be released as a Stripe transfer.')
+        return item
+
+    def finish_stripe_release(item, reference, recipient):
+        if not reference or len(reference)>180:
+            fail('Stripe did not return a valid transfer reference.')
+        proof=json.dumps({'transfer_id':reference,'destination':recipient.stripe_account_id,
+                          'amount_cents':item.data['amount'],'currency':'usd'}).encode()
+        db.session.add(File(item_id=item.id,filename='stripe-transfer.json',content_type='application/json',
+            data=proof,actor_id=actor().id,purpose='Payment proof',revision=item.revision,stage=item.stage))
+        item.data={**item.data,'reference':reference,'payment_result':'Stripe transfer confirmed'}
+        db.session.flush()
+        stage_gate(item,'Paid')
+        db.session.add(Decision(item_id=item.id,revision=item.revision,stage=item.stage,actor_id=actor().id,
+            role='payment_releaser',action='Approve',note='Stripe transfer confirmed: '+reference))
+        effects(item,'Paid');item.stage=7;item.updated_at=now()
+        emit(item,'Stripe payment released',{'reference':reference,'recipient_id':recipient.id})
+        notify(item,'Workflow needs attention')
+
     def create_onboarding(user):
         if not policy():return
         db.session.add(Access(user_id=user.id,active=False))
@@ -815,7 +874,7 @@ def install_workflows(app, db, entities, helpers):
     def expense_workflow(expense_id):return legacy_expense(expense_id)
 
     # Shared hooks enforce the workflow even through older URLs.
-    app.extensions['workflows']=dict(models=M,active_user=active_user,roles=roles,legacy_status=legacy_status,
+    app.extensions['workflows']=dict(models=M,active_user=active_user,enforced=enforced,prepare_stripe_release=prepare_stripe_release,finish_stripe_release=finish_stripe_release,roles=roles,legacy_status=legacy_status,
         legacy_expense=legacy_expense,document_access=document_access,document_allowed=document_allowed,
         protect_document_delete=protect_document_delete,financials=financials,emit=emit,readable=readable,
         status=status,can_sign=can_sign,monthly_pledged=monthly_pledged,approved=approved,create_onboarding=create_onboarding,queue_access_change=queue_access_change)

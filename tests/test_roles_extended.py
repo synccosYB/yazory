@@ -108,7 +108,7 @@ def test_office_and_fundraiser_permissions_and_isolation(monkeypatch):
     assert 'Assigned household' in summary and 'Private household' not in summary
     assert 'CONFIDENTIAL' not in summary and 'PRIVATE PAYEE' not in summary
     detail = fundraiser_client.get(f'/fundraising/{assigned_id}')
-    assert detail.status_code == 200 and 'Assigned donor' in detail.text
+    assert detail.status_code == 200 and f'/supporters?family_id={assigned_id}' in detail.text
     for confidential in ('CONFIDENTIAL ADDRESS', 'CONFIDENTIAL MEDICAL NOTES', 'PRIVATE PAYEE'):
         assert confidential not in detail.text
     assert fundraiser_client.get(f'/fundraising/{private_id}').status_code == 403

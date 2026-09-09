@@ -37,9 +37,9 @@ def parse(form, children):
         data['children'][str(child.id)]={'dob':dob,'age':int(age),'amounts':{key:money(form.get(f'child_{child.id}_{key}')) for key,_ in COMPONENTS}}
     return data
 
-def calculate(data, intake, children):
+def calculate(data, intake, children, fallback_bands=None):
     data=data or {}; intake=intake or {}; child_rows=[]
-    estimates={key:0 for key,_ in COMPONENTS}; missing=0
+    estimates={key:0 for key,_ in COMPONENTS}; actual_children={key:0 for key,_ in COMPONENTS}; missing=0
     for child in children:
         saved=data.get('children',{}).get(str(child.id),{})
         dob=saved.get('dob',''); age=child.age
@@ -47,11 +47,25 @@ def calculate(data, intake, children):
             born=date.fromisoformat(dob); today=date.today()
             age=today.year-born.year-((today.month,today.day)<(born.month,born.day))
         index=band(min(30,age)); parts=[]
+        saved_amounts=saved.get('amounts', {})
+        rate_values=data.get('rates',{}).get(str(index),{})
+        # Controls provide one conservative fallback, in Children’s additional
+        # needs only, when this child has no detailed rate or override at all.
+        has_detail=any(saved_amounts.get(key) is not None or rate_values.get(key) is not None
+                       for key,_ in COMPONENTS)
+        fallback=None
+        if not has_detail:
+            for item in fallback_bands or []:
+                if int(item['min_age']) <= age <= int(item['max_age']):
+                    fallback=int(item['amount_cents']); break
         for key,label in COMPONENTS:
-            override=saved.get('amounts',{}).get(key)
-            value=override if override is not None else data.get('rates',{}).get(str(index),{}).get(key)
-
-            estimates[key]+=value or 0
+            override=saved_amounts.get(key)
+            rate=rate_values.get(key)
+            value=override if override is not None else rate
+            if value is None and key == 'children' and fallback is not None:
+                value=fallback
+            if override is not None: actual_children[key]+=value or 0
+            else: estimates[key]+=value or 0
             parts.append(dict(key=key,label=label,amount=value,override=override))
         child_rows.append(dict(child=child,age=age,dob=dob,band=BANDS[index],parts=parts,total=sum(x['amount'] or 0 for x in parts)))
     provider={key:0 for key,_ in CATEGORIES}; known=set(); unclassified=0
@@ -71,7 +85,7 @@ def calculate(data, intake, children):
         if actual is not None: value=actual; source='Actual household total'
         elif legacy is not None or key in known: value=(legacy or 0)+provider[key]; source='Saved household bills'
         elif key in estimates and children:
-            value=estimates[key]; source='Child estimate'
+            value=estimates[key] + actual_children[key]; source='Child estimate'
             missing+=sum(part['amount'] is None for child in child_rows for part in child['parts'] if part['key']==key)
         else: value=None; source='Not entered'
         missing+=value is None
@@ -89,4 +103,12 @@ def calculate(data, intake, children):
     food=next(r['amount'] or 0 for r in rows if r['key']=='food')
     assistance+=min(stamps,food)
     total=sum(r['amount'] or 0 for r in rows)
-    return dict(rows=rows,children=child_rows,costs=total,earnings=income,usable_help=assistance,gap=max(0,total-income-assistance),missing=missing+unclassified)
+    child_keys={key for key,_ in COMPONENTS}
+    child_row_keys={row['key'] for row in rows if row['key'] in child_keys and row['source']=='Child estimate'}
+    estimated_children=sum(estimates[key] for key in child_row_keys)
+    actual_child_amounts=sum(actual_children[key] for key in child_row_keys)
+    household_bills=total-estimated_children-actual_child_amounts
+    return dict(rows=rows,children=child_rows,costs=total,earnings=income,usable_help=assistance,
+                gap=max(0,total-income-assistance),missing=missing+unclassified,
+                household_bills=household_bills, child_estimates=estimated_children,
+                actual_child_amounts=actual_child_amounts)

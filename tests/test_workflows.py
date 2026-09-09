@@ -7,7 +7,7 @@ from workflow_catalog import CATALOG, ROLES, FIELDS
 @pytest.fixture
 def env(monkeypatch):
     for k in ('APP_ENV','DATABASE_URL','ADMIN_EMAIL','ADMIN_PASSWORD_HASH','SESSION_SECRET'):monkeypatch.delenv(k,raising=False)
-    app=create_app({'TESTING':True,'DEMO':False,'SECRET_KEY':'test','SQLALCHEMY_DATABASE_URI':'sqlite://'})
+    app=create_app({'TESTING':True,'DEMO':False,'WORKFLOW_ENFORCEMENT':True,'SECRET_KEY':'test','SQLALCHEMY_DATABASE_URI':'sqlite://'})
     M=app.extensions['workflows']['models'];today=date.today()
     with app.app_context():
         db.create_all();f=Family(name='Workflow household',status='Intake');other=Family(name='Private family')
@@ -285,3 +285,139 @@ def test_imported_receipt_fees_reconciliation_and_reviewed_correction(env):
     with env.app.app_context():
         f=env.app.extensions['workflows']['financials'](env.fid);assert f['balance']==9600 and f['overhead']==400
         assert env.app.extensions['workflows']['import_consistent'](db.session.get(env.M['WorkItem'],wid))
+
+
+def test_governance_cutover_is_durable_and_respects_staff_status(env):
+    env.app.config['WORKFLOW_ENFORCEMENT']=False
+    with env.app.app_context():
+        assert not env.app.extensions['workflows']['enforced']()
+    prepare_case(env)
+    with env.app.app_context():
+        assert env.app.extensions['workflows']['enforced']()
+        policy=db.session.scalar(db.select(env.M['WorkflowPolicy']))
+        policy.data={**policy.data,'review_date':'2000-01-01'}
+        user=db.session.get(StaffUser,env.ids['finance']);user.status='deactivated'
+        db.session.commit()
+        assert env.app.extensions['workflows']['enforced']()
+        assert not env.app.extensions['workflows']['active_user'](user)
+    assert env.client('finance').get('/operations').status_code==302
+
+
+def test_stripe_release_requires_workflow_signature_funds_and_verified_destination(env,monkeypatch):
+    import app as app_module
+    from app import StripeRecipient,StripeTransfer
+    _,_,plan,_=prepare_case(env);collection(env)
+    vendor=env.create('vendor',{'payee':'Grocery store','banking':'Verified by finance',
+        'stripe_account':'acct_verified','summary':'Verified vendor'})
+    env.finish(vendor)
+    env.app.config['STRIPE_SECRET_KEY']='sk_test_fixture'
+    with env.app.app_context():
+        releaser=db.session.get(StaffUser,env.ids['payment_releaser']);releaser.role='organization_admin'
+        expense=Expense(family_id=env.fid,category='Groceries',payee='Grocery store',
+            amount_cents=10000,month=env.today.strftime('%Y-%m'),status='Requested')
+        recipient=StripeRecipient(kind='vendor',recipient_key='vendor-fixture',email='vendor@example.test',name='Grocery store',stripe_account_id='acct_verified',payouts_enabled=True)
+        db.session.add_all([expense,recipient]);db.session.commit();eid=expense.id;rid=recipient.id
+    response=env.client().post(f'/expenses/{eid}/workflow',data={'csrf':'test'})
+    wid=int(response.location.split('/')[-1].split('?')[0])
+    with env.app.app_context():version=db.session.get(env.M['WorkItem'],wid).version
+    response=env.client().post(f'/operations/{wid}',data={'csrf':'test','version':version,
+        'title':'Grocery invoice','due':env.today.isoformat(),'plan_id':plan,'vendor_id':vendor,
+        'amount':'100','invoice':'STRIPE-INV-1','month':env.today.strftime('%Y-%m'),
+        'category':'Groceries','expense_type':'Family assistance','reason':'Verified bill'})
+    assert response.status_code==302
+    assert env.upload(wid,'Invoice').status_code==302
+    for role in ['owner','owner','case_admin','finance','owner','payment_approver']:
+        assert env.act(wid,role).status_code==302
+    calls=[]
+    def transfer(secret,params,key):
+        calls.append(params)
+        assert params['destination']=='acct_verified' and params['amount']==10000
+        assert key==f'yazory-expense-{eid}'
+        return {'id':'tr_workflow_fixture'}
+    monkeypatch.setattr(app_module,'create_transfer',transfer)
+    payload={'csrf':'test','recipient_id':rid}
+    assert env.client().post(f'/expenses/{eid}/stripe-transfer',data=payload).status_code==403
+    assert not calls
+    with env.app.app_context():
+        recipient=db.session.get(StripeRecipient,rid);recipient.stripe_account_id='acct_wrong';db.session.commit()
+    assert env.client('payment_releaser').post(f'/expenses/{eid}/stripe-transfer',data=payload).status_code==400
+    assert not calls
+    with env.app.app_context():
+        recipient=db.session.get(StripeRecipient,rid);recipient.stripe_account_id='acct_verified';db.session.commit()
+    assert env.client('payment_releaser').post(f'/expenses/{eid}/stripe-transfer',data=payload).status_code==302
+    assert len(calls)==1
+    assert env.client('payment_releaser').post(f'/expenses/{eid}/stripe-transfer',data=payload).status_code==400
+    with env.app.app_context():
+        assert db.session.get(env.M['WorkItem'],wid).stage==7
+        assert env.app.extensions['workflows']['financials'](env.fid)['balance']==90000
+        assert db.session.get(Expense,eid).payment_reference=='tr_workflow_fixture'
+        assert db.session.scalar(db.select(db.func.count()).select_from(StripeTransfer))==1
+        assert db.session.scalar(db.select(env.M['WorkflowFile']).where(env.M['WorkflowFile'].purpose=='Payment proof'))
+
+
+def test_existing_receipt_review_preserves_source_and_posts_once(env):
+    from app import Receipt
+    with env.app.app_context():
+        receipt=Receipt(contact_id=env.cid,family_id=env.fid,amount_cents=1800,
+            received_on=env.today,reference='pi_fixture',note='Processed securely by Stripe')
+        db.session.add(receipt);db.session.commit();rid=receipt.id
+    response=env.client().post(f'/collections/receipts/{rid}/workflow',data={'csrf':'test'})
+    wid=int(response.location.split('/')[-1].split('?')[0])
+    assert env.client().post(f'/collections/receipts/{rid}/workflow',data={'csrf':'test'}).location.endswith(f'/operations/{wid}')
+    with env.app.app_context():
+        assert env.app.extensions['workflows']['financials'](env.fid)['balance']==0
+        version=db.session.get(env.M['WorkItem'],wid).version
+    payload={'csrf':'test','version':version,'title':'Receipt review','due':env.today.isoformat(),
+        'contact_id':env.cid,'amount':'19','reference':'receipt:pi_fixture',
+        'restrictions':'This case','payment_method':'Stripe','receipt_preference':'Email'}
+    assert env.client().post(f'/operations/{wid}',data=payload).status_code==302
+    assert env.upload(wid,'Supporting evidence').status_code==302
+    denied=env.act(wid)
+    assert denied.status_code==400 and 'receipt changed' in denied.text
+    with env.app.app_context():payload['version']=db.session.get(env.M['WorkItem'],wid).version
+    payload['amount']='18'
+    assert env.client().post(f'/operations/{wid}',data=payload).status_code==302
+    for role in ['owner','owner','finance','finance']:
+        assert env.act(wid,role,payment_result='Verified Stripe receipt').status_code==302
+    with env.app.app_context():
+        assert db.session.get(Receipt,rid).amount_cents==1800
+        assert env.app.extensions['workflows']['financials'](env.fid)['balance']==1800
+        assert db.session.scalar(db.select(db.func.count()).select_from(env.M['LedgerEntry']))==1
+
+
+def test_central_lists_and_hierarchies_keep_contact_level_privacy(env):
+    from app import Receipt
+    with env.app.app_context():
+        user=db.session.get(StaffUser,env.ids['fundraising']);user.role='fundraiser'
+        parent=Contact(family_id=env.fid,name='Hidden parent identity',relationship='Sibling',phone='hidden phone')
+        db.session.add(parent);db.session.flush()
+        child=db.session.get(Contact,env.cid);child.parent_contact_id=parent.id;child.parent_connection='Son'
+        db.session.add(env.M['SupporterLink'](contact_id=env.cid,side='Husband',relationship='Nephew',
+            assigned_to=user.id,permission='Permitted',verified=True))
+        db.session.add(Receipt(family_id=env.fid,contact_id=parent.id,amount_cents=1234,
+            received_on=env.today,reference='HIDDEN-RECEIPT',note='Hidden private note'))
+        db.session.commit()
+    client=env.client('fundraising')
+    for path in ['/supporters','/collections',f'/supporters/{env.cid}',f'/fundraising/{env.fid}']:
+        response=client.get(path)
+        assert response.status_code==200,(path,response.text)
+        assert 'Hidden parent identity' not in response.text
+        assert 'HIDDEN-RECEIPT' not in response.text
+
+
+def test_network_preserves_shul_friend_shared_identity_and_son_in_law(env):
+    with env.app.app_context():
+        parent=db.session.get(Contact,env.cid)
+        child=Contact(family_id=env.fid,name='Son in law',relationship='Nephew',
+            phone='8455550144',parent_contact_id=parent.id,parent_connection='Son-in-law',supporter_key='phone:8455550144')
+        db.session.add(child);db.session.commit();cid=child.id
+    payload={'csrf':'test','contact_id':cid,'name':'Son in law','phone':'8455550144',
+        'relationship':'Nephew','side':'Husband','parent_id':env.cid,'parent_connection':'Son-in-law',
+        'permission':'Permitted','verified':'yes','assigned_to':env.ids['fundraising']}
+    assert env.client().post(f'/families/{env.fid}/network',data=payload).status_code==302
+    with env.app.app_context():
+        child=db.session.get(Contact,cid)
+        assert child.parent_connection=='Son-in-law' and child.parent_contact_id==env.cid
+        assert child.supporter_key=='phone:8455550144'
+    page=env.client().get(f'/families/{env.fid}/network?new=1')
+    assert 'Shul friend' in page.text

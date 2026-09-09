@@ -14,8 +14,16 @@ With no staff credentials, the application runs a fictional demo using a local S
 ## Database / staff setup
 For shared PostgreSQL, set `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, and `SESSION_SECRET` in Secrets; follow README for private hash generation and explicit `flask --app 'app:create_app()' init-db`. The configured credentials bootstrap the owner organization administrator idempotently; additional individual staff accounts and family assignments are administered in-app by organization administrators. Do not paste secrets into Git or chat. If the import generated different port/workflow settings, align them to port 5000 without changing the application stack.
 
+For an existing production database, back it up, deploy the code containing the
+new models, run `APP_ENV=production flask --app 'app:create_app()' migrate-db`,
+then start the application. This additive command only creates missing tables
+and never drops or rewrites records.
+
 ## Permanent role requirement
 Preserve four roles: `organization_admin` (all records, financial approvals/payments, case transitions, staff and assignments), `family_admin` (assigned families' household, children, documents, supporters/pledges, and expense requests), `office_employee` (assigned household intake/profile/children/documents and expense requests; intake is atomically self-assigned), and `fundraiser` (assigned families only in the dedicated fundraising workspace, limited to supporter contacts, outreach, pledges, family name/reference, and aggregate pledge). Fundraisers must never receive household address/phone, children, circumstances/medical notes, documents, expenses, general family pages, organization dashboard/activity/settings/staff. Organization-admin-only routes must prevent self-escalation and self-assignment; retain bootstrap owner and last-admin protections. Enforce capabilities server-side on direct ID routes, scoped by explicit `FamilyAssignment` for every non-admin role.
+
+## Permanent connected-suite requirement
+Keep the ten role-aware navigation pages: Overview, Cases, Supporters, Fundraising, Collections, Expenses, Approvals, Reports, People & access, and Controls. `/families`, `/staff`, and `/settings` remain compatible. Receipts are manual saved records linked to a supporter and family; they never imply collection or transfer of money. Office employees must not access donor/collection data; assigned family administrators and fundraisers may, while organization administrators see all. Reports and metrics must use only saved data. Child estimates configured in Controls must be visibly marked as estimates and never double count actual entered child amounts. There is no ABCharity integration: localize and state “not connected / external actions unavailable” rather than showing fake actions.
 
 ## Verification
 Install requirements and `pytest==9.1.1`, then `python -m pytest -q`. `/health` checks database connectivity. Verify desktop and mobile previews. Test intake → Under review → Active, add supporters and an expense, approve it, then record payment with an external reference.

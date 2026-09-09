@@ -526,3 +526,24 @@ The household information changed. Return the verification for review.|פרטי 
 ROWS+='''
 Approved expense categories, separated by commas|סוגי הוצאות מאושרים, מופרדים בפסיקים|באשטעטיגטע סארטן הוצאות, אפגעטיילט מיט קאמעס
 '''
+
+ROWS += """
+Stripe connected account ID|מזהה חשבון Stripe מחובר|צוגעבונדענער Stripe קאונט נומער
+Complete the expense workflow through payment release before sending through Stripe.|השלימו את תהליך ההוצאה עד לשחרור תשלום לפני השליחה דרך Stripe.|ענדיגט די באשטעטיגונגען ביזן ארויסגעבן די באצאלונג איידער שיקן דורך Stripe.
+The payment must match the approved expense amount, month and currency.|התשלום חייב להתאים לסכום, לחודש ולמטבע שאושרו.|די באצאלונג מוז שטימען מיטן באשטעטיגטן סכום, חודש און וואלוטע.
+The Stripe recipient must match the connected account in the approved vendor record.|מקבל התשלום חייב להתאים לחשבון שבפרטי הספק המאושר.|דער Stripe מקבל מוז שטימען מיטן קאונט פונעם באשטעטיגטן סופלייער.
+A cash approval cannot be released as a Stripe transfer.|לא ניתן לבצע אישור מזומן כהעברת Stripe.|א באשטעטיגונג פאר קעש קען מען נישט שיקן דורך Stripe.
+Stripe did not return a valid transfer reference.|Stripe לא החזיר אסמכתת העברה תקינה.|Stripe האט נישט צוריקגעגעבן א ריכטיגע רעפערענץ פארן טראנספער.
+Stripe payment released|תשלום Stripe שוחרר|Stripe באצאלונג ארויסגעגעבן
+"""
+
+ROWS += """
+This supporter has workflow history. Pause outreach instead of deleting the record.|לתומך יש היסטוריית תהליכים. השהו את הפנייה במקום למחוק את הרשומה.|דער העלפער האט א workflow היסטאריע. שטעלט אפ דאס נאכפאלגן אנשטאט אויסמעקן דעם רעקארד.
+"""
+
+ROWS += """
+Pause the previous pledge before confirming a replacement.|השהו את ההתחייבות הקודמת לפני אישור חלופה.|שטעלט אפ דעם פריערדיגן צוזאג איידער באשטעטיגן א נייעם.
+Linked cases must use the same shared donation amount and frequency.|תיקים מקושרים חייבים להשתמש באותו סכום ובאותה תדירות של התרומה המשותפת.|צוגעבונדענע קעיסעס דארפן האבן דעם זעלבן סכום און אפטקייט פונעם געמיינזאמען צוזאג.
+Stop the active Stripe subscription before closing this case.|בטלו את המנוי הפעיל ב־Stripe לפני סגירת התיק.|שטעלט אפ דעם אקטיוון Stripe צוזאג איידער פארמאכן דעם קעיס.
+Use the staff departure workflow to preserve access history.|השתמשו בתהליך עזיבת עובד כדי לשמור את היסטוריית הגישה.|נוצט דעם workflow פאר אוועקגיין פונעם שטאב כדי צו האלטן די היסטאריע.
+"""

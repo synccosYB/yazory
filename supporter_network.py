@@ -10,6 +10,7 @@ PREFERENCES=['Phone','Text message','Email','Through family']
 
 def install_network(app,db,entities,helpers):
     Family=entities['Family'];Contact=entities['Contact'];User=entities['StaffUser'];Assignment=entities['FamilyAssignment']
+    relations=list(dict.fromkeys(entities['RELATIONSHIPS']+RELATIONS))
     Link=app.extensions['workflows']['models']['SupporterLink']
     current_user=helpers['current_user'];scope=helpers['can_access_family']
 
@@ -49,20 +50,29 @@ def install_network(app,db,entities,helpers):
             name=value('name',True)
             if len(name)>160:abort(400,'The text is too long.')
             contact.name=name;contact.phone=value('phone');relation=value('relationship',True);side=value('side',True)
-            if len(contact.phone)>80 or relation not in RELATIONS or side not in SIDES:abort(400,'Choose a valid option.')
+            if len(contact.phone)>80 or relation not in relations or side not in SIDES:abort(400,'Choose a valid option.')
+            # Keep the shared donor identity used by the central supporter lists and Stripe.
+            old_key=contact.supporter_key
+            key=helpers['supporter_key'](name,contact.phone,old_key)
+            duplicate=db.session.scalar(select(Contact.id).where(Contact.family_id==family_id,Contact.supporter_key==key,Contact.id!=contact.id)) if key.startswith('phone:') else None
+            if duplicate:abort(400,'This supporter is already connected to this case.')
+            if old_key:
+                for sibling in db.session.scalars(select(Contact).where(Contact.supporter_key==old_key)):
+                    sibling.name=name;sibling.phone=contact.phone;sibling.supporter_key=key
+            contact.supporter_key=key
             contact.relationship=relation;db.session.add(contact);db.session.flush()
             link=links.get(contact.id) or Link(contact_id=contact.id)
             parent=request.form.get('parent_id',type=int)
             if parent:
                 p=db.session.get(Contact,parent);pl=db.session.get(Link,parent)
-                if not p or p.family_id!=family_id or not pl or pl.side!=side:abort(400,'Choose a parent connection on the same side of this family.')
+                if not p or p.family_id!=family_id or (pl and pl.side!=side):abort(400,'Choose a parent connection on the same side of this family.')
                 seen={contact.id};cursor=parent
                 while cursor:
                     if cursor in seen:abort(400,'Family connections cannot contain a cycle.')
-                    seen.add(cursor);node=db.session.get(Link,cursor);cursor=node.parent_id if node else None
-                expected={'Child of sibling':{'Sibling'},'First cousin':{'Uncle / aunt'},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
-                if relation in expected and pl.relationship not in expected[relation]:abort(400,'The relationship does not match the selected family connection.')
-            elif relation in ('Child of sibling','First cousin','Second cousin','Child of first cousin','Parent’s first cousin'):
+                    seen.add(cursor);node=db.session.get(Link,cursor);person=db.session.get(Contact,cursor);cursor=node.parent_id if node else person.parent_contact_id if person else None
+                expected={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt'},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
+                if relation in expected and (pl.relationship if pl else p.relationship) not in expected[relation]:abort(400,'The relationship does not match the selected family connection.')
+            elif relation in ('Nephew','Child of sibling','First cousin','Second cousin','Child of first cousin','Parent’s first cousin'):
                 abort(400,'Choose the relative this person connects through.')
             uid=request.form.get('assigned_to',type=int)
             if uid:
@@ -73,8 +83,11 @@ def install_network(app,db,entities,helpers):
             if permission not in PERMISSIONS or (preference and preference not in PREFERENCES):abort(400,'Choose a valid option.')
             before={k:getattr(link,k,None) for k in ('parent_id','side','relationship','assigned_to','permission','verified')}
             if any(x.parent_id==contact.id and x.side!=side for x in links.values()):abort(400,'Update the connected relatives before changing sides.')
-            expected_children={'Child of sibling':{'Sibling'},'First cousin':{'Uncle / aunt'},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
+            expected_children={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt'},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
             if any(x.parent_id==contact.id and x.relationship in expected_children and relation not in expected_children[x.relationship] for x in links.values()):abort(400,'Update the connected relatives before changing the relationship.')
+            connection=value('parent_connection') or contact.parent_connection
+            if connection and connection not in ('Son','Son-in-law'):abort(400,'Choose a valid option.')
+            contact.parent_contact_id=parent;contact.parent_connection=connection if parent else ''
             link.parent_id=parent;link.side=side;link.relationship=relation;link.assigned_to=uid
             link.permission=permission;link.preference=preference;link.introduced_by=value('introduced_by');link.verified=value('verified')=='yes'
             if permission=='Do not contact':contact.status='Paused'
@@ -86,10 +99,10 @@ def install_network(app,db,entities,helpers):
         def walk(parent,depth,seen):
             for c in contacts:
                 link=links.get(c.id)
-                pid=link.parent_id if link else None
+                pid=link.parent_id if link else c.parent_contact_id
                 if (pid if pid in visible else None)!=parent or c.id in seen:continue
                 seen.add(c.id);rows.append({'contact':c,'link':link,'depth':depth,'through':visible.get(pid),
-                  'grade':'A' if link and link.relationship=='Sibling' else 'B' if link and link.relationship in ('Child of sibling','Uncle / aunt') else 'C' if link and link.relationship=='First cousin' else 'D' if link and link.relationship=='Second cousin' else ''})
+                  'grade':'A' if link and link.relationship=='Sibling' else 'B' if link and link.relationship in ('Nephew','Child of sibling','Uncle / aunt') else 'C' if link and link.relationship=='First cousin' else 'D' if link and link.relationship=='Second cousin' else ''})
                 walk(c.id,depth+1,seen)
         walk(None,0,set())
         staff=[u for u in db.session.scalars(select(User).order_by(User.email)) if u.role in ('fundraiser','family_admin','organization_admin') and
@@ -97,6 +110,6 @@ def install_network(app,db,entities,helpers):
         editid=request.args.get('edit',type=int);edit=visible.get(editid);editlink=links.get(editid)
         if editid and user.role=='fundraiser':abort(403)
         return render_template('supporter_network.html',title='Family supporter network',family=family,rows=rows,contacts=contacts,links=links,
-             staff=staff,relations=RELATIONS,sides=SIDES,permissions=PERMISSIONS,preferences=PREFERENCES,edit=edit,editlink=editlink,may_manage=user.role!='fundraiser')
+             staff=staff,relations=relations,sides=SIDES,permissions=PERMISSIONS,preferences=PREFERENCES,edit=edit,editlink=editlink,may_manage=user.role!='fundraiser')
 
     app.extensions['workflows']['contact_allowed']=contact_allowed

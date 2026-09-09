@@ -1,16 +1,25 @@
 # Yazory operating workflows
 
 The supplied `WORKFLOW_SPEC.md` is the organizational specification. This release
-replaces the prototype's one-person case and expense status changes with recorded
-workflows. It provides working staff-operated stages for all 35 areas. External
-payment execution, message delivery and unattended scheduling require runtime
-services; a workflow stage does not claim those external actions happened automatically.
+adds recorded workflows to the current application. Approval of the first
+organization-governance workflow enables the stricter case, expense and
+contact-assignment controls. Before that cutover, existing case/status, pledge,
+invitation and payment screens retain their established behavior. Expired
+governance policies block new approvals; they never turn enforcement off. It provides working staff-operated stages for all 35 areas. Existing Stripe payment execution and staff invitation emails remain connected
+to their configured providers. New workflow notices are in-app; unattended
+scheduling still requires a hosting scheduler.
 
 ## Deploy and initialize
 
 All changes are additive. No existing family, child, contact, expense, document,
 pledge, staff account or audit entry is deleted or automatically declared approved.
 Use the same production database and secrets as the current deployment.
+
+The combined application preserves the central supporter lists, family print
+filters, son/son-in-law connections, shared donor identities, weekly pledges,
+shul/yeshivah directories, and current Yiddish corrections. `app.py` is again
+the primary implementation; `app_original.py` remains a compatibility import.
+Both existing staff status and workflow access must allow login.
 
 1. Back up the production database using the hosting provider.
 2. Pull the reviewed Git revision in the Replit shell; install requirements.
@@ -21,11 +30,11 @@ Use the same production database and secrets as the current deployment.
 5. In **Staff & assignments**, establish the actual individual staff accounts and
    explicit family assignments. In **Operations → Workflow responsibilities**, give
    each person the responsibilities the organization approved.
-6. Complete **Organization setup and governance** with banking references, written
+6. Once staff assignments and responsibilities are ready, complete **Organization setup and governance** with banking references, written
    policies, financial limits, and a future policy review date. Finance, board and
    rabbinical reviewers sign independently of the submitter. Before this initial
    policy approval, the owner can establish the initial staff team. After approval,
-   newly created accounts stay inactive until their onboarding workflow completes;
+   newly created accounts require both invitation acceptance and completed onboarding;
    base role changes enter the reviewed access-change workflow.
 7. Review existing active cases through the new intake, verification, assessment,
    case approval and support-plan stages. Existing status labels do not fabricate
@@ -46,7 +55,8 @@ APP_ENV=production python -m flask --app app workflow-escalate
 Run imports at the desired interval and escalation at least daily. The code does
 not install a Replit scheduler. Overdue queues work immediately; the escalation
 command emits idempotent daily in-app notices to the owner, eligible reviewers and
-explicit escalation recipient. No email or text is sent by these commands.
+explicit escalation recipient. No email or text is sent by these commands. Existing staff invitation and
+Stripe receipt emails continue through the current email service.
 
 ## Controls enforced
 
@@ -86,7 +96,8 @@ explicit escalation recipient. No email or text is sent by these commands.
   month, plan period, budget already used, collected funds, protected reserve,
   duplicate vendor/invoice pairs and compliance holds. Organization expenses need
   an approved allocation. Above-budget, related-party, direct-family, cash and
-  large payments need the additional exception workflow.
+  large payments, and categories outside the approved plan, need the additional
+  exception workflow.
 - Payment release requires a separate authorized account, an external reference,
   a confirmed external result, and payment-proof evidence attached at release.
   An invoice alone is not payment proof. Cash payments also require a signed
@@ -98,6 +109,10 @@ explicit escalation recipient. No email or text is sent by these commands.
   and require documented donor authorization. Bank references are unique and matched
   amounts must agree. Gross ABCharity receipts and processing fees remain separate;
   a net settlement can reconcile the receipt and associated fee together.
+- Existing manual and Stripe receipts can be opened with **Review for case ledger**
+  from Collections. The source record and amount remain linked, duplicate reviews
+  reuse the same workflow, and no cash is inferred merely from importing a receipt.
+  Supporting evidence and finance review are required before posting.
 - Imported receipts are reviewed before posting. Changed imports do not rewrite
   posted ledger history. They hold further spending until an unusual-activity
   workflow records a finance/compliance/executive-reviewed correction with explicit
@@ -110,14 +125,23 @@ explicit escalation recipient. No email or text is sent by these commands.
 
 ## Scope and external-service boundaries
 
-The staff application records external calls, notifications, receipts, payment
-results, supporting files, and decisions. It does not pretend that recording a
-stage performs a bank transfer, sends an email/SMS, creates an ABCharity campaign,
-or changes a donor's subscription. ABCharity supplies read-only receipt imports;
+The existing Stripe checkout and payout paths remain available. After governance
+approval, sending an expense through Stripe also requires the workflow to be at
+Payment release, the caller to hold the independent release responsibility,
+available approved funds, and a recipient matching the **Stripe connected account ID**
+in the approved vendor record. A confirmed provider response records proof, the
+release decision, and the ledger expense together. Repeat sends keep the existing
+per-expense idempotency key. The gateway still requires organization-administrator
+access in addition to the separate release responsibility.
+
+Other workflow stages record external calls, notifications, results, evidence and
+decisions. Advancing those stages does not itself send a bank transfer, email/SMS,
+create an ABCharity campaign, or change a donor subscription. ABCharity supplies read-only receipt imports;
 its documented API does not expose charge attempts, retry/cancel controls, campaign
 creation, or authoritative refund/deletion states. Such actions are performed in
 those services and recorded with evidence here. Donor service is staff-operated;
-there is no donor self-service login in this release.
+the existing Stripe management portal link remains available to authorized staff.
+Case closure also checks for active recurring Stripe subscriptions.
 
 The ledger is a USD case operating ledger, not a replacement for a double-entry
 general ledger or the organization's bank accounts. It does not infer an opening
@@ -135,11 +159,15 @@ not a database-administrator-proof archival service.
 
 ## Verification
 
-Automated Flask/SQLite tests exercise the full referral-to-closure path, all 35
+Automated Flask/SQLite tests exercise the combined current application and the
+full referral-to-closure path, all 35
 workflow forms in English/Hebrew/Yiddish, independent signatures, version conflicts,
 financial limits, batches, refunds, transfers, evidence, imported-receipt corrections,
 role and family isolation, staff onboarding/deactivation, and overdue notices.
-ABCharity HTTP behavior is tested with fixtures. Live provider credentials,
+ABCharity and Stripe HTTP behavior is tested with fixtures. Integration checks
+cover the governance cutover, deactivated staff, reviewed existing receipts,
+independent Stripe release, verified recipients, contact-level privacy across
+central lists and hierarchies, and preserved son-in-law/shul-friend relationships. Live provider credentials,
 PostgreSQL concurrency and the deployed runtime have not been exercised here.
 The cloud browser could not reach the local preview; browser visual QA is pending.
 

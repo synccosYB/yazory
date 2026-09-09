@@ -18,6 +18,23 @@ def test_age_boundaries_actual_override_and_cents():
     assert calculate(data,{},children)['costs']==100000
 
 
+def test_controls_fallback_is_one_children_component_and_actual_category_wins():
+    children=[SimpleNamespace(id=1,name='One',age=8)]
+    bands=[{'min_age':6,'max_age':12,'amount_cents':12345}]
+    report=calculate(parse({}, children), {'his_income':0}, children, bands)
+    assert report['child_estimates'] == 12345
+    assert report['actual_child_amounts'] == 0
+    assert report['costs'] == 12345
+    data=parse({'child_1_children':'99.00'}, children)
+    report=calculate(data, {'his_income':0}, children, bands)
+    assert report['child_estimates'] == 0 and report['actual_child_amounts'] == 9900
+    # An explicit household category is authoritative over all child components.
+    data=parse({'actual_children':'50'}, children)
+    report=calculate(data, {'his_income':0}, children, bands)
+    assert report['costs'] == 5000
+    assert report['child_estimates'] == report['actual_child_amounts'] == 0
+
+
 def test_birthday_and_invalid_values():
     child=SimpleNamespace(id=1,name='Baby',age=15)
     data=parse({'dob_1':date.today().isoformat(),'rate_0_food':'50'},[child])

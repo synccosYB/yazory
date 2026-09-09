@@ -1,6 +1,6 @@
 entrypoint = "app.py"
 modules = ["python-3.11", "postgresql-16"]
-run = "pip install -r requirements.txt && APP_ENV=production python -m gunicorn --bind 0.0.0.0:5000 --error-logfile - --capture-output 'app:create_app()'"
+run = "pip install -r requirements.txt && APP_ENV=production python -m flask --app app init-db && APP_ENV=production python -m gunicorn --bind 0.0.0.0:5000 --error-logfile - --capture-output 'app:create_app()'"
 
 [[ports]]
 localPort = 5000
@@ -8,11 +8,11 @@ externalPort = 80
 
 [deployment]
 build = ["sh", "-c", "pip install -r requirements.txt"]
-run = ["sh", "-c", "APP_ENV=production gunicorn --bind 0.0.0.0:5000 'app:create_app()'"]
+run = ["sh", "-c", "APP_ENV=production python -m flask --app app init-db && APP_ENV=production exec gunicorn --bind 0.0.0.0:5000 --error-logfile - --capture-output 'app:create_app()'"]
 deploymentTarget = "autoscale"
 
 [nix]
-packages = ["postgresql", "psmisc", "iproute2"]
+packages = ["postgresql", "psmisc", "iproute2", "nodejs_20"]
 channel = "stable-25_05"
 
 [workflows]
@@ -33,7 +33,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "APP_ENV=production python -m gunicorn --bind 0.0.0.0:5000 --error-logfile - --capture-output 'app:create_app()'"
+args = "APP_ENV=production python -m flask --app app init-db && APP_ENV=production python -m gunicorn --bind 0.0.0.0:5000 --error-logfile - --capture-output 'app:create_app()'"
 waitForPort = 5000
 
 [workflows.workflow.metadata]

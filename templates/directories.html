@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import token with context %}
+{% block content %}
+<div class="printable-list">
+<div class="page-heading">
+  <div>
+<div class="eyebrow">{{ _('COMMUNITY DIRECTORY') }}</div>
+<h1>{{ _(kind + ' list') }}</h1>
+<p>{{ _('Keep one central list and connect each person to the shuls and yeshivahs in their history.') }}</p>
+</div>
+  <div class="row-actions no-print">
+<button type="button" onclick="window.print()">{{ _('Print list') }}</button>
+<a class="button {{ 'secondary' if kind != 'Shul' }}" href="{{ url_for('community_directories', kind='Shul', family_id=selected_family_id or None) }}">{{ _('Shul list') }}</a>
+<a class="button {{ 'secondary' if kind != 'Yeshivah' }}" href="{{ url_for('community_directories', kind='Yeshivah', family_id=selected_family_id or None) }}">{{ _('Yeshivah list') }}</a>
+</div>
+</div>
+<nav class="list-switcher no-print" aria-label="{{ _('List filters') }}">
+<a class="button secondary" href="{{ url_for('supporters', relationship_group='siblings', family_id=selected_family_id or None) }}">{{ _('Brothers / brothers-in-law list') }}</a>
+<a class="button secondary" href="{{ url_for('supporters', relationship_group='nephews', family_id=selected_family_id or None) }}">{{ _('Nephews list') }}</a>
+<a class="button {{ 'secondary' if kind != 'Shul' }}" href="{{ url_for('community_directories', kind='Shul', family_id=selected_family_id or None) }}">{{ _('Shul list') }}</a>
+<a class="button {{ 'secondary' if kind != 'Yeshivah' }}" href="{{ url_for('community_directories', kind='Yeshivah', family_id=selected_family_id or None) }}">{{ _('Yeshivah list') }}</a>
+</nav>
+<section class="card padded no-print">
+<details class="add-supporter-panel">
+<summary>{{ _('+ Add shul') if kind == 'Shul' else _('+ Add yeshivah') }}</summary>
+<form method="post" action="{{ url_for('add_institution') }}">{{ token(csrf) }}<input type="hidden" name="kind" value="{{ kind }}">
+<div class="form-grid">
+<label>{{ _('Name *') }}<input name="name" maxlength="160" required>
+</label>
+<label>{{ _('Phone') }}<input name="phone" maxlength="80">
+</label>
+<label>{{ _('Address') }}<input name="address" maxlength="240">
+</label>
+<label>{{ _('City') }}<input name="city" maxlength="120">
+</label>
+<label>{{ _('State') }}<input name="state" maxlength="80">
+</label>
+</div>
+<button>{{ _('Add') }}</button>
+</form>
+</details>
+</section>
+<section class="card list-filter-card no-print">
+<form class="list-filter-form" method="get">
+<input type="hidden" name="kind" value="{{ kind }}">
+<div class="list-filter-heading"><div><strong>{{ _('Filter this list') }}</strong><small>{{ _('Choose one or more options, then apply the filters.') }}</small></div>{% if query or selected_family_id %}<span class="active-filter-badge">{{ _('Filters active') }}</span>{% endif %}</div>
+<div class="list-filter-grid directory-filter-grid">
+<label>{{ _('Search') }}<input type="search" name="q" value="{{ query }}" placeholder="{{ _('Search shuls') if kind == 'Shul' else _('Search yeshivahs') }}"></label>
+<label>{{ _('Applicant') }}<select name="family_id"><option value="">{{ _('All applicants') }}</option>{% for family in families %}<option value="{{ family.id }}" {{ 'selected' if family.id == selected_family_id }}>{{ family.name }}</option>{% endfor %}</select></label>
+</div>
+<div class="list-filter-actions"><button type="submit">{{ _('Apply filters') }}</button><a class="button secondary" href="{{ url_for('community_directories', kind=kind) }}">{{ _('Clear filters') }}</a></div>
+</form>
+</section>
+{% for institution in institutions %}<section class="card padded institution-card">
+<div class="section-heading supporter-summary-heading">
+<div>
+<h2>{{ institution.name }}</h2>
+<p>{{ institution.address }}{% if institution.address and institution.city %}, {% endif %}{{ institution.city }}{% if institution.city and institution.state %}, {% endif %}{{ institution.state }}{% if institution.phone %} · <bdi dir="ltr">{{ institution.phone }}</bdi>{% endif %}</p>
+</div>
+<strong>{{ institution.directory_count }} {{ _('people') }}</strong>
+</div>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>{{ _('Person') }}</th>
+<th>{{ _('Phone') }}</th>
+<th>{{ _('Type') }}</th>
+<th>{{ _('Family / context') }}</th>{% if kind == 'Yeshivah' %}<th>{{ _('Years attended') }}</th>
+<th>{{ _('With applicant') }}</th>{% endif %}<th>{{ _('Notes') }}</th>
+<th class="list-actions">{{ _('Actions') }}</th>
+</tr>
+</thead>
+<tbody>{% for grade, connections in institution.directory_groups %}{% if kind == 'Yeshivah' %}<tr class="directory-grade-row">
+<th colspan="8">{{ _('Class entered') }}: {{ grade }} <small>{{ connections|length }} {{ _('people') }}</small>
+</th>
+</tr>{% endif %}{% for connection in connections %}{% set person = people_by_key.get((connection.person_type, connection.person_id)) %}<tr>
+<td>
+<div class="directory-person depth-{{ person.depth if person else 0 }}">
+<strong>{{ person.name if person else _('Unknown person') }}</strong>{% if person and person.parent_name %}<small>{{ _('Under') }} {{ person.parent_name }}</small>{% endif %}</div>
+</td>
+<td>
+<bdi dir="ltr">{{ person.phone if person and person.phone else '—' }}</bdi>
+</td>
+<td>{{ _(person.role) if person else _(connection.person_type.title()) }}</td>
+<td>{{ person.context if person else '—' }}</td>{% if kind == 'Yeshivah' %}<td>{{ connection.year_from or '—' }}{% if connection.year_to %}–{{ connection.year_to }}{% endif %}</td>
+<td>{% if connection.person_type == 'family' %}{{ _('Applicant') }}{% elif connection.applicant_overlap and connection.applicant_overlap.status == 'overlap' %}{{ _('Yes') }} · {{ connection.applicant_overlap.year_from }}–{{ connection.applicant_overlap.year_to }}{% elif connection.applicant_overlap and connection.applicant_overlap.status == 'none' %}{{ _('No year overlap') }}{% elif connection.applicant_overlap %}{{ _('Applicant years missing') }}{% else %}—{% endif %}</td>{% endif %}<td>{{ connection.note or '—' }}</td>
+<td class="list-actions">
+<form method="post" action="{{ url_for('delete_person_affiliation', affiliation_id=connection.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Remove') }}</button>
+</form>
+</td>
+</tr>{% endfor %}{% else %}<tr>
+<td class="empty" colspan="{{ 8 if kind == 'Yeshivah' else 6 }}">{{ _('No people connected yet.') }}</td>
+</tr>{% endfor %}</tbody>
+</table>
+</div>
+<details class="no-print">
+<summary>{{ _('Connect a person') }}</summary>
+<form method="post" action="{{ url_for('add_person_affiliation') }}">{{ token(csrf) }}<input type="hidden" name="institution_id" value="{{ institution.id }}">
+<div class="form-grid">
+<label>{{ _('Person *') }}<select name="person" required>
+<option value="">{{ _('Choose') }}</option>{% for person_type, person_id, name, role, context in people %}<option value="{{ person_type }}:{{ person_id }}">{{ name }} — {{ _(role) }} — {{ context }}</option>{% endfor %}</select>
+</label>{% if kind == 'Yeshivah' %}<label>{{ _('Class entered *') }}<input name="grade" maxlength="80" required>
+</label>
+<label>{{ _('Year in *') }}<input name="year_from" type="number" min="1900" max="2100" required>
+</label>
+<label>{{ _('Year out *') }}<input name="year_to" type="number" min="1900" max="2100" required>
+</label>{% endif %}<label>{{ _('Notes') }}<input name="note" maxlength="300">
+</label>
+</div>
+<button>{{ _('Connect person') }}</button>
+</form>
+</details>
+{% if not institution.affiliations %}<form method="post" action="{{ url_for('delete_institution', institution_id=institution.id) }}" class="institution-delete no-print">{{ token(csrf) }}<button class="small danger">{{ _('Delete') }}</button>
+</form>{% endif %}</section>{% else %}<section class="card padded empty">{{ _('No institutions found.') }}</section>{% endfor %}
+</div>
+{% endblock %}

@@ -32,8 +32,8 @@ Open http://localhost:5000. Local demo data is stored in `instance/yazory-demo.d
 ## Included workflows
 
 - Family intake and profile editing: individual, spouse, father, in-laws, address, phone, rabbi, weekday and Shabbos shul, household circumstances.
-- Children: name, age, grade, school, tuition department contact.
-- Donor network: siblings, spouse’s siblings, cousins, school/yeshivah friends, and other supporters; outreach status and monthly pledges.
+- Children: name, age, grade, school, tuition department contact, married status, and the spouse’s name for each married child.
+- Donor network: siblings, spouse’s siblings, a married child’s in-law family, cousins, school/yeshivah friends, and other supporters. One supporter can be connected to multiple cases while sharing one synchronized outreach/pledge identity, so the organization-wide monthly charge is counted only once.
 - Case workflow: Intake → Under review → Active or Declined. Active cases can be paused or closed; closed/declined cases can return to review.
 - Expense requests: category, payee, budget month, amount, and notes. Organization expenses can be assigned to a case.
 - Expense workflow: Requested → Approved or Declined; Approved → Paid or Voided. Only active cases can be approved/paid. A payment reference is mandatory to mark Paid. Terminal expense states cannot be changed.
@@ -52,6 +52,13 @@ Deployment intentionally refuses to start without all of these Replit Secrets:
 | `ADMIN_EMAIL` | Bootstrap owner organization-administrator identity |
 | `ADMIN_PASSWORD_HASH` | Bootstrap owner Werkzeug password hash, never the plaintext password |
 | `SESSION_SECRET` | Stable random secret, at least 32 characters |
+| `APP_BASE_URL` | Public origin used in secure email links, for example `https://yazory.replit.app` |
+| `RESEND_API_KEY` | Resend API key for transactional email |
+| `EMAIL_FROM` | Verified sender, for example `Yazory <notifications@example.org>` |
+| `STRIPE_SECRET_KEY` | Yazory account live secret key; use a test key outside production |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the `/stripe/webhook` endpoint |
+| `STRIPE_CONNECT_COUNTRY` | Connected-account country; defaults to `US` |
+| `STRIPE_CURRENCY` | Donation and transfer currency; defaults to `usd` |
 
 Generate a session secret privately with `python -c "import secrets; print(secrets.token_hex(32))"`.
 Generate a password hash privately with:
@@ -66,10 +73,13 @@ Initialize the configured database once:
 APP_ENV=production flask --app 'app:create_app()' init-db
 ```
 
-The publishing command in `.replit` sets `APP_ENV=production` and runs Gunicorn on port 5000. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL. Schema creation is explicit and nondestructive; future schema changes will require versioned migrations.
+The publishing command in `.replit` sets `APP_ENV=production`, runs the additive `init-db` upgrade, and then starts Gunicorn on port 5000. This prevents a newly deployed page from querying tables or columns that the existing database does not yet have. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL.
 
 The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
 
+Staff invitations, account activation, password recovery, role/assignment notifications, case/expense notifications, and an administrator delivery log are implemented through Resend. Without email secrets, messages are retained as failed delivery records. Stripe Checkout supports one-time, weekly, and monthly donations; verified webhooks create idempotent Yazory receipt records and the application sends its own email receipts. Stripe Connect Express onboarding keeps recipient bank and debit-card details at Stripe. Organization administrators can transfer an approved expense to a verified family or vendor connected account. Stripe Tax and Stripe invoices are not used. Still not implemented: donor PDF receipts, bank reconciliation, email replies/shared inbox, SMS delivery, full bookkeeping, recurring expense generation, or automated backups.
+
+Create a Stripe webhook destination for `https://yazory.replit.app/stripe/webhook` and subscribe it to `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, and `account.updated`. Connect must be enabled on the Yazory Stripe account before recipient onboarding can create Express connected accounts. Use Stripe test mode and test connected accounts before replacing the test key with the live key.
 External automatic charges, generated tax receipts, invitations, email/SMS delivery, full double-entry bookkeeping, recurring expense generation and automated backups are not provided. Document uploads, staff-operated bank reconciliation and read-only ABCharity imports are implemented; see the current workflow documentation. No production publishing or external financial actions are performed by this repository setup.
 
 ## Tests

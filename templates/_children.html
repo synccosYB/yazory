@@ -1,0 +1,28 @@
+{% from 'macros.html' import token with context %}
+<section class="card padded">
+  <h2>{{ _("Children & their spouses") }}</h2>
+  <p>{{ _("Mark which children are married and record the name of each child’s spouse.") }}</p>
+  {% for c in family.children %}
+  <details data-page-item>
+    <summary>✎ {{ c.name }} · {{ _('Age') }} {{ c.age }}{% if c.married %} · {{ _('Spouse') }}: {{ c.spouse_name or _('Not entered') }}{% endif %}</summary>
+    <form method="post" action="/children/{{ c.id }}">
+      {{ token(csrf) }}
+      <div class="form-grid">
+        <label>{{ _("Child name *") }}<input name="name" required maxlength="160" value="{{ c.name }}"></label>
+        <label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required value="{{ c.age }}"></label>
+        <label>{{ _("Grade") }}<input name="grade" maxlength="80" value="{{ c.grade }}"></label>
+        <label>{{ _("School") }}<input name="school" maxlength="160" value="{{ c.school }}"></label>
+        <label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300" value="{{ c.tuition_contact }}"></label>
+        <label>{{ _("Married?") }}<select name="married"><option value="no" {{ 'selected' if not c.married }}>{{ _('No') }}</option><option value="yes" {{ 'selected' if c.married }}>{{ _('Yes') }}</option></select></label>
+        <label>{{ _("Spouse name") }}<input name="spouse_name" maxlength="160" value="{{ c.spouse_name }}"></label>
+      </div>
+      <button>{{ _("Save child") }}</button>
+    </form>
+  </details>
+  {% else %}<p class="empty">{{ _("Add the children, then mark which children are married and enter their spouses.") }}</p>{% endfor %}
+  <details><summary>{{ _("+ Add child") }}</summary><form method="post" action="/families/{{ family.id }}/children">{{ token(csrf) }}
+    <div class="form-grid">
+      <label>{{ _("Child name *") }}<input name="name" required maxlength="160"></label><label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required></label><label>{{ _("Grade") }}<input name="grade" maxlength="80"></label><label>{{ _("School") }}<input name="school" maxlength="160"></label><label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300"></label>
+      <label>{{ _("Married?") }}<select name="married"><option value="no">{{ _('No') }}</option><option value="yes">{{ _('Yes') }}</option></select></label><label>{{ _("Spouse name") }}<input name="spouse_name" maxlength="160"></label>
+    </div><button>{{ _("Add child") }}</button></form></details>
+</section>
