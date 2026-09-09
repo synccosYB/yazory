@@ -49,6 +49,21 @@ def test_import_repeat_update_and_locales(setup,monkeypatch):
     result=app.test_cli_runner().invoke(args=['sync-abcharity'])
     assert result.exit_code==0, result.output
 
+def test_rtl_direction_mark_in_secret_name_is_ignored(setup):
+    app,client=setup
+    result=post(client,'/families/1/campaign',dict(
+        campaign_id='55', label='Family campaign', currency='USD',
+        key_env='\u200fABCHARITY_KEY_TEST\u200e'))
+    assert result.status_code==302
+    with app.app_context():
+        assert CharityCampaign.query.one().key_env=='ABCHARITY_KEY_TEST'
+
+def test_secret_name_input_does_not_use_fragile_browser_pattern(setup):
+    _,client=setup
+    body=client.get('/families/1/donations').text
+    assert 'name="key_env" required maxlength="100" dir="ltr"' in body
+    assert 'pattern="ABCHARITY_KEY_' not in body
+
 def test_isolation_linking_and_atomic_error(setup,monkeypatch):
     app,client=setup
     connect(client)

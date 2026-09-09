@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 LIMIT = 100000
 ERROR = 'ABCharity could not be synced. Check the campaign ID, key setting and API response.'
+BIDI_CONTROLS = dict.fromkeys(map(ord, '\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069'))
 
 
 def fetch_donations(key):
@@ -168,7 +169,10 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         if app.config['DEMO']:
             abort(400, 'Live donation imports are unavailable in demo mode.')
         external_id = request.form.get('campaign_id', '').strip()
-        key_env = request.form.get('key_env', '').strip()
+        # RTL pages can add invisible direction marks when an administrator
+        # pastes an ASCII environment-variable name. Ignore those marks while
+        # retaining strict validation of the resulting secret name.
+        key_env = request.form.get('key_env', '').translate(BIDI_CONTROLS).strip()
         label = request.form.get('label', '').strip()
         currency = request.form.get('currency', '').strip().upper()
         if not re.fullmatch(r'[0-9]{1,100}', external_id) or not re.fullmatch(r'ABCHARITY_KEY_[A-Z0-9_]{1,80}', key_env) or not 1 <= len(label) <= 160 or currency not in ('USD', 'ILS', 'GBP', 'EUR', 'CAD'):
