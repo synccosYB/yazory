@@ -1725,8 +1725,15 @@ def create_app(test_config=None):
         # Preserve access to legacy/orphaned records whose parent is unavailable.
         contact_rows.extend((contact, False) for contact in family.contacts
                             if contact.parent_contact_id and contact.id not in included_contact_ids)
-        collected = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+        manual_collected = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
             Receipt.family_id == family.id))
+        # ABCharity deposits are stored separately from manual/Stripe receipts.
+        # Count the net amount (after ABCharity fees), never the gross donation.
+        abcharity_collected = db.session.scalar(select(
+            func.coalesce(func.sum(CharityDonation.net_cents), 0)
+        ).join(CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
+            CharityCampaign.family_id == family.id))
+        collected = manual_collected + abcharity_collected
         sent = sum(expense.amount_cents for expense in family.expenses if expense.status == 'Paid')
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                contact_rows=contact_rows,
