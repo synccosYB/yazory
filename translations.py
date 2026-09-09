@@ -53,6 +53,21 @@ _EXTRA = {
         'he': 'טלפון העוזר', 'yi': 'טעלעפאן פונעם געהילף'},
     'Applicant home phone': {
         'he': 'טלפון הבית של הפונה', 'yi': 'היים טעלעפאן פונעם אפליקאנט'},
+    'Applicant information': {'he': 'פרטי הפונה', 'yi': 'די פרטים פונעם אפליקאנט'},
+    'Save changes': {'he': 'שמירת השינויים', 'yi': 'אפהיטן די ענדערונגען'},
+    'Intake sections': {'he': 'חלקי הקליטה', 'yi': 'טיילן פון דער בקשה'},
+    'Family & community': {'he': 'המשפחה והקהילה', 'yi': 'די משפחה און די קהילה'},
+    'Children & monthly costs': {'he': 'ילדים והוצאות חודשיות', 'yi': 'קינדער און חודש׳ליכע הוצאות'},
+    'Debts & provider accounts': {'he': 'חובות וחשבונות ספקים', 'yi': 'חובות און קאונטס ביי די פירמעס'},
+    'Applicant, household and community connections': {'he': 'פרטי המשפחה והקשרים בקהילה', 'yi': 'די משפחה און אירע קשרים אין דער קהילה'},
+    'Record work and monthly household income together.': {'he': 'רשמו יחד את העבודה וההכנסה החודשית של המשפחה.', 'yi': 'לייגט צוזאם די ארבעט און די חודש׳ליכע הכנסות.'},
+    'Record every source of regular help.': {'he': 'רשמו כל מקור של סיוע קבוע.', 'yi': 'לייגט אריין יעדע קביעות׳דיגע הילף.'},
+    'Add utility companies, grocery stores, mosdos and other accounts.': {'he': 'הוסיפו חברות שירותים, חנויות מזון, מוסדות וחשבונות נוספים.', 'yi': 'לייגט צו יוטיליטי פירמעס, גראסעריס, מוסדות און אנדערע קאונטס.'},
+    'Previous section': {'he': 'החלק הקודם', 'yi': 'דער פריערדיגער טייל'},
+    'Next section': {'he': 'החלק הבא', 'yi': 'דער קומענדיגער טייל'},
+    'Monthly summary': {'he': 'סיכום חודשי', 'yi': 'חודש׳ליכער סך הכל'},
+    'Intake completeness': {'he': 'השלמת הקליטה', 'yi': 'וויפיל פון דער בקשה איז אויסגעפילט'},
+    'Enable JavaScript to use the compact intake sections.': {'he': 'יש להפעיל JavaScript כדי להשתמש בחלקי הקליטה המרוכזים.', 'yi': 'JavaScript דארף זיין אנגעצונדן צו נוצן די קורצע טיילן פון דער בקשה.'},
 }
 
 def translate(text):

@@ -14,6 +14,11 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
         page=client.get('/families/new')
         assert page.status_code == 200
         assert 'intake-wizard' in page.text and 'Sample family' not in page.text
+        assert page.text.count('data-intake-page') == 5
+        assert page.text.count('data-step=') == 5
+        assert 'class="card intake-applicant"' in page.text
+        assert 'class="sheet-field circumstances-field"' in page.text
+        assert 'id="intake-review"' not in page.text
         label = {'en':'Monthly bill ($)', 'he':'סכום החשבון החודשי ($)', 'yi':'וויפיל איז דער ביל א חודש ($)'}[lang]
         assert label in page.text and 'data-entry="monthly_bill"' in page.text
     with client.session_transaction() as session: csrf=session['csrf']

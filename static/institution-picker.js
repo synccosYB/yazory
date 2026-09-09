@@ -132,6 +132,7 @@ document.querySelectorAll('[data-institution-picker]').forEach(root=>{
   if(select.name==='weekday_shul'||select.name==='shabbos_shul')selectedShuls[select.name]=select;
   function update(){
     const adding=select.value==='__new__';newField.hidden=!adding;input.disabled=!adding;input.required=adding;
+    root.classList.toggle('has-institution',Boolean(select.value));
     if(adding&&!input.value)input.focus();fillRabbi(select,rabbi,assistants);fillGabbais(select,gabbais);applySuggestion();
   }
   select.addEventListener('change',update);update();if(rabbi||gabbais)shulPickers.push({select,rabbi,assistants,gabbais,update});
