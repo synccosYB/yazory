@@ -19,7 +19,7 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
         assert 'class="card intake-applicant"' in page.text
         assert 'class="sheet-field circumstances-field"' in page.text
         assert 'id="intake-review"' not in page.text
-        assert 'style.css?v=20260909-grouped-sidebar-v1' in page.text
+        assert 'style.css?v=20260910-tasks-grouped-sidebar-v1' in page.text
         assert 'intake.js?v=20260909-intake-optional-v2' in page.text
         label = {'en':'Monthly bill ($)', 'he':'סכום החשבון החודשי ($)', 'yi':'וויפיל איז דער ביל א חודש ($)'}[lang]
         assert label in page.text and 'data-entry="monthly_bill"' in page.text

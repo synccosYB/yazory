@@ -219,6 +219,35 @@ class FamilyGabbaiConnection(_app.db.Model):
     institution = _app.db.relationship('Institution')
 
 
+class StaffTask(_app.db.Model):
+    """Assignable staff work; a parent task may contain any number of subtasks."""
+    __tablename__ = 'staff_task'
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    parent_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('staff_task.id'), nullable=True, index=True)
+    family_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('family.id'), nullable=True, index=True)
+    assigned_to = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=False, index=True)
+    created_by = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=False, index=True)
+    title = _app.db.Column(_app.db.String(240), nullable=False)
+    description = _app.db.Column(_app.db.Text, nullable=False, default='')
+    status = _app.db.Column(_app.db.String(20), nullable=False, default='To do', index=True)
+    priority = _app.db.Column(_app.db.String(20), nullable=False, default='Normal', index=True)
+    due_date = _app.db.Column(_app.db.Date, nullable=True, index=True)
+    created_at = _app.db.Column(
+        _app.db.DateTime, nullable=False,
+        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+    completed_at = _app.db.Column(_app.db.DateTime, nullable=True)
+    parent = _app.db.relationship(
+        'StaffTask', remote_side=[id], backref=_app.db.backref(
+            'subtasks', cascade='all, delete-orphan', order_by='StaffTask.id'))
+    family = _app.db.relationship('Family')
+    assignee = _app.db.relationship('StaffUser', foreign_keys=[assigned_to])
+    creator = _app.db.relationship('StaffUser', foreign_keys=[created_by])
+
+
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
 
@@ -1144,6 +1173,139 @@ def create_app(test_config=None):
             return response
 
         app.view_functions[endpoint] = wrapped
+
+    TASK_STATUSES = ('To do', 'In progress', 'Waiting', 'Completed', 'Cancelled')
+    TASK_PRIORITIES = ('Low', 'Normal', 'High', 'Urgent')
+
+    def task_user():
+        user_id = _app.session.get('user_id')
+        return _app.db.session.get(_app.StaffUser, user_id) if user_id else None
+
+    def task_is_admin(user):
+        return bool(user and user.role == 'organization_admin')
+
+    def visible_task_or_403(task_id):
+        task = _app.db.get_or_404(StaffTask, task_id)
+        user = task_user()
+        if not task_is_admin(user) and (user is None or task.assigned_to != user.id):
+            _app.abort(403, 'You do not have permission to view this task.')
+        return task
+
+    def parsed_due_date():
+        raw = _app.request.form.get('due_date', '').strip()
+        if not raw:
+            return None
+        try:
+            return _app.date.fromisoformat(raw)
+        except ValueError:
+            _app.abort(400, 'Enter a valid due date.')
+
+    def active_assignee():
+        assignee = _app.db.session.get(
+            _app.StaffUser, _app.request.form.get('assigned_to', type=int))
+        if assignee is None or assignee.status != 'active':
+            _app.abort(400, 'Choose an active staff member or collector.')
+        return assignee
+
+    @app.route('/tasks', methods=['GET', 'POST'])
+    def tasks():
+        user = task_user()
+        if user is None and not app.config['DEMO']:
+            _app.abort(403)
+        if _app.request.method == 'POST':
+            if not task_is_admin(user):
+                _app.abort(403, 'Only an organization administrator can assign a task.')
+            title = _app.request.form.get('title', '').strip()[:240]
+            if not title:
+                _app.abort(400, 'Task title is required.')
+            assignee = active_assignee()
+            family_id = _app.request.form.get('family_id', type=int)
+            if family_id and _app.db.session.get(_app.Family, family_id) is None:
+                _app.abort(400, 'Choose a valid family case.')
+            priority = _app.request.form.get('priority', 'Normal')
+            if priority not in TASK_PRIORITIES:
+                _app.abort(400, 'Choose a valid priority.')
+            task = StaffTask(
+                title=title,
+                description=_app.request.form.get('description', '').strip()[:5000],
+                assigned_to=assignee.id,
+                created_by=user.id,
+                family_id=family_id,
+                priority=priority,
+                due_date=parsed_due_date())
+            _app.db.session.add(task)
+            add_audit(f'Created task: {title} / assigned to {assignee.email}')
+            _app.db.session.commit()
+            _app.flash('Task created and assigned.')
+            return _app.redirect(_app.url_for('task_detail', task_id=task.id))
+
+        statement = select(StaffTask).where(StaffTask.parent_id.is_(None))
+        if not task_is_admin(user):
+            statement = statement.where(StaffTask.assigned_to == (user.id if user else -1))
+        selected_status = _app.request.args.get('status', '')
+        if selected_status:
+            if selected_status not in TASK_STATUSES:
+                _app.abort(400)
+            statement = statement.where(StaffTask.status == selected_status)
+        rows = _app.db.session.scalars(statement.order_by(
+            StaffTask.due_date.is_(None), StaffTask.due_date, StaffTask.id.desc())).all()
+        staff = _app.db.session.scalars(select(_app.StaffUser).where(
+            _app.StaffUser.status == 'active').order_by(_app.StaffUser.name, _app.StaffUser.email)).all()
+        families = (_app.db.session.scalars(select(_app.Family).order_by(_app.Family.name)).all()
+                    if task_is_admin(user) else [])
+        return _app.render_template(
+            'tasks.html', title='Tasks', tasks=rows, staff=staff, families=families,
+            task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
+            selected_status=selected_status, may_assign=task_is_admin(user), today=_app.date.today())
+
+    @app.get('/tasks/<int:task_id>')
+    def task_detail(task_id):
+        task = visible_task_or_403(task_id)
+        staff = _app.db.session.scalars(select(_app.StaffUser).where(
+            _app.StaffUser.status == 'active').order_by(
+                _app.StaffUser.name, _app.StaffUser.email)).all()
+        return _app.render_template(
+            'task_detail.html', title='Task details', task=task,
+            task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
+            staff=staff, may_assign=task_is_admin(task_user()), today=_app.date.today())
+
+    @app.post('/tasks/<int:task_id>/status')
+    def update_task_status(task_id):
+        task = visible_task_or_403(task_id)
+        status = _app.request.form.get('status', '')
+        if status not in TASK_STATUSES:
+            _app.abort(400, 'Choose a valid task status.')
+        task.status = status
+        task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+                             if status == 'Completed' else None)
+        add_audit(f'Changed task #{task.id} status to {status}')
+        _app.db.session.commit()
+        _app.flash('Task status updated.')
+        return _app.redirect(_app.url_for('task_detail', task_id=task.id))
+
+    @app.post('/tasks/<int:task_id>/subtasks')
+    def add_subtask(task_id):
+        parent = visible_task_or_403(task_id)
+        if parent.parent_id is not None:
+            _app.abort(400, 'Subtasks cannot contain another level of subtasks.')
+        user = task_user()
+        title = _app.request.form.get('title', '').strip()[:240]
+        if not title:
+            _app.abort(400, 'Subtask title is required.')
+        assignee = active_assignee() if task_is_admin(user) else user
+        priority = _app.request.form.get('priority', parent.priority)
+        if priority not in TASK_PRIORITIES:
+            _app.abort(400, 'Choose a valid priority.')
+        subtask = StaffTask(
+            parent_id=parent.id, family_id=parent.family_id,
+            assigned_to=assignee.id, created_by=user.id, title=title,
+            description=_app.request.form.get('description', '').strip()[:5000],
+            priority=priority, due_date=parsed_due_date())
+        _app.db.session.add(subtask)
+        add_audit(f'Added subtask to task #{parent.id}: {title}')
+        _app.db.session.commit()
+        _app.flash('Subtask added.')
+        return _app.redirect(_app.url_for('task_detail', task_id=parent.id))
 
     return register_native_payments(app)
 
