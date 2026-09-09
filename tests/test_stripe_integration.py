@@ -1,4 +1,5 @@
 import app_original as app_module
+import app_original as core_module
 import native_payments as native_module
 from app import (Contact, Expense, Family, Receipt, StripeEvent, StripePayment,
                  StripeRecipient, StripeTransfer, create_app, db)
@@ -78,7 +79,7 @@ def test_native_one_time_payment_and_fee_settlement(monkeypatch):
         }},
     }
     monkeypatch.setattr(native_module, 'construct_webhook_event', lambda *_args: event)
-    monkeypatch.setattr(app_module, 'construct_webhook_event', lambda *_args: event)
+    monkeypatch.setattr(core_module, 'construct_webhook_event', lambda *_args: event)
 
     webhook_client = app.test_client()
     response = webhook_client.post('/stripe/webhook', data=b'{}',
@@ -162,13 +163,13 @@ def test_zero_pledge_defaults_to_valid_one_dollar_native_form():
 def test_connect_onboarding_and_approved_expense_transfer(monkeypatch):
     app = make_app()
     client = app.test_client()
-    monkeypatch.setattr(app_module, 'create_connected_account',
+    monkeypatch.setattr(core_module, 'create_connected_account',
                         lambda *_args: {'id': 'acct_recipient_1'})
-    monkeypatch.setattr(app_module, 'create_account_link',
+    monkeypatch.setattr(core_module, 'create_account_link',
                         lambda *_args: {'url': 'https://connect.stripe.test/onboard'})
-    monkeypatch.setattr(app_module, 'retrieve_connected_account',
+    monkeypatch.setattr(core_module, 'retrieve_connected_account',
                         lambda *_args: {'details_submitted': True, 'payouts_enabled': True})
-    monkeypatch.setattr(app_module, 'create_transfer',
+    monkeypatch.setattr(core_module, 'create_transfer',
                         lambda *_args: {'id': 'tr_yazory_1'})
     with app.app_context():
         family = db.session.scalar(db.select(Family))
