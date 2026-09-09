@@ -409,6 +409,8 @@ def create_app(test_config=None):
         app.config['SESSION_COOKIE_SECURE'] = False
         if not test_config or 'DEMO' not in test_config:
             app.config['DEMO'] = True
+        if not test_config or 'APP_BASE_URL' not in test_config:
+            app.config['APP_BASE_URL'] = 'http://localhost'
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
         raise RuntimeError('Demo mode must use a local SQLite database, never a shared production database.')
     db.init_app(app)

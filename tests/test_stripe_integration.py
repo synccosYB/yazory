@@ -30,10 +30,18 @@ def test_test_app_is_isolated_from_production_environment(monkeypatch):
     monkeypatch.setenv('ADMIN_EMAIL', 'owner@example.test')
     monkeypatch.setenv('ADMIN_PASSWORD_HASH', 'scrypt:32768:8:1$salt$hash')
     monkeypatch.setenv('SESSION_SECRET', 'x' * 32)
+    monkeypatch.setenv('APP_BASE_URL', 'https://yazory.replit.app')
     app = make_app()
     assert app.config['DEMO'] is True
     assert app.config['SESSION_COOKIE_SECURE'] is False
     assert app.config['SQLALCHEMY_DATABASE_URI'] == 'sqlite://'
+
+
+def test_test_app_ignores_production_base_url_by_default(monkeypatch):
+    monkeypatch.setenv('APP_BASE_URL', 'https://yazory.replit.app')
+    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'test'})
+    assert app.config['APP_BASE_URL'] == 'http://localhost'
 
 
 def test_native_one_time_payment_and_fee_settlement(monkeypatch):
