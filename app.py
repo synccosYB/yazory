@@ -100,6 +100,42 @@ class Document(db.Model):
     data = db.Column(db.LargeBinary, nullable=False)
     uploaded_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
+class CharityCampaign(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, unique=True)
+    external_id = db.Column(db.String(100), nullable=False, unique=True)
+    key_env = db.Column(db.String(100), nullable=False, unique=True)
+    label = db.Column(db.String(160), nullable=False)
+    currency = db.Column(db.String(3), nullable=False)
+    last_sync = db.Column(db.DateTime)
+    last_error = db.Column(db.String(300))
+
+class CharityDonor(db.Model):
+    __table_args__ = (UniqueConstraint('campaign_id', 'identity'),)
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('charity_campaign.id'), nullable=False)
+    identity = db.Column(db.String(300), nullable=False)
+    name = db.Column(db.String(300), nullable=False)
+    email = db.Column(db.String(300), nullable=False)
+    phone = db.Column(db.String(100), nullable=False)
+    address = db.Column(db.Text, nullable=False)
+    contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'))
+
+class CharityDonation(db.Model):
+    __table_args__ = (UniqueConstraint('campaign_id', 'external_id'),)
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('charity_campaign.id'), nullable=False)
+    external_id = db.Column(db.String(100), nullable=False)
+    donor_id = db.Column(db.Integer, db.ForeignKey('charity_donor.id'), nullable=False)
+    donor = db.relationship('CharityDonor')
+    amount_cents = db.Column(db.BigInteger, nullable=False)
+    net_cents = db.Column(db.BigInteger, nullable=False)
+    donation_time = db.Column(db.DateTime, nullable=False)
+    anonymous = db.Column(db.Boolean, nullable=False)
+    subscription = db.Column(db.Boolean, nullable=False)
+    team = db.Column(db.String(300), nullable=False)
+    notes = db.Column(db.Text, nullable=False)
+
 class Audit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -208,12 +244,18 @@ def create_app(test_config=None):
             abort(403, 'You are not assigned to this family.')
         return db.get_or_404(Family, family_id)
 
+    from workflows import install_workflows
+    install_workflows(app, db, globals(), dict(current_user=current_user, organization_admin=organization_admin,
+        can_access_family=can_access_family))
+    from supporter_network import install_network
+    install_network(app, db, globals(), dict(current_user=current_user, can_access_family=can_access_family))
+
     @app.context_processor
     def common():
         if 'csrf' not in session:
             session['csrf'] = secrets.token_hex(32)
         user = current_user()
-        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=CATEGORIES, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
+        return dict(language=session.get('language', 'en'), languages=LANGUAGES, direction='rtl' if session.get('language') in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], categories=CATEGORIES, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), document_allowed=app.extensions['workflows']['document_allowed'], current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
 
     @app.before_request
     def security():
@@ -226,11 +268,25 @@ def create_app(test_config=None):
         if not app.config['DEMO'] and request.endpoint != 'login':
             if not session.get('user_id'):
                 return redirect(url_for('login'))
-            if current_user() is None:
+            if current_user() is None or not app.extensions['workflows']['active_user'](current_user()):
                 language = session.get('language', 'en')
                 session.clear()
                 session['language'] = language
                 return redirect(url_for('login'))
+
+    @app.before_request
+    def audit_read_only():
+        if not app.config['DEMO'] and current_user() and request.method=='POST' and current_user().role!='organization_admin' and app.extensions['workflows']['roles']()=={'auditor'} and request.endpoint not in ('work_action','logout'):
+            abort(403, 'Auditor access is read-only outside assigned audit reviews.')
+
+    @app.before_request
+    def preserve_closed_case():
+        if app.config['DEMO'] or request.method!='POST':return
+        if request.endpoint in ('edit_family','family_expense_report','add_child','add_contact','add_document'):
+            family_id=(request.view_args or {}).get('family_id')
+            if can_access_family(family_id):
+                family=db.session.get(Family,family_id)
+                if family and family.status=='Closed':abort(400,'Reopen the case before starting new operations.')
 
     @app.after_request
     def headers(response):
@@ -288,7 +344,7 @@ def create_app(test_config=None):
             email = field('email', True)
             ensure_bootstrap_owner()
             user = db.session.scalar(select(StaffUser).where(StaffUser.email == email.lower()))
-            if user and check_password_hash(user.password_hash, request.form.get('password', '')):
+            if user and app.extensions['workflows']['active_user'](user) and check_password_hash(user.password_hash, request.form.get('password', '')):
                 language = session.get('language', 'en')
                 session.clear()
                 session['language'] = language
@@ -319,6 +375,8 @@ def create_app(test_config=None):
         month = datetime.now().strftime('%Y-%m')
         expenses = db.session.scalars(select(Expense).where(Expense.month == month, Expense.family_id.in_(family_ids))).all()
         pledged = db.session.scalar(select(func.coalesce(func.sum(Contact.monthly_cents), 0)).where(Contact.status == 'Pledged', Contact.family_id.in_(select(Family.id).where(Family.status == 'Active', Family.id.in_(family_ids)))))
+        if not app.config['DEMO']:
+            pledged = sum(app.extensions['workflows']['monthly_pledged'](f.id) for f in families if f.status=='Active')
         requested_statement = select(Expense).where(Expense.status == 'Requested').order_by(Expense.id.desc())
         if not organization_admin():
             requested_statement = requested_statement.where(Expense.family_id.in_(
@@ -406,7 +464,7 @@ def create_app(test_config=None):
         if current_user() and current_user().role == 'office_employee':
             return render_template('family_office_with_documents.html', title=family.name, family=family)
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
-        return render_template('family.html', title=family.name, family=family, activity=activity, pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged'))
+        return render_template('family.html', title=family.name, family=family, activity=activity, pledged=sum(c.monthly_cents for c in family.contacts if c.status=='Pledged') if app.config['DEMO'] else app.extensions['workflows']['monthly_pledged'](family.id))
 
     @app.route('/families/<int:family_id>/expense-report', methods=['GET', 'POST'])
     def family_expense_report(family_id):
@@ -441,6 +499,8 @@ def create_app(test_config=None):
         require_organization_admin()
         family = accessible_family_or_404(family_id)
         status = field('status', True)
+        if not app.config['DEMO']:
+            return app.extensions['workflows']['legacy_status'](family_id, status)
         if status not in FAMILY_TRANSITIONS[family.status]:
             abort(400, 'This case status transition is not allowed.')
         old = family.status
@@ -470,6 +530,8 @@ def create_app(test_config=None):
             abort(403, 'You are not assigned to this family.')
         if db.session.get(Family, family_id) is None:
             abort(404)
+        if not app.config['DEMO']:
+            return redirect(url_for('supporter_network', family_id=family_id))
         relationship = field('relationship', True)
         status = field('status', True)
         if relationship not in RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
@@ -487,6 +549,10 @@ def create_app(test_config=None):
             select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))) if not organization_admin() else db.get_or_404(Contact, contact_id)
         if contact is None:
             abort(403, 'You are not assigned to this family.')
+        if not app.config['DEMO']:
+            app.extensions['workflows']['contact_allowed'](contact, edit=True)
+            flash('Record confirmed commitments through the pledge workflow.')
+            return redirect(url_for('operations', family_id=contact.family_id, kind='pledge'))
         status = field('status', True)
         if status not in CONTACT_STATUSES: abort(400)
         contact.status = status
@@ -538,6 +604,10 @@ def create_app(test_config=None):
     def download_document(document_id):
         require_capability(('family_admin', 'office_employee'))
         document = accessible_document_or_403(document_id)
+        if not app.config['DEMO']:
+            app.extensions['workflows']['document_access'](document)
+            app.extensions['workflows']['emit'](None, 'Document downloaded', {'document_id': document.id})
+            db.session.commit()
         return send_file(BytesIO(document.data), mimetype=document.content_type,
                          as_attachment=True, download_name=document.filename,
                          max_age=0)
@@ -546,6 +616,8 @@ def create_app(test_config=None):
     def delete_document(document_id):
         require_capability(('family_admin', 'office_employee'))
         document = accessible_document_or_403(document_id)
+        if not app.config['DEMO']:
+            app.extensions['workflows']['protect_document_delete'](document)
         family_id = document.family_id
         db.session.delete(document)
         audit('Deleted family document', family_id)
@@ -582,6 +654,8 @@ def create_app(test_config=None):
                 Contact.family_id == family.id, Contact.status == 'Pledged'))
             for family in families
         }
+        if not app.config['DEMO']:
+            pledged = {f.id: app.extensions['workflows']['monthly_pledged'](f.id,current_user()) for f in families}
         return render_template('fundraising.html', title='Fundraising workspace', families=families, pledged=pledged)
 
     @app.get('/fundraising/<int:family_id>')
@@ -594,9 +668,13 @@ def create_app(test_config=None):
         if family is None:
             abort(404)
         contacts = db.session.scalars(select(Contact).where(Contact.family_id == family.id).order_by(Contact.id)).all()
-        pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged')
+        if not organization_admin():
+            link = app.extensions['workflows']['models']['SupporterLink']
+            ids = set(db.session.scalars(select(link.contact_id).where(link.assigned_to == current_user().id)))
+            contacts = [c for c in contacts if c.id in ids]
+        pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged') if app.config['DEMO'] else app.extensions['workflows']['monthly_pledged'](family_id,current_user())
         return render_template('fundraising_detail.html', title='Fundraising workspace', family=family,
-                               contacts=contacts, pledged=pledged)
+                               contacts=contacts, pledged=pledged, approved_story=(app.extensions['workflows']['approved']('fundraising_plan',family_id).data.get('disclosure','') if app.extensions['workflows']['approved']('fundraising_plan',family_id) else ''))
 
     @app.get('/expenses')
     def expenses():
@@ -614,6 +692,8 @@ def create_app(test_config=None):
     def expense_status(expense_id):
         require_organization_admin()
         expense = db.get_or_404(Expense, expense_id)
+        if not app.config['DEMO']:
+            return app.extensions['workflows']['legacy_expense'](expense_id)
         status = field('status', True)
         if status not in EXPENSE_TRANSITIONS[expense.status]: abort(400, 'This expense transition is not allowed.')
         if status in ('Approved','Paid') and expense.family.status != 'Active': abort(400, 'Only active cases can have expenses approved or paid.')
@@ -641,7 +721,9 @@ def create_app(test_config=None):
                 abort(400, 'Choose a valid role and a password of at least 12 characters.')
             if db.session.scalar(select(StaffUser.id).where(StaffUser.email == email)):
                 abort(400, 'A staff account already uses this email.')
-            db.session.add(StaffUser(email=email, password_hash=generate_password_hash(password), role=role))
+            new_user=StaffUser(email=email, password_hash=generate_password_hash(password), role=role)
+            db.session.add(new_user);db.session.flush()
+            if not app.config['DEMO']:app.extensions['workflows']['create_onboarding'](new_user)
             db.session.commit()
             flash('Staff account created.')
             return redirect(url_for('staff'))
@@ -667,6 +749,9 @@ def create_app(test_config=None):
                 StaffUser.role == 'organization_admin'))
             if admin_count <= 1:
                 abort(400, 'At least one organization administrator is required.')
+        if not app.config['DEMO']:
+            result=app.extensions['workflows']['queue_access_change'](user,role)
+            if result:return result
         user.role = role
         if role == 'organization_admin':
             db.session.execute(db.delete(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id))
@@ -694,10 +779,19 @@ def create_app(test_config=None):
         db.session.commit()
         return redirect(url_for('staff'))
 
+    from abcharity import register_abcharity
+    register_abcharity(app, db, CharityCampaign, CharityDonor, CharityDonation,
+                      Family, Contact, Expense, require_capability,
+                      require_organization_admin, accessible_family_or_404, audit)
+    from donation_workflows import install_donation_workflows
+    install_donation_workflows(app, db, CharityCampaign, CharityDonation, CharityDonor,
+        dict(current_user=current_user, can_access_family=can_access_family))
+
     @app.errorhandler(400)
     @app.errorhandler(403)
     @app.errorhandler(404)
     @app.errorhandler(413)
+    @app.errorhandler(409)
     def error(exc):
         return render_template('error.html', title='Unable to complete request', message=exc.description), exc.code
 

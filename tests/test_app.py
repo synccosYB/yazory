@@ -293,6 +293,11 @@ def test_office_and_fundraiser_permissions_and_isolation(monkeypatch):
     assert download.status_code == 200
     assert download.headers['Content-Disposition'].startswith('attachment;')
 
+    # A family assignment no longer exposes every donor: individual contact assignment is required.
+    with app.app_context():
+        Link=app.extensions['workflows']['models']['SupporterLink']
+        db.session.add(Link(contact_id=assigned_contact_id,side='Husband',relationship='Friend',assigned_to=fundraiser_id,permission='Permitted',verified=True))
+        db.session.commit()
     fundraiser_client = login('fundraiser@example.test', 'staff-passphrase-123')
     assert fundraiser_client.get('/').location == '/fundraising'
     summary = fundraiser_client.get('/fundraising').text

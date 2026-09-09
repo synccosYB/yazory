@@ -1,12 +1,12 @@
-{% from 'macros.html' import token %}
+{% from 'macros.html' import token with context %}
 <section class="card padded">
   <h2>{{ _("Documents") }}</h2>
-  {% for document in family.documents %}
+  {% for document in family.documents if document_allowed(document) %}
   <div class="activity-row">
     <a href="{{ url_for('download_document', document_id=document.id) }}">{{ document.filename }}</a>
-    <form method="post" action="{{ url_for('delete_document', document_id=document.id) }}">
+    {% if demo %}<form method="post" action="{{ url_for('delete_document', document_id=document.id) }}">
       {{ token(csrf) }}<button class="small secondary">{{ _("Delete") }}</button>
-    </form>
+    </form>{% else %}<a href="{{ url_for('operations',family_id=family.id,kind='document') }}">{{ _('Document review') }}</a>{% endif %}
   </div>
   {% else %}<p>{{ _("No documents uploaded.") }}</p>{% endfor %}
   <form method="post" enctype="multipart/form-data" action="{{ url_for('add_document', family_id=family.id) }}">

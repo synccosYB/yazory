@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'macros.html' import token %}
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
 {% macro amount(name, value) %}<input aria-label="{{ _("Amount ($)") }}" type="number" min="0" max="1000000" step="0.01" name="{{ name }}" form="budget-form" value="{{ request.form.get(name,'') if error else ('%.2f'|format(value/100) if value is not none else '') }}">{% endmacro %}
 {% block content %}
 <div class="page-heading"><div><h1>{{ _('Monthly expense report') }}</h1><p>{{ family.name }}</p></div><form id="budget-form" method="post">{{ token(csrf) }}<button>{{ _('Save budget') }}</button></form><a class="button secondary" href="{{ url_for('family_detail',family_id=family.id) }}">{{ _('Back') }}</a></div>

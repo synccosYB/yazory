@@ -1,5 +1,15 @@
 # Yazory
 
+## Current operating application
+
+See [WORKFLOW_IMPLEMENTATION.md](WORKFLOW_IMPLEMENTATION.md) for the connected
+35-workflow application, independent approvals, case ledger, supporter tree,
+ABCharity integration, deployment steps and external-service boundaries. The
+agreed organizational specification is retained in [WORKFLOW_SPEC.md](WORKFLOW_SPEC.md).
+The prototype status-transition descriptions below apply to demo mode; authenticated
+operation uses the reviewed workflows. New approvals require staff responsibility
+setup, approved policies and reviewed support plans.
+
 An initial family-support case management application. Built with Python, Flask, SQLAlchemy, server-rendered HTML, and responsive CSS. GitHub stores the code; Replit is the intended runtime.
 
 ## Run in Replit
@@ -60,7 +70,7 @@ The publishing command in `.replit` sets `APP_ENV=production` and runs Gunicorn 
 
 The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.
 
-Not yet implemented: automated donation collection, receipts, bank reconciliation, document uploads, invitations, email/SMS delivery, full bookkeeping, recurring expense generation, or automated backups. No production publishing or external financial actions are performed by this repository setup.
+External automatic charges, generated tax receipts, invitations, email/SMS delivery, full double-entry bookkeeping, recurring expense generation and automated backups are not provided. Document uploads, staff-operated bank reconciliation and read-only ABCharity imports are implemented; see the current workflow documentation. No production publishing or external financial actions are performed by this repository setup.
 
 ## Tests
 
@@ -151,3 +161,52 @@ Income and assistance come from intake; food stamps only offset food costs.
 Missing values remain unknown and are flagged, including incomplete child records.
 Figures refresh after Save budget. The plan does not approve or create payments.
 Access uses the existing family assignment checks and excludes fundraisers.
+
+## ABCharity campaign donations
+
+Each family can link one ABCharity campaign. Organization administrators configure
+connections; assigned family administrators and fundraisers can read and sync
+receipts and link imported donors to existing circle-of-support contacts. Office
+employees and unassigned users cannot open donation pages. Fundraisers never see
+expense comparisons. Imported receipts enter finance review before posting to the case ledger. Fundraisers see only receipts linked to their individually assigned contacts.
+
+Deployment (additive schema; existing records preserved):
+
+1. Install `requirements.txt`, then run `APP_ENV=production python -m flask --app app:create_app init-db`
+   against the existing production database before restarting the app.
+2. Create the family campaign in ABCharity. Copy that campaign's API key into a
+   server secret such as `ABCHARITY_KEY_FAMILY_1`. Never commit a key or put it in a
+   client-side setting. Raw keys and percent-encoded keys are both accepted.
+3. From the family profile, open **ABCharity donations → Campaign connection**.
+   Enter the campaign's numeric ID, label, actual currency and the secret's NAME.
+   Currency is declared by the administrator: the supplied API documentation does
+   not specify the campaign-info response schema, so it cannot be inferred safely.
+   Save to validate the donation response and import. An empty valid response
+   confirms the key works but cannot establish campaign ID membership until the
+   first receipt arrives. Every receipt must match the configured campaign ID.
+4. Use **Sync donations** anytime. For unattended imports, configure the hosting
+   scheduler to run `APP_ENV=production python -m flask --app app:create_app sync-abcharity`
+   every 15 minutes with the same database and secrets. Do not run a scheduler
+   inside each autoscaling web worker. No schedule is installed by this code.
+
+Imports use unique campaign/donation IDs and refresh changed receipt values in a
+single transaction. An invalid receipt, mismatched campaign ID, duplicate ID in a
+response, incomplete response or 100,000-result cap rejects the entire import.
+The last successful sync stays visible alongside a safe error; failures never
+include credential URLs. Concurrent collisions roll back and can be retried.
+Full reconciliation retains receipts absent from a later API response because
+the documentation supplies no deletion/refund status. Investigate such changes
+with ABCharity; do not treat this ledger as a bank balance. Large campaigns may
+need a longer web-worker timeout or the scheduled CLI command.
+
+Donors match by normalized email within a campaign; without email, each receipt
+has a distinct donor record. Staff can link to a same-family supporter without
+changing pledges or inventing relationship data. Anonymous donor identity and
+notes are hidden on donation screens. Subscription means only that the API
+marks the receipt as a subscription; no active mandate, next charge, failed
+payment, subscription management, campaign creation or write API is provided.
+Amounts are stored as integer cents and displayed in the configured currency;
+only USD campaigns show net receipts less the family's recorded paid expenses.
+API behavior is covered by mocked fixtures based on the documentation; live
+family campaign credentials must be verified during setup. The Yomim Noraim key
+supplied during planning is deliberately not embedded or linked to a family.
