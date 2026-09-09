@@ -116,9 +116,6 @@ def _save_shul_rabbi_connections(family_id):
     if family is None:
         return
 
-    _upsert_family_rabbi(
-        family_id, 'affiliated', None, family.rabbi or '', family.rabbi_phone or '')
-
     submitted = []
     for role, key in (('weekday_shul', 'weekday_shul'), ('shabbos_shul', 'shabbos_shul')):
         shul_name = _submitted_institution_name(key)
@@ -131,9 +128,12 @@ def _save_shul_rabbi_connections(family_id):
         submitted.append((role, institution, rabbi_name, rabbi_phone))
 
     assignments = {}
+    inherited_rabbis = []
     for role, institution, rabbi_name, rabbi_phone in submitted:
         if institution is None:
             _upsert_family_rabbi(family_id, role, None, rabbi_name, rabbi_phone)
+            if rabbi_name:
+                inherited_rabbis.append((rabbi_name, rabbi_phone, None))
             continue
         existing = _app.db.session.get(ShulRabbi, institution.id)
         chosen = assignments.get(institution.id)
@@ -152,7 +152,29 @@ def _save_shul_rabbi_connections(family_id):
                 _app.db.session.add(existing)
             existing.rabbi_name = rabbi_name
             existing.rabbi_phone = rabbi_phone
+            inherited_rabbis.append((rabbi_name, rabbi_phone, institution))
         _upsert_family_rabbi(family_id, role, institution, rabbi_name, rabbi_phone)
+
+    # When the applicant did not enter a separate family rabbi, inherit the rabbi
+    # from the selected shul if the selected shuls resolve to one rabbi. This keeps
+    # the applicant's main profile linked to the rabbi instead of only storing the
+    # rabbi on the shul directory record.
+    if not (family.rabbi or '').strip() and inherited_rabbis:
+        unique = {}
+        for rabbi_name, rabbi_phone, institution in inherited_rabbis:
+            unique.setdefault(rabbi_name.casefold(), (rabbi_name, rabbi_phone, institution))
+        if len(unique) == 1:
+            rabbi_name, rabbi_phone, institution = next(iter(unique.values()))
+            family.rabbi = rabbi_name
+            family.rabbi_phone = rabbi_phone
+            _upsert_family_rabbi(
+                family_id, 'affiliated', institution, rabbi_name, rabbi_phone)
+        else:
+            _upsert_family_rabbi(
+                family_id, 'affiliated', None, family.rabbi or '', family.rabbi_phone or '')
+    else:
+        _upsert_family_rabbi(
+            family_id, 'affiliated', None, family.rabbi or '', family.rabbi_phone or '')
 
 
 def _submitted_gabbais(key):
