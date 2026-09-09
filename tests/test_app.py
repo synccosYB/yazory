@@ -339,7 +339,7 @@ def test_filtered_lists_show_phone_column_and_print_action(app, client):
     supporter_page = client.get(
         '/supporters?relationship_group=siblings&family_id=1').text
     assert '<th>Phone</th>' in supporter_page
-    assert '845-555-0142' in supporter_page
+    assert '(845) 555-0142' in supporter_page
     assert 'onclick="window.print()"' in supporter_page
 
     directory_page = client.get(
@@ -347,6 +347,21 @@ def test_filtered_lists_show_phone_column_and_print_action(app, client):
     assert '<th>Phone</th>' in directory_page
     assert '845-555-0100' in directory_page
     assert 'onclick="window.print()"' in directory_page
+
+def test_supporter_phone_is_displayed_in_us_format(app, client):
+    with app.app_context():
+        supporter = db.session.scalar(db.select(Contact).where(
+            Contact.name == 'Sample sibling'))
+        supporter.phone = '3474515327'
+        db.session.commit()
+        supporter_id = supporter.id
+
+    supporter_page = client.get('/supporters?family_id=1').text
+    supporter_detail = client.get(f'/supporters/{supporter_id}').text
+    family_print = client.get('/families/1/print?section=supporters').text
+    for page in (supporter_page, supporter_detail, family_print):
+        assert '(347) 451-5327' in page
+        assert '3474515327' not in page
 
 @pytest.mark.parametrize('language,label', [
     ('en', 'Print list'), ('he', 'הדפסת הרשימה'), ('yi', 'דרוקן די ליסטע')])
