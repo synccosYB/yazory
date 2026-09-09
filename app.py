@@ -103,6 +103,18 @@ class FamilyRabbiPreference(_app.db.Model):
     rabbi_person = _app.db.relationship('RabbiPerson')
 
 
+class FamilyPhone(_app.db.Model):
+    """Additional home phone numbers for an applicant household."""
+    __tablename__ = 'family_phone'
+    __table_args__ = (
+        UniqueConstraint('family_id', 'phone', name='uq_family_phone'),
+    )
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    family_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('family.id'), nullable=False, index=True)
+    phone = _app.db.Column(_app.db.String(80), nullable=False)
+
+
 class FamilyRabbiConnection(_app.db.Model):
     """A family may have separate affiliated, weekday-shul, and Shabbos-shul rabbis."""
     __tablename__ = 'family_rabbi_connection'
@@ -283,6 +295,32 @@ def _clean_phones(values):
         seen.add(phone.casefold())
         result.append(phone)
     return result
+
+
+def _family_phones(family):
+    if family is None:
+        return []
+    rows = _app.db.session.scalars(select(FamilyPhone).where(
+        FamilyPhone.family_id == family.id).order_by(FamilyPhone.id)).all()
+    phones = [row.phone for row in rows]
+    if family.phone and family.phone not in phones:
+        phones.insert(0, family.phone)
+    return phones
+
+
+def _replace_family_phones(family_id, phones):
+    cleaned = _clean_phones(phones)
+    family = _app.db.session.get(_app.Family, family_id)
+    if family is None:
+        return
+    family.phone = cleaned[0] if cleaned else ''
+    current = _app.db.session.scalars(select(FamilyPhone).where(
+        FamilyPhone.family_id == family_id)).all()
+    for row in current:
+        _app.db.session.delete(row)
+    _app.db.session.flush()
+    for phone in cleaned:
+        _app.db.session.add(FamilyPhone(family_id=family_id, phone=phone))
 
 
 def _json_phone_lists(field):
@@ -692,6 +730,9 @@ def _assistant_payload(institution):
 def create_app(test_config=None):
     app = _app.create_app(test_config)
     with app.app_context():
+        # Models added by this compatibility layer are created after the base
+        # application has initialized its database.
+        _app.db.create_all()
         _migrate_canonical_rabbis()
 
     @app.get('/api/shul-rabbis')
@@ -750,6 +791,9 @@ def create_app(test_config=None):
             'rabbi_people': people,
             'family_rabbi_preference': family_rabbi_preference,
             'shul_rabbi_map': mapping,
+            'family_phone_values': lambda family: (
+                _clean_phones(_app.request.form.getlist('phone'))
+                if _app.request.method == 'POST' else _family_phones(family)),
         }
 
     def require_org_admin():
@@ -836,6 +880,9 @@ def create_app(test_config=None):
                 family_id = kwargs.get('family_id') if __endpoint == 'edit_family' else _family_id_from_response(response)
                 if family_id:
                     _save_shul_connections(int(family_id))
+                    _replace_family_phones(
+                        int(family_id), _app.request.form.getlist('phone'))
+                    _app.db.session.commit()
             return response
 
         app.view_functions[endpoint] = wrapped

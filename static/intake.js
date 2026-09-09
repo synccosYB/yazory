@@ -1,5 +1,10 @@
 (()=>{'use strict';const form=document.getElementById('intake-wizard');if(!form)return;
 const initial=JSON.parse(form.dataset.budget),pages=[...form.querySelectorAll('[data-intake-page]')],tabs=[...form.querySelectorAll('[data-step]')];let step=0;
+const applicantPhones=form.querySelector('[data-applicant-phone-list]');
+if(applicantPhones){const rows=applicantPhones.querySelector('[data-phone-rows]'),add=applicantPhones.querySelector('[data-add-phone]');
+ function wireRemove(button){button.addEventListener('click',()=>button.closest('.contact-phone-row').remove());}
+ applicantPhones.querySelectorAll('[data-remove-phone]').forEach(wireRemove);
+ add.addEventListener('click',()=>{const row=document.createElement('div');row.className='contact-phone-row';const input=document.createElement('input');input.name='phone';input.type='tel';input.maxLength=80;input.dir='ltr';const remove=document.createElement('button');remove.type='button';remove.className='small danger';remove.dataset.removePhone='';remove.textContent=form.dataset.removeLabel||'Remove';wireRemove(remove);row.append(input,remove);rows.appendChild(row);input.focus();});}
 const repeaters=[];
 form.querySelectorAll('[data-group]').forEach(root=>{const group=root.dataset.group;let rows=Array.isArray(initial[group])?initial[group].map(r=>({...r})):[],index=0;const fields=[...root.querySelectorAll('[data-entry]')],hidden=root.querySelector('input[type=hidden]');
 function sync(){if(rows[index])fields.forEach(f=>rows[index][f.dataset.entry]=f.value);hidden.value=JSON.stringify(rows);}
