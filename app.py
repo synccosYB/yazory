@@ -2,6 +2,7 @@ import os
 import re
 
 import app_original as _app
+from flask import current_app, session
 from sqlalchemy import Index, UniqueConstraint, select, text
 
 # Keep the established application intact while extending the supporter
@@ -252,8 +253,14 @@ def _save_shul_rabbi_connections(family_id):
             _upsert_family_rabbi(family_id, role, None, '', '')
             continue
         institution = _find_shul(shul_name)
-        rabbi_name = _app.request.form.get(key + '_rabbi', '').strip()[:160]
-        rabbi_phone = _app.request.form.get(key + '_rabbi_phone', '').strip()[:80]
+        can_manage_directory = current_app.config['DEMO']
+        if not can_manage_directory:
+            user = _app.db.session.get(_app.StaffUser, session.get('user_id'))
+            can_manage_directory = bool(user and user.role == 'organization_admin')
+        rabbi_name = (_app.request.form.get(key + '_rabbi', '').strip()[:160]
+                      if can_manage_directory else '')
+        rabbi_phone = (_app.request.form.get(key + '_rabbi_phone', '').strip()[:80]
+                       if can_manage_directory else '')
         submitted.append((role, institution, rabbi_name, rabbi_phone))
 
     assignments = {}
