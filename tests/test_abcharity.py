@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 from app import create_app, db, Family, StaffUser, FamilyAssignment, CharityCampaign, CharityDonation, CharityDonor, Contact
 from abcharity import normalize, fetch_donations, decrypt_api_key, ERROR
 from translations import CATALOG
@@ -52,6 +53,19 @@ def test_import_repeat_update_and_locales(setup,monkeypatch):
         assert (CATALOG['ABCharity donations'][lang] if lang!='en' else 'ABCharity donations') in result.text
     result=app.test_cli_runner().invoke(args=['sync-abcharity'])
     assert result.exit_code==0, result.output
+
+def test_donation_page_uses_consistent_money_and_eastern_time(setup):
+    app,client=setup
+    connect(client)
+    post(client,'/families/1/donations/sync')
+    body=client.get('/families/1/donations').text
+    assert '$18.50' in body
+    assert '$17.95' in body
+    assert 'USD 18.50' not in body
+    assert 'UTC' not in body
+    with app.app_context():
+        eastern=app.jinja_env.filters['eastern_time']
+        assert eastern(datetime(2026,9,9,14,9),'%m/%d/%Y %I:%M %p %Z') == '09/09/2026 10:09 AM EDT'
 
 def test_profile_accepts_and_masks_campaign_key(setup):
     _,client=setup

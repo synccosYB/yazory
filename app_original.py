@@ -412,6 +412,13 @@ def create_app(test_config=None):
     def money(cents):
         return f'${(cents or 0)/100:,.2f}'
 
+    @app.template_filter('currency_money')
+    def currency_money(cents, currency='USD'):
+        """Use dollar notation for USD and an explicit code for other currencies."""
+        amount = (cents or 0) / 100
+        currency = (currency or 'USD').upper()
+        return f'${amount:,.2f}' if currency == 'USD' else f'{currency} {amount:,.2f}'
+
     @app.template_filter('phone')
     def phone(value):
         """Display North American phone numbers consistently without altering saved data."""
