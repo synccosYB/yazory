@@ -64,7 +64,7 @@ def build_check_pdf(payout, routing_number, account_number, bank_name=''):
                   preserveAspectRatio=True, anchor='c', mask='auto')
     if bank_name:
         pdf.setFont('Helvetica-Bold', 9)
-        pdf.drawString(left + 78, top - 28, bank_name[:55])
+        pdf.drawCentredString(width / 2, top - 28, bank_name[:55])
     pdf.setFillColorRGB(0, 0, 0)
     pdf.setFont('Helvetica-Bold', 11)
     pdf.drawRightString(right - 12, top - 22, payout.check_number)
