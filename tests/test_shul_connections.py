@@ -243,3 +243,27 @@ def test_rabbi_and_shul_gabbai_can_have_multiple_phones_and_rabbi_has_own_assist
 def test_delayed_directory_load_does_not_overwrite_entered_contact_phones():
     script = Path('static/institution-picker.js').read_text()
     assert "if(!item.contactsEdited())item.update()" in script
+
+
+def test_automatic_rabbi_phone_entered_on_family_form_updates_shared_directory(app, client):
+    add_shuls(app)
+    assert post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'weekday_shul_rabbi': 'Rabbi Shared',
+    }).status_code == 302
+
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'rabbi_mode': 'automatic',
+        'rabbi': 'Rabbi Shared',
+        'rabbi_phone': '845-555-7777',
+    })
+    assert response.status_code == 302
+
+    profile = client.get('/families/1')
+    directory = client.get('/api/shul-rabbis').get_json()['Weekday Test Shul']
+    assert b'845-555-7777' in profile.data
+    assert directory['phone'] == '845-555-7777'
+    assert directory['phones'][0] == '845-555-7777'

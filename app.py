@@ -361,6 +361,23 @@ def _replace_rabbi_phones(institution, phones):
         _app.db.session.add(ShulRabbiPhone(institution_id=institution.id, phone=phone))
 
 
+def _save_primary_rabbi_phone(person, phone):
+    """Keep a phone entered on a family form in the shared rabbi directory."""
+    phone = (phone or '').strip()[:80]
+    if person is None or not phone:
+        return
+    person.phone = phone
+    associations = _app.db.session.scalars(select(ShulRabbiAssociation).where(
+        ShulRabbiAssociation.rabbi_person_id == person.id,
+        ShulRabbiAssociation.is_primary.is_(True))).all()
+    for association in associations:
+        institution = association.institution
+        phones = _rabbi_phones(institution)
+        _replace_rabbi_phones(
+            institution, [phone] + [saved for saved in phones if saved != phone])
+        _sync_legacy_primary(institution.id)
+
+
 def _replace_gabbai_phones(gabbai, phones):
     current = _app.db.session.scalars(select(ShulGabbaiPhone).where(
         ShulGabbaiPhone.gabbai_id == gabbai.id)).all()
@@ -533,6 +550,12 @@ def _save_family_rabbi_preference(family_id):
                 person = primary.rabbi_person
                 selected_institution = institution
                 break
+        submitted_name = _app.request.form.get('rabbi', '').strip()
+        submitted_phone = _app.request.form.get('rabbi_phone', '').strip()
+        if (person is not None and submitted_phone and
+                (not submitted_name or
+                 _normalize_rabbi_name(submitted_name) == person.normalized_name)):
+            _save_primary_rabbi_phone(person, submitted_phone)
         preference.rabbi_person_id = person.id if person else None
         family.rabbi = person.name if person else ''
         family.rabbi_phone = person.phone if person else ''
