@@ -1,6 +1,6 @@
 import pytest
 from app import create_app, db, Family, StaffUser, FamilyAssignment, CharityCampaign, CharityDonation, CharityDonor, Contact
-from abcharity import normalize, fetch_donations, ERROR
+from abcharity import normalize, fetch_donations, decrypt_api_key, ERROR
 from translations import CATALOG
 
 ROW = dict(id=10, campaign_id=55, amount='18.50', net='17.95', donation_time=1788710400, name='Donor', email='one@example.test', phone='123', address='Road', notes='note', team='Cousins', anonymous_donation='0', is_subscription='1')
@@ -25,7 +25,7 @@ def post(client,path,data=None):
     return client.post(path,data={'csrf':'token',**(data or {})})
 
 def connect(client):
-    return post(client,'/families/1/campaign',dict(campaign_id='55',label='Family campaign',currency='USD',key_env='ABCHARITY_KEY_TEST'))
+    return post(client,'/families/1/campaign',dict(campaign_id='55',label='Family campaign',currency='USD',api_key='secret-test-value'))
 
 def test_import_repeat_update_and_locales(setup,monkeypatch):
     app,client=setup
@@ -36,6 +36,10 @@ def test_import_repeat_update_and_locales(setup,monkeypatch):
         assert CharityDonor.query.count()==1
         assert CharityDonation.query.one().net_cents==1795
         assert CharityCampaign.query.one().last_sync
+        campaign=CharityCampaign.query.one()
+        assert campaign.api_key_encrypted
+        assert 'secret-test-value' not in campaign.api_key_encrypted
+        assert decrypt_api_key(campaign.api_key_encrypted,app.config['SECRET_KEY'])=='secret-test-value'
     monkeypatch.setattr('abcharity.fetch_donations',lambda key:[{**ROW,'net':'17.00'}])
     post(client,'/families/1/donations/sync')
     with app.app_context(): assert CharityDonation.query.one().net_cents==1700
@@ -49,20 +53,25 @@ def test_import_repeat_update_and_locales(setup,monkeypatch):
     result=app.test_cli_runner().invoke(args=['sync-abcharity'])
     assert result.exit_code==0, result.output
 
-def test_rtl_direction_mark_in_secret_name_is_ignored(setup):
-    app,client=setup
-    result=post(client,'/families/1/campaign',dict(
-        campaign_id='55', label='Family campaign', currency='USD',
-        key_env='\u200fABCHARITY_KEY_TEST\u200e'))
-    assert result.status_code==302
-    with app.app_context():
-        assert CharityCampaign.query.one().key_env=='ABCHARITY_KEY_TEST'
-
-def test_secret_name_input_does_not_use_fragile_browser_pattern(setup):
+def test_profile_accepts_and_masks_campaign_key(setup):
     _,client=setup
     body=client.get('/families/1/donations').text
-    assert 'name="key_env" required maxlength="100" dir="ltr"' in body
-    assert 'pattern="ABCHARITY_KEY_' not in body
+    assert 'name="api_key" type="password"' in body
+    assert 'name="key_env"' not in body
+    assert 'secret-test-value' not in body
+    assert connect(client).status_code==302
+    body=client.get('/families/1/donations').text
+    assert 'An encrypted API key is saved for this family.' in body
+    assert 'secret-test-value' not in body
+
+def test_existing_environment_key_connection_still_syncs(setup):
+    app,client=setup
+    with app.app_context():
+        db.session.add(CharityCampaign(family_id=1,external_id='55',
+            key_env='ABCHARITY_KEY_TEST',label='Legacy campaign',currency='USD'))
+        db.session.commit()
+    assert post(client,'/families/1/donations/sync').status_code==302
+    with app.app_context(): assert CharityDonation.query.count()==1
 
 def test_isolation_linking_and_atomic_error(setup,monkeypatch):
     app,client=setup

@@ -184,11 +184,13 @@ Deployment (additive schema; existing records preserved):
 
 1. Install `requirements.txt`, then run `APP_ENV=production python -m flask --app app:create_app init-db`
    against the existing production database before restarting the app.
-2. Create the family campaign in ABCharity. Copy that campaign's API key into a
-   server secret such as `ABCHARITY_KEY_FAMILY_1`. Never commit a key or put it in a
-   client-side setting. Raw keys and percent-encoded keys are both accepted.
+2. Create the family campaign in ABCharity. Organization administrators paste
+   that campaign's API key into its family profile. Yazory encrypts it using the
+   existing production `SESSION_SECRET`; the key is never displayed after saving.
+   Keep `SESSION_SECRET` stable, because changing it requires every saved campaign
+   key to be entered again. Raw and percent-encoded ABCharity keys are accepted.
 3. From the family profile, open **ABCharity donations → Campaign connection**.
-   Enter the campaign's numeric ID, label, actual currency and the secret's NAME.
+   Enter the campaign's numeric ID, label, actual currency and API key.
    Currency is declared by the administrator: the supplied API documentation does
    not specify the campaign-info response schema, so it cannot be inferred safely.
    Save to validate the donation response and import. An empty valid response

@@ -305,7 +305,9 @@ class CharityCampaign(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, unique=True)
     external_id = db.Column(db.String(100), nullable=False, unique=True)
+    # Retained for campaigns connected before profile-managed encrypted keys.
     key_env = db.Column(db.String(100), nullable=False, unique=True)
+    api_key_encrypted = db.Column(db.Text, nullable=False, default='')
     label = db.Column(db.String(160), nullable=False)
     currency = db.Column(db.String(3), nullable=False)
     last_sync = db.Column(db.DateTime)
@@ -665,6 +667,10 @@ def create_app(test_config=None):
                 'ALTER TABLE stripe_payment ADD COLUMN successful_charges INTEGER NOT NULL DEFAULT 0'))
         if 'last_paid_at' not in stripe_payment_columns:
             db.session.execute(text('ALTER TABLE stripe_payment ADD COLUMN last_paid_at TIMESTAMP'))
+        campaign_columns = {column['name'] for column in inspect(db.engine).get_columns('charity_campaign')}
+        if 'api_key_encrypted' not in campaign_columns:
+            db.session.execute(text(
+                "ALTER TABLE charity_campaign ADD COLUMN api_key_encrypted TEXT NOT NULL DEFAULT ''"))
         # Backfill the central directories from every profile that already has
         # shul or yeshivah details. The helpers are idempotent, so startup never
         # creates duplicate people or institutions.

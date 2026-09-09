@@ -68,6 +68,15 @@ _EXTRA = {
     'Monthly summary': {'he': 'סיכום חודשי', 'yi': 'חודש׳ליכער סך הכל'},
     'Intake completeness': {'he': 'השלמת הקליטה', 'yi': 'וויפיל פון דער בקשה איז אויסגעפילט'},
     'Enable JavaScript to use the compact intake sections.': {'he': 'יש להפעיל JavaScript כדי להשתמש בחלקי הקליטה המרוכזים.', 'yi': 'JavaScript דארף זיין אנגעצונדן צו נוצן די קורצע טיילן פון דער בקשה.'},
+    'ABCharity API key': {'he': 'מפתח API של ABCharity', 'yi': 'ABCharity API שליסל'},
+    'Paste this campaign’s ABCharity API key. It will be encrypted and never shown again.': {'he': 'הדביקו את מפתח ה־API של הקמפיין. הוא יוצפן ולא יוצג שוב.', 'yi': 'לייגט אריין דעם ABCharity API שליסל פונעם קאמפיין. ער ווערט פארשלאסן און וועט מער נישט ווערן געוויזן.'},
+    'Saved securely — leave blank to keep it': {'he': 'נשמר באופן מאובטח — השאירו ריק כדי לשמור אותו', 'yi': 'זיכער אפגעהיטן — לאזט ליידיג עס צו האלטן'},
+    'Paste the campaign API key': {'he': 'הדביקו את מפתח ה־API של הקמפיין', 'yi': 'לייגט אריין דעם API שליסל פונעם קאמפיין'},
+    'Save and test connection': {'he': 'שמירה ובדיקת החיבור', 'yi': 'אפהיטן און פרובירן דעם פארבינדונג'},
+    'An encrypted API key is saved for this family.': {'he': 'מפתח API מוצפן שמור עבור משפחה זו.', 'yi': 'א פארשלאסענער API שליסל איז אפגעהיטן פאר דער משפחה.'},
+    'Enter the ABCharity API key for this campaign.': {'he': 'הזינו את מפתח ה־API של ABCharity לקמפיין זה.', 'yi': 'לייגט אריין דעם ABCharity API שליסל פאר דעם קאמפיין.'},
+    'ABCharity could not be synced. Check the campaign ID and API response.': {'he': 'לא ניתן לסנכרן את ABCharity. בדקו את מזהה הקמפיין ואת תגובת ה־API.', 'yi': 'ABCharity האט זיך נישט אפדעיטעד. קוקט איבער דעם קאמפיין נומער און דעם API ענטפער.'},
+    'The saved ABCharity API key could not be read. Enter and save the key again.': {'he': 'לא ניתן לקרוא את מפתח ה־API השמור. הזינו ושמרו את המפתח מחדש.', 'yi': 'מען קען נישט ליינען דעם אפגעהיטענעם ABCharity API שליסל. לייגט אריין און היט אפ דעם שליסל נאכאמאל.'},
 }
 
 def translate(text):

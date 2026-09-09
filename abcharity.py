@@ -1,17 +1,22 @@
 """Read-only ABCharity imports. Secrets never enter URLs rendered by Yazory."""
 import os
 import re
+import base64
+import hashlib
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import unquote
 
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 from flask import abort, flash, redirect, render_template, request, url_for, has_request_context, session
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 LIMIT = 100000
-ERROR = 'ABCharity could not be synced. Check the campaign ID, key setting and API response.'
+ERROR = 'ABCharity could not be synced. Check the campaign ID and API response.'
+INVALID_KEY = 'Enter the ABCharity API key for this campaign.'
+UNREADABLE_KEY = 'The saved ABCharity API key could not be read. Enter and save the key again.'
 BIDI_CONTROLS = dict.fromkeys(map(ord, '\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069'))
 
 
@@ -33,6 +38,23 @@ def fetch_donations(key):
     except (requests.RequestException, ValueError, KeyError, TypeError):
         # Never propagate a requests exception: it can contain the credential URL.
         raise ValueError(ERROR) from None
+
+
+def _cipher(secret):
+    """Derive a separate authenticated-encryption key from the app secret."""
+    material = hashlib.sha256(('yazory:abcharity:' + secret).encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(material))
+
+
+def encrypt_api_key(key, secret):
+    return _cipher(secret).encrypt(key.strip().encode()).decode()
+
+
+def decrypt_api_key(token, secret):
+    try:
+        return _cipher(secret).decrypt(token.encode()).decode()
+    except (InvalidToken, ValueError, TypeError, UnicodeDecodeError):
+        raise ValueError(UNREADABLE_KEY) from None
 
 
 def normalize(row, campaign_id):
@@ -79,7 +101,12 @@ def normalize(row, campaign_id):
 def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expense,
                       require_capability, require_admin, get_family, audit):
     def sync(campaign):
-        key = os.environ.get(campaign.key_env, '')
+        if campaign.api_key_encrypted:
+            key = decrypt_api_key(campaign.api_key_encrypted, app.config['SECRET_KEY'])
+        else:
+            # Existing environment-backed connections continue working until
+            # an administrator replaces their key from the family profile.
+            key = os.environ.get(campaign.key_env, '')
         if not key:
             raise ValueError(ERROR)
         rows = fetch_donations(key)
@@ -122,10 +149,10 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         try:
             sync(campaign)
             return True
-        except (ValueError, IntegrityError, OperationalError):
+        except (ValueError, IntegrityError, OperationalError) as exc:
             db.session.rollback()
             campaign = db.session.get(Campaign, campaign_id)
-            campaign.last_error = ERROR
+            campaign.last_error = str(exc) if isinstance(exc, ValueError) else ERROR
             db.session.commit()
             return False
 
@@ -169,27 +196,31 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         if app.config['DEMO']:
             abort(400, 'Live donation imports are unavailable in demo mode.')
         external_id = request.form.get('campaign_id', '').strip()
-        # RTL pages can add invisible direction marks when an administrator
-        # pastes an ASCII environment-variable name. Ignore those marks while
-        # retaining strict validation of the resulting secret name.
-        key_env = request.form.get('key_env', '').translate(BIDI_CONTROLS).strip()
+        api_key = request.form.get('api_key', '').translate(BIDI_CONTROLS).strip()
         label = request.form.get('label', '').strip()
         currency = request.form.get('currency', '').strip().upper()
-        if not re.fullmatch(r'[0-9]{1,100}', external_id) or not re.fullmatch(r'ABCHARITY_KEY_[A-Z0-9_]{1,80}', key_env) or not 1 <= len(label) <= 160 or currency not in ('USD', 'ILS', 'GBP', 'EUR', 'CAD'):
-            abort(400, 'Enter a valid campaign ID, name, currency and key setting.')
+        if not re.fullmatch(r'[0-9]{1,100}', external_id) or not 1 <= len(label) <= 160 or currency not in ('USD', 'ILS', 'GBP', 'EUR', 'CAD'):
+            abort(400, 'Enter a valid campaign ID, name and currency.')
         campaign = db.session.scalar(select(Campaign).where(Campaign.family_id == family_id))
         if campaign and (campaign.external_id != external_id or campaign.currency != currency):
             abort(400, 'The linked campaign ID and currency cannot be changed.')
         if campaign is None:
-            campaign = Campaign(family_id=family_id, external_id=external_id, currency=currency)
+            if not api_key:
+                abort(400, INVALID_KEY)
+            campaign = Campaign(family_id=family_id, external_id=external_id, currency=currency,
+                                key_env=f'DATABASE_KEY_FAMILY_{family_id}')
             db.session.add(campaign)
-        campaign.label, campaign.key_env = label, key_env
+        campaign.label = label
+        if api_key:
+            if len(api_key) > 2000:
+                abort(400, INVALID_KEY)
+            campaign.api_key_encrypted = encrypt_api_key(api_key, app.config['SECRET_KEY'])
         try:
             # Validate credentials and campaign membership before saving anything.
             sync(campaign)
-        except (ValueError, IntegrityError, OperationalError):
+        except (ValueError, IntegrityError, OperationalError) as exc:
             db.session.rollback()
-            flash(ERROR, 'error')
+            flash(str(exc) if isinstance(exc, ValueError) else ERROR, 'error')
         else:
             flash('Campaign connected and donations imported.')
         return redirect(url_for('charity_donations', family_id=family_id))
