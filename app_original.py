@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 45683)
-Total output lines: 3187
-
 import os
 import secrets
 import hmac
@@ -1083,7 +1080,1075 @@ def create_app(test_config=None):
             if not value.is_finite() or value < 0 or (value == 0 and not allow_zero) or value > 1000000 or value.as_tuple().exponent < -2:
                 raise ValueError()
             return int(value * 100)
-        except (Inval…15683 tokens truncated…B.')
+        except (InvalidOperation, ValueError):
+            abort(400, 'Enter a valid amount with up to two decimal places, no greater than $1,000,000.')
+
+    def stripe_value(value, key, default=None):
+        if value is None:
+            return default
+        if isinstance(value, dict):
+            return value.get(key, default)
+        return getattr(value, key, default)
+
+    def stripe_receipt(contact, amount_cents, reference, donor_email=''):
+        existing = db.session.scalar(select(Receipt).where(Receipt.reference == reference))
+        if existing:
+            return existing, False
+        receipt = Receipt(contact_id=contact.id, family_id=contact.family_id,
+                          amount_cents=amount_cents, received_on=date.today(),
+                          reference=reference, note='Processed securely by Stripe')
+        db.session.add(receipt)
+        receipt_email = donor_email or contact.email
+        if receipt_email:
+            send_email('donation_receipt', receipt_email, 'Your Yazory donation receipt',
+                       f'Thank you for your donation of ${amount_cents / 100:,.2f}.\n\n'
+                       f'Receipt reference: {reference}\n\n'
+                       'Yazory is developed and operated by Synccos Inc.',
+                       family_id=contact.family_id)
+        return receipt, True
+
+    @app.get('/language/<language>')
+    def set_language(language):
+        if language not in LANGUAGES:
+            abort(404)
+        session['language'] = language
+        # Only known local application routes may be used as the return path.
+        from urllib.parse import urlsplit
+        target = request.args.get('next', '/')
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc or not target.startswith('/') or target.startswith('//') or '\\' in target:
+            target = '/'
+        return redirect(target)
+
+    @app.get('/health')
+    def health():
+        db.session.execute(select(1))
+        return {'status': 'ok'}
+
+    def public_page(page, title):
+        return render_template('public_site.html', page=page, title=title)
+
+    @app.get('/about')
+    def about():
+        return public_page('about', 'About Yazory')
+
+    @app.get('/privacy')
+    def privacy():
+        return public_page('privacy', 'Privacy policy')
+
+    @app.get('/terms')
+    def terms():
+        return public_page('terms', 'Terms of service')
+
+    @app.get('/donation-policy')
+    def donation_policy():
+        return public_page('donation-policy', 'Donation and recurring payment policy')
+
+    @app.get('/supporters/<int:contact_id>/donate')
+    def supporter_donation(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        return render_template(
+            'donation_checkout.html', title='Donation checkout', supporter=contact,
+            default_amount=contact.monthly_cents / 100 if contact.monthly_cents >= 100 else 1,
+            default_frequency=contact.pledge_frequency if contact.monthly_cents >= 100 else 'One time',
+            stripe_publishable_key=app.config['STRIPE_PUBLISHABLE_KEY'])
+
+    @app.post('/supporters/<int:contact_id>/embedded-checkout-session')
+    def embedded_checkout_session(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        if not app.config['STRIPE_SECRET_KEY'] or not app.config['STRIPE_PUBLISHABLE_KEY']:
+            return {'error': 'Embedded Stripe Checkout is not configured.'}, 503
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            return {'error': 'You are not assigned to this family.'}, 403
+        payment_amount = amount('amount')
+        frequency = field('frequency', True, 20)
+        if frequency not in PLEDGE_FREQUENCIES:
+            return {'error': 'Choose a valid donation frequency.'}, 400
+        metadata = {'contact_id': str(contact.id), 'family_id': str(contact.family_id),
+                    'amount_cents': str(payment_amount), 'frequency': frequency}
+        line_item = {'price_data': {'currency': app.config['STRIPE_CURRENCY'],
+                     'product_data': {'name': 'Yazory donation'},
+                     'unit_amount': payment_amount}, 'quantity': 1}
+        if frequency != 'One time':
+            line_item['price_data']['recurring'] = {
+                'interval': 'week' if frequency == 'Weekly' else 'month'}
+        params = {
+            'ui_mode': 'embedded',
+            'mode': 'payment' if frequency == 'One time' else 'subscription',
+            'line_items': [line_item], 'metadata': metadata,
+            'return_url': absolute_url('stripe_success') + '?session_id={CHECKOUT_SESSION_ID}',
+            'payment_intent_data': {'metadata': metadata} if frequency == 'One time' else None,
+            'subscription_data': {'metadata': metadata} if frequency != 'One time' else None,
+        }
+        try:
+            checkout = create_checkout_session(
+                app.config['STRIPE_SECRET_KEY'],
+                {key: value for key, value in params.items() if value is not None},
+                f'yazory-embedded-{secrets.token_hex(16)}')
+        except Exception as exc:
+            app.logger.exception('Embedded Stripe Checkout creation failed')
+            return {'error': getattr(exc, 'user_message', None) or
+                    'Stripe could not prepare the payment form.'}, 502
+        client_secret = stripe_value(checkout, 'client_secret', '')
+        if not client_secret:
+            return {'error': 'Stripe did not return an embedded payment form.'}, 502
+        return {'client_secret': client_secret}
+
+    @app.get('/stripe-payments/<int:payment_id>/manage')
+    def manage_stripe_payment(payment_id):
+        require_capability(('family_admin', 'fundraiser'))
+        payment = db.get_or_404(StripePayment, payment_id)
+        if not can_access_family(payment.family_id) or not contact_visible(db.session.get(Contact,payment.contact_id)):
+            abort(403, 'You are not assigned to this family.')
+        if not payment.subscription_id or not payment.customer_id:
+            flash('This donation does not have an active recurring billing account.', 'error')
+            return redirect(url_for('supporter_detail', contact_id=payment.contact_id))
+        try:
+            portal = create_billing_portal_session(
+                app.config['STRIPE_SECRET_KEY'], payment.customer_id,
+                absolute_url('supporter_detail', contact_id=payment.contact_id))
+        except Exception as exc:
+            app.logger.exception('Stripe billing portal creation failed')
+            flash(getattr(exc, 'user_message', None) or
+                  'Stripe could not open recurring-donation management.', 'error')
+            return redirect(url_for('supporter_detail', contact_id=payment.contact_id))
+        return redirect(stripe_value(portal, 'url', ''), code=303)
+
+    @app.route('/supporters/<int:contact_id>/stripe-checkout', methods=['GET', 'POST'])
+    def stripe_checkout(contact_id):
+        """Create a Stripe-hosted payment page; Yazory never receives card details."""
+        require_capability(('family_admin', 'fundraiser'))
+        if not app.config['STRIPE_SECRET_KEY']:
+            abort(503, 'Stripe payments are not configured.')
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        if request.method == 'GET':
+            try:
+                entered_amount = Decimal(request.args.get('amount', ''))
+                if (not entered_amount.is_finite() or entered_amount <= 0 or
+                        entered_amount > 1000000 or entered_amount.as_tuple().exponent < -2):
+                    raise ValueError()
+                payment_amount = int(entered_amount * 100)
+            except (InvalidOperation, ValueError):
+                abort(400, 'Enter a valid amount with up to two decimal places, no greater than $1,000,000.')
+            frequency = request.args.get('frequency', '')[:20]
+        else:
+            payment_amount = amount('amount')
+            frequency = field('frequency', True, 20)
+        if frequency not in PLEDGE_FREQUENCIES:
+            abort(400, 'Choose a valid donation frequency.')
+        # Do not write to the database before opening Checkout. A blocked
+        # database flush previously held the browser on "Opening Stripe…" even
+        # though Stripe itself was reachable. Stripe returns the session first;
+        # we then persist the local tracking record before redirecting the user.
+        metadata = {
+            'contact_id': str(contact.id), 'family_id': str(contact.family_id),
+            'amount_cents': str(payment_amount), 'frequency': frequency,
+        }
+        line_item = {'price_data': {'currency': app.config['STRIPE_CURRENCY'],
+                     'product_data': {'name': 'Yazory donation'},
+                     'unit_amount': payment_amount}, 'quantity': 1}
+        params = {'mode': 'payment' if frequency == 'One time' else 'subscription',
+                  'line_items': [line_item], 'customer_creation': 'always' if frequency == 'One time' else None,
+                  'success_url': absolute_url('stripe_success') + '?session_id={CHECKOUT_SESSION_ID}',
+                  'cancel_url': absolute_url('stripe_cancel'), 'metadata': metadata,
+                  'payment_intent_data': {'metadata': metadata} if frequency == 'One time' else None,
+                  'subscription_data': {'metadata': metadata} if frequency != 'One time' else None}
+        if frequency != 'One time':
+            line_item['price_data']['recurring'] = {
+                'interval': 'week' if frequency == 'Weekly' else 'month'}
+        params = {key: value for key, value in params.items() if value is not None}
+        try:
+            checkout = create_checkout_session(app.config['STRIPE_SECRET_KEY'], params,
+                                               f'yazory-checkout-{secrets.token_hex(16)}')
+        except Exception as exc:
+            db.session.rollback()
+            # Stripe errors used to land on a generic 502 page, which made the
+            # Checkout button look as though it had done nothing. Return the
+            # supporter to the form and show Stripe's safe, user-facing reason.
+            user_message = getattr(exc, 'user_message', None)
+            app.logger.exception('Stripe Checkout session creation failed')
+            flash(user_message or
+                  'Stripe could not open the secure payment page. Check that the live Stripe account is activated and try again.',
+                  'error')
+            return redirect(url_for('supporter_detail', contact_id=contact.id))
+        checkout_session_id = stripe_value(checkout, 'id', '')
+        checkout_url = stripe_value(checkout, 'url', '')
+        if not checkout_session_id or not checkout_url:
+            flash('Stripe did not return a secure payment page. Please try again.', 'error')
+            return redirect(url_for('supporter_detail', contact_id=contact.id))
+        # Do not make the donor wait for a database write. The signed Stripe
+        # webhook creates the local payment record when Checkout completes.
+        return redirect(checkout_url, code=303)
+
+    @app.get('/stripe/success')
+    def stripe_success():
+        payment = db.session.scalar(select(StripePayment).where(
+            StripePayment.checkout_session_id == request.args.get('session_id', '')[:255]))
+        return render_template('stripe_result.html', title='Donation received', success=True,
+                               payment=payment)
+
+    @app.get('/stripe/cancel')
+    def stripe_cancel():
+        return render_template('stripe_result.html', title='Donation not completed', success=False,
+                               payment=None)
+
+    @app.post('/stripe/webhook')
+    def stripe_webhook():
+        if not app.config['STRIPE_WEBHOOK_SECRET']:
+            abort(503, 'Stripe webhooks are not configured.')
+        try:
+            event = construct_webhook_event(request.get_data(), request.headers.get('Stripe-Signature', ''),
+                                            app.config['STRIPE_WEBHOOK_SECRET'])
+        except Exception:
+            abort(400, 'Invalid Stripe webhook signature.')
+        event_id, event_type = stripe_value(event, 'id', ''), stripe_value(event, 'type', '')
+        if not event_id or db.session.get(StripeEvent, event_id):
+            return {'received': True}
+        obj = stripe_value(stripe_value(event, 'data', {}), 'object', {})
+        metadata = stripe_value(obj, 'metadata', {}) or {}
+        if event_type.startswith('invoice.') and not metadata:
+            parent = stripe_value(obj, 'parent', {}) or {}
+            subscription_details = stripe_value(parent, 'subscription_details', {}) or {}
+            if not subscription_details:
+                subscription_details = stripe_value(obj, 'subscription_details', {}) or {}
+            metadata = stripe_value(subscription_details, 'metadata', {}) or {}
+        payment_id = stripe_value(metadata, 'yazory_payment_id', '')
+        try:
+            payment = db.session.get(StripePayment, int(payment_id)) if payment_id else None
+        except (TypeError, ValueError):
+            payment = None
+        if payment is None and event_type == 'checkout.session.completed':
+            payment = db.session.scalar(select(StripePayment).where(
+                StripePayment.checkout_session_id == stripe_value(obj, 'id', '')))
+        if payment is None and event_type.startswith('invoice.'):
+            invoice_subscription = stripe_value(obj, 'subscription', '')
+            if not invoice_subscription:
+                invoice_parent = stripe_value(obj, 'parent', {}) or {}
+                invoice_subscription = stripe_value(
+                    stripe_value(invoice_parent, 'subscription_details', {}) or {},
+                    'subscription', '')
+            if invoice_subscription:
+                payment = db.session.scalar(select(StripePayment).where(
+                    StripePayment.subscription_id == invoice_subscription))
+        if payment is None and event_type == 'checkout.session.completed':
+            try:
+                contact_id = int(stripe_value(metadata, 'contact_id', ''))
+                family_id = int(stripe_value(metadata, 'family_id', ''))
+                amount_cents = int(stripe_value(metadata, 'amount_cents', ''))
+            except (TypeError, ValueError):
+                contact_id = family_id = amount_cents = 0
+            frequency = stripe_value(metadata, 'frequency', '')
+            contact = db.session.get(Contact, contact_id) if contact_id else None
+            if (contact and contact.family_id == family_id and amount_cents > 0 and
+                    frequency in PLEDGE_FREQUENCIES):
+                payment = StripePayment(
+                    contact_id=contact.id, family_id=family_id,
+                    amount_cents=amount_cents, currency=app.config['STRIPE_CURRENCY'],
+                    frequency=frequency,
+                    checkout_session_id=stripe_value(obj, 'id', ''), status='open')
+                db.session.add(payment)
+                db.session.flush()
+        if event_type == 'checkout.session.completed' and payment:
+            payment.checkout_session_id = stripe_value(obj, 'id', payment.checkout_session_id)
+            payment.payment_intent_id = stripe_value(obj, 'payment_intent', '') or ''
+            payment.subscription_id = stripe_value(obj, 'subscription', '') or ''
+            payment.customer_id = stripe_value(obj, 'customer', '') or ''
+            payment.status = 'active' if payment.subscription_id else 'paid'
+            payment.completed_at = utcnow()
+            if not payment.subscription_id:
+                details = stripe_value(obj, 'customer_details', {}) or {}
+                _, created = stripe_receipt(payment.contact, payment.amount_cents,
+                                            f'stripe:{payment.payment_intent_id or payment.checkout_session_id}',
+                                            stripe_value(details, 'email', '') or '')
+                if created:
+                    payment.successful_charges += 1
+                    payment.last_paid_at = utcnow()
+        elif event_type == 'invoice.paid' and payment:
+            payment.status = 'active'
+            payment.subscription_id = stripe_value(obj, 'subscription', payment.subscription_id) or payment.subscription_id
+            _, created = stripe_receipt(payment.contact, stripe_value(obj, 'amount_paid', payment.amount_cents),
+                                        f'stripe-invoice:{stripe_value(obj, "id", event_id)}',
+                                        stripe_value(obj, 'customer_email', '') or '')
+            if created:
+                payment.successful_charges += 1
+                payment.last_paid_at = utcnow()
+        elif event_type in ('invoice.payment_failed', 'customer.subscription.paused') and payment:
+            payment.status = 'past_due'
+        elif event_type == 'customer.subscription.deleted' and payment:
+            payment.status = 'cancelled'
+        elif event_type == 'account.updated':
+            recipient = db.session.scalar(select(StripeRecipient).where(
+                StripeRecipient.stripe_account_id == stripe_value(obj, 'id', '')))
+            if recipient:
+                recipient.details_submitted = bool(stripe_value(obj, 'details_submitted', False))
+                recipient.payouts_enabled = bool(stripe_value(obj, 'payouts_enabled', False))
+                recipient.status = 'ready' if recipient.payouts_enabled else ('restricted' if recipient.details_submitted else 'onboarding')
+                recipient.updated_at = utcnow()
+        db.session.add(StripeEvent(id=event_id, event_type=event_type))
+        db.session.commit()
+        return {'received': True}
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if request.method == 'POST':
+            import time
+            time.sleep(1)
+            email = email_field()
+            ensure_bootstrap_owner()
+            user = db.session.scalar(select(StaffUser).where(StaffUser.email == email.lower()))
+            if user and app.extensions['workflows']['active_user'](user) and check_password_hash(user.password_hash, request.form.get('password', '')):
+                language = session.get('language', 'en')
+                session.clear()
+                session['language'] = language
+                session['user_id'] = user.id
+                session.permanent = True
+                user.last_login_at = utcnow()
+                db.session.commit()
+                return redirect(url_for('dashboard'))
+            flash('Email or password is incorrect.', 'error')
+        return render_template('login.html', title='Staff sign in')
+
+    @app.post('/logout')
+    def logout():
+        language = session.get('language', 'en')
+        session.clear()
+        session['language'] = language
+        return redirect(url_for('login'))
+
+    @app.route('/forgot-password', methods=['GET', 'POST'])
+    def forgot_password():
+        if request.method == 'POST':
+            email = email_field()
+            user = db.session.scalar(select(StaffUser).where(
+                StaffUser.email == email, StaffUser.status == 'active'))
+            if user:
+                db.session.execute(db.update(AccountToken).where(
+                    AccountToken.staff_user_id == user.id, AccountToken.purpose == 'reset',
+                    AccountToken.used_at.is_(None)).values(used_at=utcnow()))
+                raw = account_token(user, 'reset', 1)
+                link = absolute_url('reset_password', token=raw)
+                send_email('password_reset', user.email, 'Reset your Yazory password',
+                    f'A password reset was requested for your Yazory account.\n\nReset password: {link}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.',
+                    staff_user_id=user.id)
+                db.session.commit()
+            flash('If an active account uses that email, a reset link has been sent.')
+            return redirect(url_for('login'))
+        return render_template('forgot_password.html', title='Reset password')
+
+    @app.route('/reset-password/<token>', methods=['GET', 'POST'])
+    def reset_password(token):
+        record = token_record(token, 'reset')
+        if record is None:
+            abort(400, 'This password-reset link is invalid or expired.')
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            confirmation = request.form.get('password_confirmation', '')
+            if not 12 <= len(password) <= 256 or password != confirmation:
+                abort(400, 'Passwords must match and contain at least 12 characters.')
+            record.staff_user.password_hash = generate_password_hash(password)
+            record.used_at = utcnow()
+            db.session.commit()
+            flash('Password updated. You can now sign in.')
+            return redirect(url_for('login'))
+        return render_template('set_password.html', title='Reset password', invitation=False)
+
+    @app.route('/accept-invitation/<token>', methods=['GET', 'POST'])
+    def accept_invitation(token):
+        record = token_record(token, 'invite')
+        if record is None or record.staff_user.status != 'pending':
+            abort(400, 'This invitation is invalid, expired, or already used.')
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            confirmation = request.form.get('password_confirmation', '')
+            name = field('name', True)
+            if not 12 <= len(password) <= 256 or password != confirmation:
+                abort(400, 'Passwords must match and contain at least 12 characters.')
+            user = record.staff_user
+            user.name = name
+            user.password_hash = generate_password_hash(password)
+            user.status = 'active'
+            user.activated_at = utcnow()
+            record.used_at = utcnow()
+            audit(f'Accepted staff invitation: {user.email}')
+            db.session.commit()
+            flash('Your Yazory account is ready. Sign in to continue.')
+            return redirect(url_for('login'))
+        return render_template('set_password.html', title='Accept invitation', invitation=True,
+                               invited_user=record.staff_user)
+
+    @app.get('/')
+    def dashboard():
+        if current_user() and current_user().role == 'fundraiser':
+            return redirect(url_for('fundraising'))
+        statement = select(Family).options(
+            selectinload(Family.children), selectinload(Family.intake_record)
+        ).order_by(Family.id.desc())
+        if not organization_admin():
+            statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
+        families = db.session.scalars(statement).all()
+        family_ids = [family.id for family in families]
+        budget_records = {record.family_id: record for record in db.session.scalars(
+            select(HouseholdBudget).where(HouseholdBudget.family_id.in_(family_ids))).all()
+        } if family_ids else {}
+        month = datetime.now().strftime('%Y-%m')
+        expenses = db.session.scalars(select(Expense).where(Expense.month == month, Expense.family_id.in_(family_ids))).all()
+        network_visible = organization_admin() or bool(current_user() and current_user().role in ('family_admin', 'fundraiser'))
+        active_family_ids = select(Family.id).where(Family.status == 'Active', Family.id.in_(family_ids))
+        pledged = unique_pledged_total(active_family_ids) if network_visible else 0
+        if app.extensions['workflows']['enforced']() and network_visible:
+            pledged = app.extensions['workflows']['monthly_pledged'](family_ids=[f.id for f in families if f.status=='Active'])
+        requested_statement = select(Expense).where(Expense.status == 'Requested').order_by(Expense.id.desc())
+        if not organization_admin():
+            requested_statement = requested_statement.where(Expense.family_id.in_(
+                select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
+        requested = db.session.scalars(requested_statement).all()
+        received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.family_id.in_(family_ids))) if family_ids and network_visible else 0
+        return render_template('dashboard.html', title='Overview', families=families, active=sum(f.status=='Active' for f in families), pledged=pledged, received=received, network_visible=network_visible, shortfall=sum(budget_totals(f, budget_records.get(f.id))['shortfall'] for f in families), approved=sum(e.amount_cents for e in expenses if e.status in ('Approved','Paid')), paid=sum(e.amount_cents for e in expenses if e.status=='Paid'), requested=requested)
+
+    @app.get('/families')
+    def families():
+        require_capability(('family_admin', 'office_employee'))
+        query = request.args.get('q', '').strip()[:160]
+        statement = select(Family).order_by(Family.id.desc())
+        if query:
+            statement = statement.where(Family.name.icontains(query, autoescape=True))
+        if not organization_admin():
+            statement = statement.where(Family.id.in_(select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
+        return render_template('families.html', title='Families', families=db.session.scalars(statement).all(), query=query)
+
+    @app.get('/cases')
+    def cases():
+        """Modern case-directory URL; the established families URL remains valid."""
+        return families()
+
+    def intake_form(family, title, error=None):
+        values = dict(request.form) if error else ({key: getattr(family, key) for key in
+            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
+        budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
+        if error:
+            budget.update(request.form)
+            import json
+            for group in ('accounts', 'assistance'):
+                try:
+                    entries = json.loads(request.form.get(group + '_json', '[]'))
+                    budget[group] = entries if isinstance(entries, list) else []
+                except ValueError:
+                    budget[group] = []
+        shul_names = db.session.scalars(select(Institution.name).where(
+            Institution.kind == 'Shul').distinct().order_by(Institution.name)).all()
+        yeshivah_names = db.session.scalars(select(Institution.name).where(
+            Institution.kind == 'Yeshivah').distinct().order_by(Institution.name)).all()
+        if error and 'yeshivah_name' in request.form:
+            names = request.form.getlist('yeshivah_name')
+            grades = request.form.getlist('yeshivah_grade')
+            years_in = request.form.getlist('yeshivah_year_from')
+            years_out = request.form.getlist('yeshivah_year_to')
+            yeshivah_history = [
+                {'name': name, 'grade': grades[index] if index < len(grades) else '',
+                 'year_from': years_in[index] if index < len(years_in) else '',
+                 'year_to': years_out[index] if index < len(years_out) else ''}
+                for index, name in enumerate(names)
+            ] or [{'name': '', 'grade': '', 'year_from': '', 'year_to': ''}]
+        elif family:
+            affiliations = db.session.scalars(select(PersonAffiliation).join(Institution).where(
+                PersonAffiliation.person_type == 'family',
+                PersonAffiliation.person_id == family.id,
+                Institution.kind == 'Yeshivah').order_by(PersonAffiliation.year_from,
+                                                         PersonAffiliation.id)).all()
+            yeshivah_history = [
+                {'name': row.institution.name, 'grade': row.grade,
+                 'year_from': row.year_from or '', 'year_to': row.year_to or ''}
+                for row in affiliations
+            ]
+            if not yeshivah_history and family.yeshivah:
+                yeshivah_history = [{'name': family.yeshivah, 'grade': '',
+                                      'year_from': '', 'year_to': ''}]
+        else:
+            yeshivah_history = []
+        return render_template('family_form.html', family=family, title=title,
+            values=values, budget=budget, intake_error=error,
+            shul_names=shul_names, yeshivah_names=yeshivah_names,
+            yeshivah_history=yeshivah_history)
+
+    def submitted_yeshivah_history():
+        """Validate the applicant's repeatable, structured yeshivah history."""
+        if 'yeshivah_name' not in request.form:
+            return None
+        columns = {key: request.form.getlist(key) for key in (
+            'yeshivah_name', 'yeshivah_grade', 'yeshivah_year_from',
+            'yeshivah_year_to')}
+        histories = []
+        for index, raw_name in enumerate(columns['yeshivah_name']):
+            values = {key: (rows[index].strip() if index < len(rows) else '')
+                      for key, rows in columns.items()}
+            if not any(values.values()):
+                continue
+            if not all(values.values()):
+                raise ValueError('For every yeshivah, enter the name, class entered, year in, and year out.')
+            if len(values['yeshivah_name']) > 160 or len(values['yeshivah_grade']) > 80:
+                raise ValueError('Yeshivah information is too long.')
+            try:
+                year_from = int(values['yeshivah_year_from'])
+                year_to = int(values['yeshivah_year_to'])
+            except ValueError:
+                raise ValueError('Enter valid yeshivah years.')
+            if not 1900 <= year_from <= 2100 or not 1900 <= year_to <= 2100:
+                raise ValueError('Enter valid yeshivah years.')
+            if year_from > year_to:
+                raise ValueError('The year out must not be before the year in.')
+            histories.append({'name': values['yeshivah_name'],
+                              'grade': values['yeshivah_grade'],
+                              'year_from': year_from, 'year_to': year_to})
+        return histories
+
+    def institution_field(key):
+        selected = request.form.get(key, '').strip()
+        if selected == '__new__':
+            selected = request.form.get(key + '_new', '').strip()
+        if len(selected) > 160:
+            abort(400, 'Value is too long.')
+        return selected
+
+    def save_intake(family, data):
+        if data is not None:
+            record = db.session.get(HouseholdIntake, family.id)
+            if record is None:
+                record = HouseholdIntake(family_id=family.id)
+                db.session.add(record)
+            record.data = data
+
+    @app.route('/families/new', methods=['GET', 'POST'])
+    def new_family():
+        require_capability(('organization_admin', 'office_employee'))
+        if request.method == 'POST':
+            try:
+                intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
+                yeshivah_history = submitted_yeshivah_history()
+            except ValueError as exc:
+                return intake_form(None, 'New family intake', str(exc)), 400
+            limits = {'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
+            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
+            for key in ('yeshivah', 'weekday_shul', 'shabbos_shul'):
+                setattr(family, key, institution_field(key))
+            if yeshivah_history is not None:
+                family.yeshivah = yeshivah_history[0]['name'] if yeshivah_history else ''
+            db.session.add(family)
+            db.session.flush()
+            connect_family_profile_directories(family, yeshivah_history)
+            save_intake(family, intake_data)
+            # An office intake never creates an unassigned household.
+            if not organization_admin():
+                db.session.add(FamilyAssignment(staff_user_id=current_user().id, family_id=family.id))
+            audit('Created family intake', family.id)
+            db.session.commit()
+            flash('Family intake saved.')
+            return redirect(url_for('family_detail', family_id=family.id))
+        return intake_form(None, 'New family intake')
+
+    @app.route('/families/<int:family_id>/edit', methods=['GET', 'POST'])
+    def edit_family(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        if request.method == 'POST':
+            try:
+                intake_data = validate_intake(request.form) if request.form.get('intake_version') else None
+                yeshivah_history = submitted_yeshivah_history()
+            except ValueError as exc:
+                return intake_form(family, 'Edit family profile', str(exc)), 400
+            limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
+            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances']:
+                setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
+            for key in ('yeshivah', 'weekday_shul', 'shabbos_shul'):
+                setattr(family, key, institution_field(key))
+            if yeshivah_history is not None:
+                family.yeshivah = yeshivah_history[0]['name'] if yeshivah_history else ''
+            connect_family_profile_directories(family, yeshivah_history)
+            save_intake(family, intake_data)
+            audit('Updated family profile', family.id)
+            db.session.commit()
+            flash('Profile updated.')
+            return redirect(url_for('family_detail', family_id=family.id))
+        return intake_form(family, 'Edit family profile')
+
+    @app.get('/families/<int:family_id>')
+    def family_detail(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        if not can_access_family(family_id):
+            abort(403, 'You are not assigned to this family.')
+        family = db.session.scalar(select(Family).options(
+            selectinload(Family.children), selectinload(Family.contacts).selectinload(Contact.nested_supporters),
+            selectinload(Family.expenses), selectinload(Family.documents),
+            selectinload(Family.gabbais), selectinload(Family.intake_record)
+        ).where(Family.id == family_id))
+        if family is None:
+            abort(404)
+        if current_user() and current_user().role == 'office_employee':
+            return render_template('family_office_with_documents.html', title=family.name, family=family)
+        activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
+        supporter_keys = {contact.supporter_key for contact in family.contacts if contact.supporter_key}
+        connected_counts = dict(db.session.execute(select(
+            Contact.supporter_key, func.count(func.distinct(Contact.family_id))
+        ).where(Contact.supporter_key.in_(supporter_keys)).group_by(Contact.supporter_key)).all()) if supporter_keys else {}
+        for contact in family.contacts:
+            contact.connected_cases = connected_counts.get(contact.supporter_key, 1)
+        # Keep each supporter's household together in the profile table.  A
+        # supporter linked as a son or son-in-law belongs immediately beneath
+        # the selected parent instead of appearing elsewhere in the flat list.
+        top_level_contacts = [contact for contact in family.contacts if not contact.parent_contact_id]
+        included_contact_ids = set()
+        contact_rows = []
+        def add_contact_branch(contact, depth=0):
+            if contact.id in included_contact_ids:
+                return
+            included_contact_ids.add(contact.id)
+            contact_rows.append((contact, depth))
+            for nested in sorted(contact.nested_supporters, key=lambda row: row.name.lower()):
+                add_contact_branch(nested, depth + 1)
+        for contact in top_level_contacts:
+            add_contact_branch(contact)
+        # Preserve access to legacy/orphaned records whose parent is unavailable.
+        contact_rows.extend((contact, False) for contact in family.contacts
+                            if contact.parent_contact_id and contact.id not in included_contact_ids)
+        return render_template('family.html', title=family.name, family=family, activity=activity,
+                               contact_rows=contact_rows,
+                               budget=budget_totals(family),
+                               pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family.id))
+
+    @app.get('/families/<int:family_id>/print')
+    def family_print_report(family_id):
+        """One filterable, print-ready record for every list on a family profile."""
+        require_capability(('family_admin',))
+        family = accessible_family_or_404(family_id)
+        query = request.args.get('q', '').strip()[:160]
+        section = request.args.get('section', 'all')
+        supporter_status = request.args.get('supporter_status', '')
+        expense_status = request.args.get('expense_status', '')
+        if section not in {'all', 'children', 'supporters', 'donations', 'expenses', 'documents', 'activity'}:
+            abort(400, 'Choose a valid report section.')
+        if supporter_status and supporter_status not in CONTACT_STATUSES:
+            abort(400, 'Choose a valid supporter status.')
+        if expense_status and expense_status not in EXPENSE_TRANSITIONS:
+            abort(400, 'Choose a valid expense status.')
+
+        def report_date(name):
+            raw = request.args.get(name, '').strip()
+            if not raw:
+                return None
+            try:
+                return date.fromisoformat(raw)
+            except ValueError:
+                abort(400, 'Enter a valid report date.')
+
+        date_from, date_to = report_date('date_from'), report_date('date_to')
+        if date_from and date_to and date_from > date_to:
+            abort(400, 'The start date must be before the end date.')
+        needle = query.casefold()
+        matches = lambda *values: not needle or any(needle in str(value or '').casefold() for value in values)
+
+        children = [child for child in sorted(family.children, key=lambda row: (row.age, row.name.casefold()))
+                    if matches(child.name, child.age, child.grade, child.school, child.tuition_contact, child.spouse_name)]
+        contacts = [contact for contact in sorted(family.contacts, key=lambda row: row.name.casefold())
+                    if (not supporter_status or contact.status == supporter_status)
+                    and matches(contact.name, contact.relationship, contact.phone, contact.status)]
+        receipt_statement = select(Receipt).where(Receipt.family_id == family.id)
+        if date_from:
+            receipt_statement = receipt_statement.where(Receipt.received_on >= date_from)
+        if date_to:
+            receipt_statement = receipt_statement.where(Receipt.received_on <= date_to)
+        receipts = [receipt for receipt in db.session.scalars(receipt_statement.order_by(
+            Receipt.received_on.desc(), Receipt.id.desc())).all()
+            if matches(receipt.contact.name, receipt.amount_cents / 100, receipt.reference, receipt.note,
+                       receipt.received_on.isoformat())]
+        expenses = [expense for expense in sorted(family.expenses, key=lambda row: (row.month, row.id), reverse=True)
+                    if (not expense_status or expense.status == expense_status)
+                    and matches(expense.category, expense.payee, expense.month, expense.amount_cents / 100,
+                                expense.status, expense.payment_reference, expense.note)]
+        documents = [document for document in sorted(family.documents, key=lambda row: row.uploaded_at, reverse=True)
+                     if app.extensions['workflows']['document_allowed'](document) and matches(document.filename, document.content_type)]
+        activity = [row for row in db.session.scalars(select(Audit).where(
+            Audit.family_id == family.id).order_by(Audit.id.desc())).all()
+                    if matches(row.actor, row.action, row.at.isoformat())]
+        return render_template('family_print.html', title='Profile report', family=family,
+            query=query, section=section, supporter_status=supporter_status, expense_status=expense_status,
+            date_from=date_from, date_to=date_to, children=children, contacts=contacts, receipts=receipts,
+            expenses=expenses, documents=documents, activity=activity, budget=budget_totals(family),
+            pledged=sum(contact.monthly_equivalent_cents for contact in family.contacts if contact.status == 'Pledged'),
+            received=sum(receipt.amount_cents for receipt in receipts), generated_at=datetime.now(timezone.utc))
+
+    @app.route('/families/<int:family_id>/expense-report', methods=['GET', 'POST'])
+    def family_expense_report(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        record = db.session.get(HouseholdBudget, family_id)
+        data = record.data if record else {}
+        error = None
+        if request.method == 'POST':
+            try:
+                data = child_budget.parse(request.form, family.children)
+            except ValueError as exc:
+                error = str(exc)
+            else:
+                if record is None:
+                    record = HouseholdBudget(family_id=family_id)
+                    db.session.add(record)
+                record.data = data
+                for child in family.children:
+                    child.age = data['children'][str(child.id)]['age']
+                audit('Updated household expense plan', family_id)
+                db.session.commit()
+                flash('Profile updated.')
+                return redirect(url_for('family_expense_report', family_id=family_id))
+        report = child_budget.calculate(data, family.intake_record.data if family.intake_record else {},
+                                        family.children, child_bands())
+        return render_template('expense_report.html', title='Monthly expense report', family=family,
+            report=report, budget=data, categories=child_budget.CATEGORIES, components=child_budget.COMPONENTS,
+            bands=child_budget.BANDS, error=error), 400 if error else 200
+
+    @app.post('/families/<int:family_id>/provider-accounts')
+    def add_provider_account(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        kind = field('kind', True)
+        if kind not in ('utility', 'grocery', 'mosdos', 'other'):
+            abort(400, 'Choose an account type.')
+        treatment = field('budget_treatment')
+        if treatment not in ('', 'additional', 'food', 'rent'):
+            abort(400, 'Invalid account or assistance entry.')
+        monthly_bill = amount('monthly_bill')
+        record = db.session.get(HouseholdIntake, family_id)
+        if record is None:
+            record = HouseholdIntake(family_id=family_id, data={})
+            db.session.add(record)
+        data = dict(record.data or {})
+        accounts = list(data.get('accounts') or [])
+        accounts.append({
+            'kind': kind,
+            'provider': field('provider', True, 300),
+            'account': field('account', limit=300),
+            'phone': field('phone', limit=300),
+            'child': field('child', limit=300),
+            'monthly_bill': monthly_bill,
+            'budget_treatment': treatment,
+        })
+        data['accounts'] = accounts
+        record.data = data
+        audit('Added provider account expense', family_id)
+        db.session.commit()
+        flash('Provider expense added.')
+        return redirect(url_for('family_detail', family_id=family.id) + '#provider-expenses')
+
+    @app.post('/families/<int:family_id>/status')
+    def family_status(family_id):
+        require_organization_admin()
+        family = accessible_family_or_404(family_id)
+        status = field('status', True)
+        if app.extensions['workflows']['enforced']():
+            return app.extensions['workflows']['legacy_status'](family_id, status)
+        if status not in FAMILY_TRANSITIONS[family.status]:
+            abort(400, 'This case status transition is not allowed.')
+        old = family.status
+        family.status = status
+        audit(f'Case status: {old} → {status}', family.id)
+        notify_users(assigned_users(family.id), 'case_status',
+            f'Yazory case YZ-{family.id:04d} status updated',
+            f'Case YZ-{family.id:04d} changed from {old} to {status}. Sign in to Yazory to review it.', family.id)
+        db.session.commit()
+        return redirect(url_for('family_detail', family_id=family.id))
+
+    @app.post('/families/<int:family_id>/children')
+    def add_child(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        accessible_family_or_404(family_id)
+        try:
+            age = int(field('age', True))
+            if not 0 <= age <= 120: raise ValueError()
+        except ValueError:
+            abort(400, 'Age must be between 0 and 120.')
+        child = Child(family_id=family_id, name=field('name', True), age=age,
+            grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300),
+            married=request.form.get('married') == 'yes', spouse_name=field('spouse_name'))
+        db.session.add(child)
+        db.session.flush()
+        connect_child_profile_directory(child)
+        audit('Added child and school details', family_id)
+        db.session.commit()
+        return redirect(url_for('family_detail', family_id=family_id))
+
+    @app.post('/families/<int:family_id>/gabbais')
+    def add_gabbai(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        db.session.add(ShulGabbai(
+            family_id=family.id,
+            name=field('name', True),
+            phone=field('phone', limit=80),
+        ))
+        audit('Added shul gabbai', family.id)
+        db.session.commit()
+        flash('Shul gabbai added.')
+        return redirect(url_for('family_detail', family_id=family.id))
+
+    @app.post('/gabbais/<int:gabbai_id>')
+    def update_gabbai(gabbai_id):
+        require_capability(('family_admin', 'office_employee'))
+        gabbai = db.get_or_404(ShulGabbai, gabbai_id)
+        accessible_family_or_404(gabbai.family_id)
+        gabbai.name = field('name', True)
+        gabbai.phone = field('phone', limit=80)
+        audit('Updated shul gabbai', gabbai.family_id)
+        db.session.commit()
+        flash('Shul gabbai updated.')
+        return redirect(url_for('family_detail', family_id=gabbai.family_id))
+
+    @app.post('/children/<int:child_id>')
+    def update_child(child_id):
+        require_capability(('family_admin', 'office_employee'))
+        child = db.session.get(Child, child_id)
+        if child is None:
+            abort(404)
+        accessible_family_or_404(child.family_id)
+        try:
+            age = int(field('age', True))
+            if not 0 <= age <= 120: raise ValueError()
+        except ValueError:
+            abort(400, 'Age must be between 0 and 120.')
+        child.name = field('name', True)
+        child.age = age
+        child.grade = field('grade', limit=80)
+        child.school = field('school')
+        child.tuition_contact = field('tuition_contact', limit=300)
+        child.married = request.form.get('married') == 'yes'
+        child.spouse_name = field('spouse_name')
+        connect_child_profile_directory(child)
+        audit('Updated child and spouse details', child.family_id)
+        db.session.commit()
+        flash('Child and spouse updated.')
+        return redirect(url_for('family_detail', family_id=child.family_id))
+
+    @app.post('/families/<int:family_id>/contacts')
+    def add_contact(family_id):
+        require_capability(('family_admin', 'fundraiser'))
+        if not can_access_family(family_id):
+            abort(403, 'You are not assigned to this family.')
+        if db.session.get(Family, family_id) is None:
+            abort(404)
+        relationship = field('relationship', True)
+        status = field('status', True)
+        if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS or status not in CONTACT_STATUSES: abort(400)
+        pledge = amount('monthly', allow_zero=status!='Pledged')
+        pledge_frequency = field('pledge_frequency') or 'Monthly'
+        if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
+        parent_contact_id = request.form.get('parent_contact_id', type=int)
+        parent_connection = field('parent_connection')
+        if parent_contact_id:
+            parent = db.session.scalar(select(Contact).where(
+                Contact.id == parent_contact_id,
+                Contact.family_id == family_id))
+            if parent is None:
+                abort(400, 'Choose a valid parent supporter.')
+            if parent_connection not in ('Son', 'Son-in-law'):
+                abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+        else:
+            parent_connection = ''
+        name = field('name', True)
+        phone = field('phone', limit=80)
+        email = optional_email_field()
+        key = supporter_key(name, phone)
+        existing = db.session.scalar(select(Contact).where(Contact.supporter_key == key).order_by(Contact.id))
+        duplicate_case = db.session.scalar(select(Contact.id).where(
+            Contact.family_id == family_id, Contact.supporter_key == key)) if key.startswith('phone:') else None
+        if duplicate_case:
+            abort(400, 'This supporter is already connected to this case.')
+        if existing and key.startswith('phone:'):
+            pledge, pledge_frequency, status = existing.monthly_cents, existing.pledge_frequency, existing.status
+            if not phone:
+                phone = existing.phone
+            if not email:
+                email = existing.email
+        db.session.add(Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
+                               email=email,
+                               supporter_key=key, parent_contact_id=parent_contact_id,
+                               parent_connection=parent_connection, monthly_cents=pledge,
+                               pledge_frequency=pledge_frequency, status=status))
+        audit('Added donor network contact', family_id)
+        db.session.commit()
+        return redirect(url_for('supporters', family_id=family_id))
+
+    @app.post('/contacts/<int:contact_id>')
+    def update_contact(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        # Scope the query to an assigned family rather than exposing a contact row.
+        contact = db.session.scalar(select(Contact).where(Contact.id == contact_id, Contact.family_id.in_(
+            select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))) if not organization_admin() else db.get_or_404(Contact, contact_id)
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        if app.extensions['workflows']['enforced']():
+            app.extensions['workflows']['contact_allowed'](contact, edit=True)
+            flash('Record confirmed commitments through the pledge workflow.')
+            return redirect(url_for('operations', family_id=contact.family_id, kind='pledge'))
+        status = field('status', True)
+        if status not in CONTACT_STATUSES: abort(400)
+        monthly_cents = amount('monthly', allow_zero=status!='Pledged')
+        pledge_frequency = field('pledge_frequency') or 'Monthly'
+        if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
+        linked = [contact]
+        if contact.supporter_key:
+            linked = db.session.scalars(select(Contact).where(Contact.supporter_key == contact.supporter_key)).all()
+        for linked_contact in linked:
+            linked_contact.status = status
+            linked_contact.monthly_cents = monthly_cents
+            linked_contact.pledge_frequency = pledge_frequency
+        audit(f'Updated donor pledge: {status}', contact.family_id)
+        db.session.commit()
+        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+
+    @app.route('/contacts/<int:contact_id>/edit', methods=['GET', 'POST'])
+    def edit_contact(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        if app.extensions['workflows']['enforced']():
+            app.extensions['workflows']['contact_allowed'](contact, edit=request.method=='POST')
+            return redirect(url_for('supporter_network',family_id=contact.family_id,edit=contact.id))
+        possible_parents = db.session.scalars(select(Contact).where(
+            Contact.family_id == contact.family_id,
+            Contact.id != contact.id
+        ).order_by(Contact.name)).all()
+        descendants, pending = set(), [contact.id]
+        while pending:
+            found = db.session.scalars(select(Contact.id).where(Contact.parent_contact_id.in_(pending))).all()
+            pending = [row_id for row_id in found if row_id not in descendants]
+            descendants.update(pending)
+        possible_parents = [row for row in possible_parents if row.id not in descendants]
+        if request.method == 'POST':
+            relationship = field('relationship', True)
+            status = field('status', True)
+            if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS or status not in CONTACT_STATUSES:
+                abort(400)
+            pledge_frequency = field('pledge_frequency') or 'Monthly'
+            if pledge_frequency not in PLEDGE_FREQUENCIES:
+                abort(400, 'Choose a valid donation frequency.')
+            parent_contact_id = request.form.get('parent_contact_id', type=int)
+            if parent_contact_id and not any(row.id == parent_contact_id for row in possible_parents):
+                abort(400, 'Choose a valid parent supporter.')
+            parent_connection = field('parent_connection')
+            if parent_contact_id and parent_connection not in ('Son', 'Son-in-law'):
+                abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+            if not parent_contact_id:
+                parent_connection = ''
+            name = field('name', True)
+            phone = field('phone', limit=80)
+            email = optional_email_field()
+            new_key = supporter_key(name, phone, contact.supporter_key)
+            linked = db.session.scalars(select(Contact).where(
+                Contact.supporter_key == contact.supporter_key)).all() if contact.supporter_key else [contact]
+            for linked_contact in linked:
+                linked_contact.name = name
+                linked_contact.phone = phone
+                linked_contact.email = email
+                linked_contact.supporter_key = new_key
+                linked_contact.status = status
+                linked_contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
+                linked_contact.pledge_frequency = pledge_frequency
+            contact.relationship = relationship
+            contact.parent_contact_id = parent_contact_id
+            contact.parent_connection = parent_connection
+            audit(f'Updated supporter details: {name}', contact.family_id)
+            db.session.commit()
+            flash('Supporter updated.')
+            return redirect(url_for('supporter_detail', contact_id=contact.id))
+        return render_template('supporter_edit.html', title='Edit supporter', contact=contact,
+                               possible_parents=possible_parents)
+
+    @app.post('/contacts/<int:contact_id>/children')
+    def add_contact_child(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(select(Contact).where(
+            Contact.id == contact_id,
+            Contact.family_id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id)))) if not organization_admin() else db.get_or_404(Contact, contact_id)
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        name = field('name', True)
+        spouse_name = field('spouse_name')
+        phone = field('phone', limit=80)
+        parent_connection = field('parent_connection') or 'Son'
+        if parent_connection not in ('Son', 'Son-in-law'):
+            abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+        spouse_connection = 'Son-in-law' if parent_connection == 'Son' else 'Son'
+        db.session.add(Contact(
+            family_id=contact.family_id, name=name, relationship='Nephew',
+            phone=phone, supporter_key=supporter_key(name, phone),
+            parent_contact_id=contact.id, parent_connection=parent_connection,
+            monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
+        if spouse_name:
+            db.session.add(Contact(
+                family_id=contact.family_id, name=spouse_name, relationship='Nephew',
+                phone='', supporter_key=supporter_key(spouse_name, ''),
+                parent_contact_id=contact.id, parent_connection=spouse_connection,
+                monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
+        audit(f'Added child as supporter under: {contact.name}', contact.family_id)
+        db.session.commit()
+        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+
+    @app.post('/contacts/<int:contact_id>/delete')
+    def delete_contact(contact_id):
+        require_capability(('family_admin', 'fundraiser'))
+        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
+        if contact is None:
+            abort(403, 'You are not assigned to this family.')
+        work_model=app.extensions['workflows']['models']['WorkItem']
+        if any(w.data.get('contact_id')==contact.id for w in db.session.scalars(select(work_model).where(work_model.family_id==contact.family_id))):
+            abort(400,'This supporter has workflow history. Pause outreach instead of deleting the record.')
+        link_model=app.extensions['workflows']['models']['SupporterLink']
+        if db.session.get(link_model,contact.id) or db.session.scalar(select(link_model.contact_id).where(link_model.parent_id==contact.id)):
+            abort(400,'This supporter has workflow history. Pause outreach instead of deleting the record.')
+        if contact.receipts:
+            abort(400, 'This supporter cannot be deleted because donation receipts are recorded.')
+        family_id = contact.family_id
+        name = contact.name
+        child_ids = [child.id for child in contact.children]
+        db.session.execute(db.delete(PersonAffiliation).where(
+            ((PersonAffiliation.person_type == 'supporter') & (PersonAffiliation.person_id == contact.id)) |
+            ((PersonAffiliation.person_type.in_(('supporter_child', 'supporter_child_spouse'))) &
+             (PersonAffiliation.person_id.in_(child_ids)))))
+        db.session.delete(contact)
+        audit(f'Deleted supporter: {name}', family_id)
+        db.session.commit()
+        flash('Supporter deleted.')
+        next_url = request.form.get('next', '')
+        return redirect(next_url if next_url.startswith('/') and not next_url.startswith('//') else url_for('supporters'))
+
+    def accessible_document_or_403(document_id):
+        if organization_admin():
+            return db.get_or_404(Document, document_id)
+        document = db.session.scalar(select(Document).where(
+            Document.id == document_id,
+            Document.family_id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id))))
+        if document is None:
+            abort(403, 'You are not assigned to this family.')
+        return document
+
+    @app.post('/families/<int:family_id>/documents')
+    def add_document(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        upload = request.files.get('document')
+        filename = secure_filename(upload.filename or '') if upload else ''
+        if not upload or not filename:
+            abort(400, 'Choose a PDF, PNG, or JPEG document.')
+        data = upload.read()
+        if not data or len(data) > 8 * 1024 * 1024:
+            abort(400, 'Document must be between 1 byte and 8 MB.')
         extension = os.path.splitext(filename)[1].lower()
         if data.startswith(b'%PDF-'):
             detected_type, allowed_extensions = 'application/pdf', {'.pdf'}
