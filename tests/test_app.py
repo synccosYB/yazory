@@ -398,6 +398,50 @@ def test_all_four_lists_can_be_filtered_by_applicant(app, client):
     assert 'Second applicant shul' in shul_page and 'Local shul' not in shul_page
     assert f'relationship_group=siblings&amp;family_id={second_id}' in shul_page
 
+def test_new_supporter_can_be_created_and_connected_from_shul(app, client):
+    assert post(client, '/community-directories/institutions', {
+        'kind': 'Shul', 'name': 'Inline people shul'}).status_code == 302
+    with app.app_context():
+        shul_id = db.session.scalar(db.select(Institution.id).where(
+            Institution.name == 'Inline people shul'))
+    response = post(client, '/community-directories/people', {
+        'institution_id': str(shul_id), 'family_id': '1',
+        'name': 'New shul helper', 'phone': '845-555-1212',
+        'relationship': 'Shul friend', 'note': 'Met after davening'})
+    assert response.status_code == 302
+    assert 'kind=Shul' in response.headers['Location'] and 'family_id=1' in response.headers['Location']
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact).where(Contact.name == 'New shul helper'))
+        affiliation = db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.institution_id == shul_id,
+            PersonAffiliation.person_type == 'supporter',
+            PersonAffiliation.person_id == contact.id))
+        assert contact.family_id == 1
+        assert contact.relationship == 'Shul friend'
+        assert affiliation.note == 'Met after davening'
+    page = client.get(f'/community-directories?kind=Shul&family_id=1').text
+    assert 'New shul helper' in page
+    assert '+ Add a new person' in page
+
+def test_each_supporter_list_can_add_a_person_to_the_selected_family(app, client):
+    siblings = client.get('/supporters?relationship_group=siblings&family_id=1').text
+    nephews = client.get('/supporters?relationship_group=nephews&family_id=1').text
+    for page in (siblings, nephews):
+        assert '+ Add a new person' in page
+        assert 'action="/supporters/contacts"' in page
+    assert 'value="Sibling" selected' in siblings
+    assert 'value="Nephew" selected' in nephews
+
+    response = post(client, '/supporters/contacts', {
+        'family_id': '1', 'relationship_group': 'siblings',
+        'name': 'Inline brother', 'relationship': 'Sibling',
+        'status': 'To contact', 'monthly': '0'})
+    assert response.status_code == 302
+    assert 'relationship_group=siblings' in response.headers['Location']
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact).where(Contact.name == 'Inline brother'))
+        assert (contact.family_id, contact.relationship) == (1, 'Sibling')
+
 def test_nested_supporter_can_be_connected_when_first_added(app, client):
     assert post(client, '/families/1/contacts', {
         'name': 'Brother', 'relationship': 'Sibling',

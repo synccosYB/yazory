@@ -87,13 +87,14 @@
 </div>
 </section>
 <details class="card padded add-supporter-panel no-print" {% if selected_family_id %}open{% endif %}>
-<summary>{{ _('+ Add supporter') }}</summary>
-<form method="post" action="{{ url_for('add_contact', family_id=selected_family_id or families[0].id) if families else '#' }}">
+<summary>{{ _('+ Add a new person') }}</summary>
+<form method="post" action="{{ url_for('add_contact') if families else '#' }}">
+<input type="hidden" name="relationship_group" value="{{ relationship_group }}">
 <div class="form-grid">{{ token(csrf) }}<label>{{ _('Family') }}<select name="family_id" id="supporter-family">{% for family in families %}<option value="{{ family.id }}" {{ 'selected' if family.id==selected_family_id }}>{{ family.name }}</option>{% endfor %}</select>
 </label>
 <label>{{ _('Name *') }}<input name="name" required maxlength="160">
 </label>
-<label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}</select>
+<label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}"{% if (relationship_group == 'siblings' and relationship == 'Sibling') or (relationship_group == 'nephews' and relationship == 'Nephew') %} selected{% endif %}>{{ _(relationship) }}</option>{% endfor %}</select>
 </label>
 <label>{{ _('Whose son or son-in-law is he?') }}<input type="search" class="select-search" data-select-filter="new-parent-contact" placeholder="{{ _('Search names') }}" autocomplete="off">
 <select name="parent_contact_id" id="new-parent-contact">

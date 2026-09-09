@@ -2,6 +2,10 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    '+ Add a new person': {'he': '+ הוספת אדם חדש', 'yi': '+ לייג צו א נייעם מענטש'},
+    'Relationship *': {'he': 'קשר משפחתי *', 'yi': 'משפחה / שייכות *'},
+    'Add and connect person': {'he': 'הוסף וחבר את האדם', 'yi': 'לייג צו און פארבינד דעם מענטש'},
+    'New person added and connected.': {'he': 'האדם החדש נוסף וחובר.', 'yi': 'דער נייער מענטש איז צוגעלייגט און פארבונדן.'},
     'FAMILY PAYOUTS': {'he': 'תשלומים למשפחות', 'yi': 'באצאלונגען פאר משפחות'},
     'Applicant payouts': {'he': 'תשלומים לפונה', 'yi': 'באצאלונגען פארן אפליקאנט'},
     'Send money to an applicant through Stripe or create one printable manual check record.': {'he': 'שלחו כסף לפונה דרך Stripe או צרו רשומת המחאה ידנית אחת להדפסה.', 'yi': 'שיקט געלט צום אפליקאנט דורך Stripe אדער מאכט איין פארשריבענע טשעק צום פרינטן.'},

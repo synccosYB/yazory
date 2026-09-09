@@ -112,6 +112,20 @@
 <button>{{ _('Connect person') }}</button>
 </form>
 </details>
+<details class="no-print">
+<summary>{{ _('+ Add a new person') }}</summary>
+<form method="post" action="{{ url_for('add_directory_person') }}">{{ token(csrf) }}<input type="hidden" name="institution_id" value="{{ institution.id }}">
+<div class="form-grid">
+<label>{{ _('Applicant *') }}{% if selected_family_id %}<input type="hidden" name="family_id" value="{{ selected_family_id }}"><input value="{{ (families|selectattr('id', 'equalto', selected_family_id)|first).name }}" disabled>{% else %}<select name="family_id" required><option value="">{{ _('Choose') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select>{% endif %}</label>
+<label>{{ _('Name *') }}<input name="name" maxlength="160" required></label>
+<label>{{ _('Phone') }}<input name="phone" maxlength="80"></label>
+<label>{{ _('Relationship *') }}<select name="relationship" required><option value="">{{ _('Choose') }}</option>{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}</select></label>
+{% if kind == 'Yeshivah' %}<label>{{ _('Class entered *') }}<input name="grade" maxlength="80" required></label><label>{{ _('Year in *') }}<input name="year_from" type="number" min="1900" max="2100" required></label><label>{{ _('Year out *') }}<input name="year_to" type="number" min="1900" max="2100" required></label>{% endif %}
+<label>{{ _('Notes') }}<input name="note" maxlength="300"></label>
+</div>
+<button>{{ _('Add and connect person') }}</button>
+</form>
+</details>
 {% if not institution.affiliations %}<form method="post" action="{{ url_for('delete_institution', institution_id=institution.id) }}" class="institution-delete no-print">{{ token(csrf) }}<button class="small danger">{{ _('Delete') }}</button>
 </form>{% endif %}</section>{% else %}<section class="card padded empty">{{ _('No institutions found.') }}</section>{% endfor %}
 </div>

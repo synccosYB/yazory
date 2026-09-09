@@ -1975,8 +1975,12 @@ def create_app(test_config=None):
         return redirect(url_for('family_detail', family_id=child.family_id))
 
     @app.post('/families/<int:family_id>/contacts')
+    @app.post('/supporters/contacts', defaults={'family_id': None})
     def add_contact(family_id):
         require_capability(('family_admin', 'fundraiser'))
+        family_id = family_id or request.form.get('family_id', type=int)
+        if not family_id:
+            abort(400, 'Choose a valid applicant.')
         if not can_access_family(family_id):
             abort(403, 'You are not assigned to this family.')
         if db.session.get(Family, family_id) is None:
@@ -2021,7 +2025,11 @@ def create_app(test_config=None):
                                pledge_frequency=pledge_frequency, status=status))
         audit('Added donor network contact', family_id)
         db.session.commit()
-        return redirect(url_for('supporters', family_id=family_id))
+        relationship_group = request.form.get('relationship_group', '').strip()
+        if relationship_group not in ('siblings', 'nephews'):
+            relationship_group = None
+        return redirect(url_for('supporters', family_id=family_id,
+                                relationship_group=relationship_group))
 
     @app.post('/contacts/<int:contact_id>')
     def update_contact(contact_id):
@@ -2767,6 +2775,51 @@ def create_app(test_config=None):
         db.session.commit()
         flash('Person connected.')
         return redirect(url_for('community_directories', kind=institution.kind))
+
+    @app.post('/community-directories/people')
+    def add_directory_person():
+        """Create a supporter from inside a directory and connect them immediately."""
+        require_organization_admin()
+        institution = db.get_or_404(Institution, request.form.get('institution_id', type=int))
+        family_id = request.form.get('family_id', type=int)
+        family = db.session.get(Family, family_id) if family_id else None
+        if family is None:
+            abort(400, 'Choose a valid applicant.')
+        name = field('name', True)
+        phone = field('phone', limit=80)
+        relationship = field('relationship', True)
+        if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS:
+            abort(400, 'Choose a valid relationship.')
+        key = supporter_key(name, phone)
+        if key.startswith('phone:') and db.session.scalar(select(Contact.id).where(
+                Contact.family_id == family.id, Contact.supporter_key == key)):
+            abort(400, 'This supporter is already connected to this case.')
+        contact = Contact(family_id=family.id, name=name, phone=phone,
+                          relationship=relationship, supporter_key=key,
+                          monthly_cents=0, pledge_frequency='Monthly',
+                          status='To contact')
+        db.session.add(contact)
+        db.session.flush()
+        grade = field('grade', required=institution.kind == 'Yeshivah', limit=80)
+        year_from = year_to = None
+        if institution.kind == 'Yeshivah':
+            try:
+                year_from = int(field('year_from', True, 4))
+                year_to = int(field('year_to', True, 4))
+            except ValueError:
+                abort(400, 'Enter a valid year.')
+            if not (1900 <= year_from <= year_to <= 2100):
+                abort(400, 'Enter valid attendance years.')
+        db.session.add(PersonAffiliation(
+            institution_id=institution.id, person_type='supporter', person_id=contact.id,
+            grade=grade, year_from=year_from, year_to=year_to,
+            note=field('note', limit=300)))
+        audit(f'Added and connected supporter to {institution.kind.lower()}: {institution.name}',
+              family.id)
+        db.session.commit()
+        flash('New person added and connected.')
+        return redirect(url_for('community_directories', kind=institution.kind,
+                                family_id=family.id))
 
     @app.post('/community-directories/affiliations/<int:affiliation_id>/delete')
     def delete_person_affiliation(affiliation_id):
