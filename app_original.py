@@ -373,6 +373,17 @@ def create_app(test_config=None):
     def money(cents):
         return f'${(cents or 0)/100:,.2f}'
 
+    @app.template_filter('phone')
+    def phone(value):
+        """Display North American phone numbers consistently without altering saved data."""
+        value = (value or '').strip()
+        digits = re.sub(r'\D', '', value)
+        if len(digits) == 11 and digits.startswith('1'):
+            digits = digits[1:]
+        if len(digits) == 10:
+            return f'({digits[:3]}) {digits[3:6]}-{digits[6:]}'
+        return value
+
     def supporter_key(name, phone, fallback=None):
         """Identify one supporter across cases by phone; names are not unique."""
         digits = re.sub(r'\D', '', phone or '')
