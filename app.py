@@ -794,6 +794,24 @@ def create_app(test_config=None):
         people = _app.db.session.scalars(select(RabbiPerson).order_by(RabbiPerson.name)).all()
         def family_rabbi_preference(family_id):
             return _app.db.session.get(FamilyRabbiPreference, family_id) if family_id else None
+        def family_gabbai_contacts(family_id):
+            if not family_id:
+                return []
+            connections = _app.db.session.scalars(select(FamilyGabbaiConnection).where(
+                FamilyGabbaiConnection.family_id == family_id
+            ).order_by(FamilyGabbaiConnection.role, FamilyGabbaiConnection.id)).all()
+            result = []
+            seen = set()
+            for connection in connections:
+                gabbai = connection.gabbai
+                if gabbai.id in seen:
+                    continue
+                seen.add(gabbai.id)
+                result.append({
+                    'name': gabbai.name,
+                    'phones': _gabbai_phones(gabbai),
+                })
+            return result
         def family_yeshivah_history(family_id):
             return _app.db.session.execute(select(_app.PersonAffiliation, _app.Institution).join(
                 _app.Institution, _app.Institution.id == _app.PersonAffiliation.institution_id
@@ -805,6 +823,7 @@ def create_app(test_config=None):
         return {
             'rabbi_people': people,
             'family_rabbi_preference': family_rabbi_preference,
+            'family_gabbai_contacts': family_gabbai_contacts,
             'family_yeshivah_history': family_yeshivah_history,
             'shul_rabbi_map': mapping,
             'family_phone_values': lambda family: (

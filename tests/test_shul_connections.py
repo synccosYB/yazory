@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from app import (
@@ -231,3 +233,13 @@ def test_rabbi_and_shul_gabbai_can_have_multiple_phones_and_rabbi_has_own_assist
         'phone': '845-555-6301',
         'phones': ['845-555-6301', '845-555-6302'],
     }]
+
+    profile = client.get('/families/1')
+    assert profile.status_code == 200
+    assert b'845-555-6101' in profile.data
+    assert b'845-555-6301' in profile.data
+    assert b'845-555-6302' in profile.data
+
+def test_delayed_directory_load_does_not_overwrite_entered_contact_phones():
+    script = Path('static/institution-picker.js').read_text()
+    assert "if(!item.contactsEdited())item.update()" in script

@@ -130,6 +130,7 @@ document.querySelectorAll('[data-institution-picker]').forEach(root=>{
   const select=root.querySelector('[data-institution-select]'),newField=root.querySelector('[data-new-institution]'),input=newField.querySelector('input'),
   advanced=document.createElement('details'),advancedTitle=document.createElement('summary');
   advanced.className='shul-contact-editor';advancedTitle.textContent=form.dataset.shulContactsLabel||'Shul contacts';advanced.appendChild(advancedTitle);root.appendChild(advanced);
+  let contactsEdited=false;
   const rabbi=rabbiFields(advanced,select),assistants=assistantFields(advanced,select),gabbais=gabbaiFields(advanced,select);
   if(select.name==='weekday_shul'||select.name==='shabbos_shul')selectedShuls[select.name]=select;
   function update(){
@@ -137,13 +138,15 @@ document.querySelectorAll('[data-institution-picker]').forEach(root=>{
     root.classList.toggle('has-institution',Boolean(select.value));
     if(adding&&!input.value)input.focus();fillRabbi(select,rabbi,assistants);fillGabbais(select,gabbais);applySuggestion();
   }
-  select.addEventListener('change',update);update();if(rabbi||gabbais)shulPickers.push({select,rabbi,assistants,gabbais,update});
+  select.addEventListener('change',update);update();
+  advanced.addEventListener('input',()=>{contactsEdited=true;});
+  if(rabbi||gabbais)shulPickers.push({select,rabbi,assistants,gabbais,update,contactsEdited:()=>contactsEdited});
 });
 if(shulPickers.length){
   Promise.all([
     fetch('/api/shul-rabbis',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():{}),
     fetch('/api/shul-gabbais',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():{})
-  ]).then(([rabbis,gabbais])=>{shulRabbis=rabbis||{};shulGabbais=gabbais||{};shulPickers.forEach(item=>item.update());applyMode();}).catch(()=>{});
+  ]).then(([rabbis,gabbais])=>{shulRabbis=rabbis||{};shulGabbais=gabbais||{};shulPickers.forEach(item=>{if(!item.contactsEdited())item.update();});applyMode();}).catch(()=>{});
 }
 if(mode)mode.addEventListener('change',applyMode);
 if(person)person.addEventListener('change',applyCanonical);
