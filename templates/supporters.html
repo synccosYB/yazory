@@ -65,7 +65,7 @@
 </div>
 </td>
 <td>
-<bdi dir="ltr">{{ c.phone or '—' }}</bdi>
+<bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi>
 </td>
 <td>{{ c.family.name }}</td>
 <td>{% if c.parent_supporter %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
@@ -97,7 +97,7 @@
 </label>
 <label>{{ _('Whose son or son-in-law is he?') }}<input type="search" class="select-search" data-select-filter="new-parent-contact" placeholder="{{ _('Search names') }}" autocomplete="off">
 <select name="parent_contact_id" id="new-parent-contact">
-<option value="">{{ _('Not connected under another supporter') }}</option>{% for parent in possible_parents %}<option value="{{ parent.id }}" data-family-id="{{ parent.family_id }}">{{ parent.name }} · {{ _(parent.relationship) }}{% if parent.phone %} · {{ parent.phone }}{% endif %}</option>{% endfor %}</select>
+<option value="">{{ _('Not connected under another supporter') }}</option>{% for parent in possible_parents %}<option value="{{ parent.id }}" data-family-id="{{ parent.family_id }}">{{ parent.name }} · {{ _(parent.relationship) }}{% if parent.phone %} · {{ parent.phone|phone }}{% endif %}</option>{% endfor %}</select>
 </label>
 <label>{{ _('What is he to that supporter?') }}<select name="parent_connection">
 <option value="">{{ _('Choose') }}</option>
