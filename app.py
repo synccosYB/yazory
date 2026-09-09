@@ -778,18 +778,34 @@ def create_app(test_config=None):
         mapping = {}
         for institution, assignment in rows:
             phones = _rabbi_phones(institution) if assignment else []
+            gabbais = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
+                ShulGabbaiDirectory.institution_id == institution.id
+            ).order_by(ShulGabbaiDirectory.id)).all()
             mapping[institution.name] = {
                 'name': assignment.rabbi_name if assignment else '',
                 'phone': phones[0] if phones else '',
                 'phones': phones,
                 'assistants': _assistant_payload(institution),
+                'gabbais': [
+                    {'name': row.name, 'phones': _gabbai_phones(row)}
+                    for row in gabbais
+                ],
             }
         people = _app.db.session.scalars(select(RabbiPerson).order_by(RabbiPerson.name)).all()
         def family_rabbi_preference(family_id):
             return _app.db.session.get(FamilyRabbiPreference, family_id) if family_id else None
+        def family_yeshivah_history(family_id):
+            return _app.db.session.execute(select(_app.PersonAffiliation, _app.Institution).join(
+                _app.Institution, _app.Institution.id == _app.PersonAffiliation.institution_id
+            ).where(
+                _app.PersonAffiliation.person_type == 'family',
+                _app.PersonAffiliation.person_id == family_id,
+                _app.Institution.kind == 'Yeshivah',
+            ).order_by(_app.PersonAffiliation.year_from, _app.PersonAffiliation.id)).all()
         return {
             'rabbi_people': people,
             'family_rabbi_preference': family_rabbi_preference,
+            'family_yeshivah_history': family_yeshivah_history,
             'shul_rabbi_map': mapping,
             'family_phone_values': lambda family: (
                 _clean_phones(_app.request.form.getlist('phone'))

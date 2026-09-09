@@ -944,7 +944,8 @@ def create_app(test_config=None):
         record = (db.session.get(HouseholdBudget, family.id)
                   if budget_record is budget_not_provided else budget_record)
         report = child_budget.calculate(record.data if record else {}, intake, family.children, child_bands())
-        return {'income': report['earnings'] + report['usable_help'],
+        return {'income': report['earnings'], 'assistance': report['usable_help'],
+                'children_count': intake.get('children_count'),
                 'bills': report['household_bills'],
                 'child_estimates': report['child_estimates'],
                 'actual_children': report['actual_child_amounts'],
@@ -1597,20 +1598,19 @@ def create_app(test_config=None):
         for index, raw_name in enumerate(columns['yeshivah_name']):
             values = {key: (rows[index].strip() if index < len(rows) else '')
                       for key, rows in columns.items()}
-            if not any(values.values()):
+            if not values['yeshivah_name']:
                 continue
-            if not all(values.values()):
-                raise ValueError('For every yeshivah, enter the name, class entered, year in, and year out.')
             if len(values['yeshivah_name']) > 160 or len(values['yeshivah_grade']) > 80:
                 raise ValueError('Yeshivah information is too long.')
             try:
-                year_from = int(values['yeshivah_year_from'])
-                year_to = int(values['yeshivah_year_to'])
+                year_from = int(values['yeshivah_year_from']) if values['yeshivah_year_from'] else None
+                year_to = int(values['yeshivah_year_to']) if values['yeshivah_year_to'] else None
             except ValueError:
                 raise ValueError('Enter valid yeshivah years.')
-            if not 1900 <= year_from <= 2100 or not 1900 <= year_to <= 2100:
+            if ((year_from is not None and not 1900 <= year_from <= 2100) or
+                    (year_to is not None and not 1900 <= year_to <= 2100)):
                 raise ValueError('Enter valid yeshivah years.')
-            if year_from > year_to:
+            if year_from is not None and year_to is not None and year_from > year_to:
                 raise ValueError('The year out must not be before the year in.')
             histories.append({'name': values['yeshivah_name'],
                               'grade': values['yeshivah_grade'],
@@ -1725,9 +1725,13 @@ def create_app(test_config=None):
         # Preserve access to legacy/orphaned records whose parent is unavailable.
         contact_rows.extend((contact, False) for contact in family.contacts
                             if contact.parent_contact_id and contact.id not in included_contact_ids)
+        collected = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.family_id == family.id))
+        sent = sum(expense.amount_cents for expense in family.expenses if expense.status == 'Paid')
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                contact_rows=contact_rows,
                                budget=budget_totals(family),
+                               collected=collected, sent=sent,
                                pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family.id))
 
     @app.get('/families/<int:family_id>/print')
