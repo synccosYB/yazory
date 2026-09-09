@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import case, select, func, UniqueConstraint, inspect, text
+from sqlalchemy import case, select, func, or_, UniqueConstraint, inspect, text
 from sqlalchemy.orm import selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -2201,22 +2201,39 @@ def create_app(test_config=None):
         query = request.args.get('q', '').strip()[:160]
         family_id = request.args.get('family_id', type=int)
         relationship_group = request.args.get('relationship_group', '').strip()
+        relationship = request.args.get('relationship', '').strip()
+        supporter_status = request.args.get('status', '').strip()
+        pledge_frequency = request.args.get('pledge_frequency', '').strip()
         relationship_filters = {
             'siblings': ('Sibling',),
             'nephews': ('Nephew',),
         }
         if relationship_group and relationship_group not in relationship_filters:
             abort(400, 'Choose a valid supporter list.')
+        if relationship and relationship not in RELATIONSHIPS + list(LEGACY_RELATIONSHIPS):
+            abort(400, 'Choose a valid relationship.')
+        if supporter_status and supporter_status not in CONTACT_STATUSES:
+            abort(400, 'Choose a valid follow-up status.')
+        if pledge_frequency and pledge_frequency not in PLEDGE_FREQUENCIES:
+            abort(400, 'Choose a valid donation frequency.')
         statement = scoped_contacts_statement()
         if family_id:
             if not can_access_family(family_id):
                 abort(403, 'You are not assigned to this family.')
             statement = statement.where(Contact.family_id == family_id)
         if query:
-            statement = statement.where(Contact.name.icontains(query, autoescape=True))
-        if relationship_group:
+            statement = statement.where(or_(
+                Contact.name.icontains(query, autoescape=True),
+                Contact.phone.icontains(query, autoescape=True)))
+        if relationship:
+            statement = statement.where(Contact.relationship == relationship)
+        elif relationship_group:
             statement = statement.where(
                 Contact.relationship.in_(relationship_filters[relationship_group]))
+        if supporter_status:
+            statement = statement.where(Contact.status == supporter_status)
+        if pledge_frequency:
+            statement = statement.where(Contact.pledge_frequency == pledge_frequency)
         contacts = db.session.scalars(statement).all()
         # Never show a matching son or son-in-law as an orphaned top-level row.
         # Include his parent as context, then keep nested supporters immediately
@@ -2265,7 +2282,10 @@ def create_app(test_config=None):
         return render_template('supporters.html', title='Supporters', contacts=contacts,
                                received=totals, query=query, families=families,
                                selected_family_id=family_id, possible_parents=possible_parents,
-                               relationship_group=relationship_group)
+                               relationship_group=relationship_group,
+                               selected_relationship=relationship,
+                               selected_status=supporter_status,
+                               selected_pledge_frequency=pledge_frequency)
 
     @app.get('/supporters/<int:contact_id>')
     def supporter_detail(contact_id):
