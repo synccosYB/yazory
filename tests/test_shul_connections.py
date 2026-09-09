@@ -5,7 +5,11 @@ from app import (
     FamilyRabbiConnection,
     Institution,
     ShulGabbaiDirectory,
+    ShulGabbaiPhone,
     ShulRabbi,
+    ShulRabbiAssistant,
+    ShulRabbiAssistantPhone,
+    ShulRabbiPhone,
     create_app,
     db,
 )
@@ -123,9 +127,6 @@ def test_reselecting_existing_shul_reuses_its_rabbi_and_all_gabbais(app, client)
     })
     assert first.status_code == 302
 
-    # Simulate selecting the already-known shul later. The browser normally fills
-    # these fields from the shul directory, but the backend must also preserve the
-    # canonical shul assignments when the repeated fields are not resubmitted.
     second = post(client, '/families/1/edit', {
         'name': 'Sample family',
         'weekday_shul': 'Weekday Test Shul',
@@ -173,7 +174,60 @@ def test_shul_directory_apis_return_saved_rabbi_and_gabbais(app, client):
 
     rabbis = client.get('/api/shul-rabbis').get_json()
     gabbais = client.get('/api/shul-gabbais').get_json()
-    assert rabbis['Weekday Test Shul'] == {
-        'name': 'Rabbi API', 'phone': '845-555-5001'}
-    assert gabbais['Weekday Test Shul'] == [
-        {'name': 'API Gabbai', 'phone': '845-555-5002'}]
+    assert rabbis['Weekday Test Shul']['name'] == 'Rabbi API'
+    assert rabbis['Weekday Test Shul']['phones'] == ['845-555-5001']
+    assert rabbis['Weekday Test Shul']['assistants'] == []
+    assert gabbais['Weekday Test Shul'][0]['name'] == 'API Gabbai'
+    assert gabbais['Weekday Test Shul'][0]['phones'] == ['845-555-5002']
+
+
+def test_rabbi_and_shul_gabbai_can_have_multiple_phones_and_rabbi_has_own_assistant(app, client):
+    add_shuls(app)
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'weekday_shul_rabbi': 'Rabbi Multi',
+        'weekday_shul_rabbi_phone': ['845-555-6101', '845-555-6102'],
+        'weekday_shul_rabbi_assistant_name': ['Rabbi Gabbai'],
+        'weekday_shul_rabbi_assistant_phones': ['["845-555-6201", "845-555-6202"]'],
+        'weekday_shul_gabbai_name': ['Shul Gabbai'],
+        'weekday_shul_gabbai_phones': ['["845-555-6301", "845-555-6302"]'],
+    })
+    assert response.status_code == 302
+
+    with app.app_context():
+        shul = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Shul', Institution.name == 'Weekday Test Shul'))
+        rabbi_phones = db.session.scalars(db.select(ShulRabbiPhone).where(
+            ShulRabbiPhone.institution_id == shul.id).order_by(ShulRabbiPhone.id)).all()
+        assert [row.phone for row in rabbi_phones] == ['845-555-6101', '845-555-6102']
+
+        assistant = db.session.scalar(db.select(ShulRabbiAssistant).where(
+            ShulRabbiAssistant.institution_id == shul.id))
+        assert assistant.name == 'Rabbi Gabbai'
+        assistant_phones = db.session.scalars(db.select(ShulRabbiAssistantPhone).where(
+            ShulRabbiAssistantPhone.assistant_id == assistant.id
+        ).order_by(ShulRabbiAssistantPhone.id)).all()
+        assert [row.phone for row in assistant_phones] == ['845-555-6201', '845-555-6202']
+
+        gabbai = db.session.scalar(db.select(ShulGabbaiDirectory).where(
+            ShulGabbaiDirectory.institution_id == shul.id,
+            ShulGabbaiDirectory.name == 'Shul Gabbai'))
+        assert gabbai.name != assistant.name
+        gabbai_phones = db.session.scalars(db.select(ShulGabbaiPhone).where(
+            ShulGabbaiPhone.gabbai_id == gabbai.id).order_by(ShulGabbaiPhone.id)).all()
+        assert [row.phone for row in gabbai_phones] == ['845-555-6301', '845-555-6302']
+
+    rabbis = client.get('/api/shul-rabbis').get_json()['Weekday Test Shul']
+    gabbais = client.get('/api/shul-gabbais').get_json()['Weekday Test Shul']
+    assert rabbis['phones'] == ['845-555-6101', '845-555-6102']
+    assert rabbis['assistants'] == [{
+        'name': 'Rabbi Gabbai',
+        'phone': '845-555-6201',
+        'phones': ['845-555-6201', '845-555-6202'],
+    }]
+    assert gabbais == [{
+        'name': 'Shul Gabbai',
+        'phone': '845-555-6301',
+        'phones': ['845-555-6301', '845-555-6302'],
+    }]
