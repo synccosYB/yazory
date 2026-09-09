@@ -203,6 +203,8 @@ def _sync_family_gabbais(family_id, role, institution, gabbais):
         FamilyGabbaiConnection.role == role)).all()
     for row in current:
         _app.db.session.delete(row)
+    # Remove prior links before inserting replacements with the same unique key.
+    _app.db.session.flush()
     if institution is None:
         return
     for gabbai in gabbais:
