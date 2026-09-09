@@ -1,6 +1,6 @@
 import re
 
-import app as app_module
+import app_original as app_module
 from werkzeug.security import generate_password_hash
 
 from app import (AccountToken, EmailMessage, Family, FamilyAssignment, StaffUser,

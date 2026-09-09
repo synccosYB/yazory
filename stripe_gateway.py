@@ -3,19 +3,60 @@
 import stripe
 
 
-def create_checkout_session(secret_key, params, idempotency_key):
-    # A Checkout click is an interactive request. Stripe's SDK defaults to an
-    # 80-second timeout and retries network failures, which can leave the user
-    # staring at "Opening Stripe…" for several minutes. Fail promptly instead;
-    # the idempotency key makes a safe retry possible from the form.
-    client = stripe.StripeClient(
+def _interactive_client(secret_key):
+    return stripe.StripeClient(
         secret_key,
         max_network_retries=0,
         http_client=stripe.RequestsClient(timeout=(3, 10)),
     )
+
+
+def create_checkout_session(secret_key, params, idempotency_key):
+    # Retained for legacy records/tests. New donor entry uses native Yazory UI.
+    client = _interactive_client(secret_key)
     return client.v1.checkout.sessions.create(
         params=params,
         options={'idempotency_key': idempotency_key},
+    )
+
+
+def create_payment_intent(secret_key, params, idempotency_key):
+    client = _interactive_client(secret_key)
+    return client.v1.payment_intents.create(
+        params=params,
+        options={'idempotency_key': idempotency_key},
+    )
+
+
+def retrieve_payment_intent(secret_key, payment_intent_id):
+    client = _interactive_client(secret_key)
+    return client.v1.payment_intents.retrieve(
+        payment_intent_id,
+        params={'expand': ['latest_charge.balance_transaction']},
+    )
+
+
+def create_customer(secret_key, params, idempotency_key):
+    client = _interactive_client(secret_key)
+    return client.v1.customers.create(
+        params=params,
+        options={'idempotency_key': idempotency_key},
+    )
+
+
+def create_subscription(secret_key, params, idempotency_key):
+    client = _interactive_client(secret_key)
+    return client.v1.subscriptions.create(
+        params=params,
+        options={'idempotency_key': idempotency_key},
+    )
+
+
+def retrieve_charge(secret_key, charge_id):
+    client = _interactive_client(secret_key)
+    return client.v1.charges.retrieve(
+        charge_id,
+        params={'expand': ['balance_transaction']},
     )
 
 
@@ -44,8 +85,6 @@ def create_transfer(secret_key, params, idempotency_key):
 
 
 def create_billing_portal_session(secret_key, customer_id, return_url):
-    client = stripe.StripeClient(
-        secret_key, max_network_retries=0,
-        http_client=stripe.RequestsClient(timeout=(3, 10)))
+    client = _interactive_client(secret_key)
     return client.v1.billing_portal.sessions.create(params={
         'customer': customer_id, 'return_url': return_url})

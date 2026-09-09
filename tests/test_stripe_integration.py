@@ -1,6 +1,8 @@
-import app as app_module
+import app_original as app_module
+import native_payments as native_module
 from app import (Contact, Expense, Family, Receipt, StripeEvent, StripePayment,
                  StripeRecipient, StripeTransfer, create_app, db)
+from native_payments import StripeSettlement
 
 
 def csrf(client):
@@ -15,56 +17,136 @@ def make_app():
         'SQLALCHEMY_DATABASE_URI': 'sqlite://',
         'SECRET_KEY': 'stripe-tests',
         'STRIPE_SECRET_KEY': 'sk_test_yazory',
+        'STRIPE_PUBLISHABLE_KEY': 'pk_test_yazory',
         'STRIPE_WEBHOOK_SECRET': 'whsec_yazory',
         'APP_BASE_URL': 'https://yazory.example',
     })
 
 
-def test_checkout_and_webhook_create_one_receipt(monkeypatch):
+def test_native_one_time_payment_and_fee_settlement(monkeypatch):
     app = make_app()
     client = app.test_client()
     with app.app_context():
         contact = db.session.scalar(db.select(Contact))
         contact_id = contact.id
+
     page = client.get(f'/supporters/{contact_id}/donate').text
-    assert 'value="180.00"' in page
+    assert 'card-element' in page
+    assert 'Process donation' in page
+    assert 'initEmbeddedCheckout' not in page
 
-    created = {}
+    monkeypatch.setattr(native_module, 'create_payment_intent', lambda *_args, **_kwargs: {
+        'id': 'pi_native_1',
+        'status': 'requires_action',
+        'client_secret': 'pi_native_1_secret_test',
+    })
 
-    def checkout(_secret, params, idempotency_key):
-        assert params['mode'] == 'subscription'
-        assert params['line_items'][0]['price_data']['recurring']['interval'] == 'month'
-        assert idempotency_key.startswith('yazory-checkout-')
-        created['metadata'] = params['metadata']
-        return {'id': 'cs_test_1', 'url': 'https://checkout.stripe.test/cs_test_1'}
+    response = client.post(f'/supporters/{contact_id}/embedded-checkout-session', data={
+        'csrf': csrf(client),
+        'amount': '18.00',
+        'frequency': 'One time',
+        'billing_name': 'Test Donor',
+        'billing_email': 'donor@example.test',
+        'payment_method_id': 'pm_test_1',
+    })
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body['client_secret'] == 'pi_native_1_secret_test'
 
-    monkeypatch.setattr(app_module, 'create_checkout_session', checkout)
-    response = client.post(f'/supporters/{contact_id}/stripe-checkout', data={
-        'csrf': csrf(client), 'amount': '18.00', 'frequency': 'Monthly'})
-    assert response.status_code == 303
-    assert response.location == 'https://checkout.stripe.test/cs_test_1'
-    checkout_event = {'id': 'evt_checkout_1', 'type': 'checkout.session.completed',
-                      'data': {'object': {'id': 'cs_test_1', 'subscription': 'sub_1',
-                                          'metadata': created['metadata']}}}
-    invoice_event = {'id': 'evt_invoice_1', 'type': 'invoice.paid', 'data': {'object': {
-        'id': 'in_1', 'subscription': 'sub_1', 'amount_paid': 1800,
-        'customer_email': 'donor@example.test', 'metadata': {}}}}
-    events = iter([checkout_event, invoice_event, invoice_event])
-    monkeypatch.setattr(app_module, 'construct_webhook_event', lambda *_args: next(events))
-    webhook_client = app.test_client()  # Stripe sends no browser session or CSRF token.
-    for _ in range(3):
-        response = webhook_client.post('/stripe/webhook', data=b'{}',
-                                       headers={'Stripe-Signature': 'test'})
-        assert response.status_code == 200
     with app.app_context():
         payment = db.session.scalar(db.select(StripePayment))
-        assert db.session.scalar(db.select(db.func.count()).select_from(Receipt)) == 1
-        assert db.session.scalar(db.select(db.func.count()).select_from(StripeEvent)) == 2
-        assert payment.status == 'active'
+        assert payment.payment_intent_id == 'pi_native_1'
+        payment_id = payment.id
+
+    monkeypatch.setattr(native_module, 'retrieve_charge', lambda *_args, **_kwargs: {
+        'id': 'ch_native_1',
+        'balance_transaction': {
+            'id': 'txn_native_1',
+            'amount': 1800,
+            'fee': 82,
+            'net': 1718,
+            'currency': 'usd',
+        },
+    })
+    event = {
+        'id': 'evt_native_1',
+        'type': 'payment_intent.succeeded',
+        'data': {'object': {
+            'id': 'pi_native_1',
+            'latest_charge': 'ch_native_1',
+            'metadata': {'yazory_payment_id': str(payment_id)},
+        }},
+    }
+    monkeypatch.setattr(native_module, 'construct_webhook_event', lambda *_args: event)
+    monkeypatch.setattr(app_module, 'construct_webhook_event', lambda *_args: event)
+
+    webhook_client = app.test_client()
+    response = webhook_client.post('/stripe/webhook', data=b'{}',
+                                   headers={'Stripe-Signature': 'test'})
+    assert response.status_code == 200
+
+    with app.app_context():
+        payment = db.session.get(StripePayment, payment_id)
+        settlement = db.session.scalar(db.select(StripeSettlement))
+        assert payment.status == 'paid'
         assert payment.successful_charges == 1
+        assert db.session.scalar(db.select(db.func.count()).select_from(Receipt)) == 1
+        assert settlement.gross_cents == 1800
+        assert settlement.fee_cents == 82
+        assert settlement.net_cents == 1718
 
 
-def test_zero_pledge_defaults_to_valid_one_dollar_checkout_amount():
+def test_native_monthly_subscription_returns_invoice_payment_secret(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+
+    monkeypatch.setattr(native_module, 'create_customer', lambda *_args, **_kwargs: {
+        'id': 'cus_native_1',
+    })
+    monkeypatch.setattr(native_module, 'create_subscription', lambda *_args, **_kwargs: {
+        'id': 'sub_native_1',
+        'status': 'incomplete',
+        'latest_invoice': {
+            'payment_intent': {
+                'id': 'pi_subscription_1',
+                'client_secret': 'pi_subscription_1_secret_test',
+            },
+        },
+    })
+
+    response = client.post(f'/supporters/{contact_id}/embedded-checkout-session', data={
+        'csrf': csrf(client),
+        'amount': '25.00',
+        'frequency': 'Monthly',
+        'billing_name': 'Recurring Donor',
+        'billing_email': 'monthly@example.test',
+        'payment_method_id': 'pm_test_monthly',
+    })
+    assert response.status_code == 200
+    assert response.get_json()['client_secret'] == 'pi_subscription_1_secret_test'
+
+    with app.app_context():
+        payment = db.session.scalar(db.select(StripePayment))
+        assert payment.subscription_id == 'sub_native_1'
+        assert payment.customer_id == 'cus_native_1'
+        assert payment.payment_intent_id == 'pi_subscription_1'
+        assert payment.frequency == 'Monthly'
+
+
+def test_native_checkout_rejects_missing_card_token():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+    response = client.post(f'/supporters/{contact_id}/embedded-checkout-session', data={
+        'csrf': csrf(client), 'amount': '18.00', 'frequency': 'One time'})
+    assert response.status_code == 400
+    assert 'secure card token is missing' in response.get_json()['error']
+
+
+def test_zero_pledge_defaults_to_valid_one_dollar_native_form():
     app = make_app()
     client = app.test_client()
     with app.app_context():
@@ -74,42 +156,7 @@ def test_zero_pledge_defaults_to_valid_one_dollar_checkout_amount():
         contact_id = contact.id
     page = client.get(f'/supporters/{contact_id}/donate').text
     assert 'value="1.00"' in page
-    assert f'/supporters/{contact_id}/embedded-checkout-session' in page
-    assert 'value="One time" selected' in page
-
-
-def test_checkout_can_open_through_plain_get_navigation(monkeypatch):
-    app = make_app()
-    client = app.test_client()
-    with app.app_context():
-        contact_id = db.session.scalar(db.select(Contact.id))
-    monkeypatch.setattr(app_module, 'create_checkout_session',
-                        lambda *_args: {'id': 'cs_get_1',
-                                       'url': 'https://checkout.stripe.test/cs_get_1'})
-    response = client.get(
-        f'/supporters/{contact_id}/stripe-checkout?amount=1.00&frequency=One+time')
-    assert response.status_code == 303
-    assert response.location == 'https://checkout.stripe.test/cs_get_1'
-
-
-def test_checkout_failure_returns_to_supporter_with_visible_error(monkeypatch):
-    app = make_app()
-    client = app.test_client()
-    with app.app_context():
-        contact_id = db.session.scalar(db.select(Contact.id))
-
-    class LiveAccountError(Exception):
-        user_message = 'Your Stripe account cannot currently make live charges.'
-
-    monkeypatch.setattr(app_module, 'create_checkout_session',
-                        lambda *_args, **_kwargs: (_ for _ in ()).throw(LiveAccountError()))
-    response = client.post(f'/supporters/{contact_id}/stripe-checkout', data={
-        'csrf': csrf(client), 'amount': '1.00', 'frequency': 'One time'},
-        follow_redirects=True)
-    assert response.status_code == 200
-    assert 'Your Stripe account cannot currently make live charges.' in response.text
-    with app.app_context():
-        assert db.session.scalar(db.select(db.func.count()).select_from(StripePayment)) == 0
+    assert 'One time' in page
 
 
 def test_connect_onboarding_and_approved_expense_transfer(monkeypatch):
@@ -168,3 +215,78 @@ def test_unverified_recipient_cannot_receive_transfer():
         expense_id, recipient_id = expense.id, recipient.id
     assert client.post(f'/expenses/{expense_id}/stripe-transfer', data={
         'csrf': csrf(client), 'recipient_id': recipient_id}).status_code == 400
+
+
+def test_checkout_and_webhook_create_one_receipt(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact))
+        contact_id = contact.id
+    page = client.get(f'/supporters/{contact_id}/donate').text
+    assert 'value="180.00"' in page
+
+    created = {}
+    monkeypatch.setattr(native_module,'create_customer',lambda *_: {'id':'cus_fixture'})
+    def subscription(_secret,params,key):
+        assert params['items'][0]['price_data']['recurring']['interval']=='month'
+        assert key.startswith('yazory-native-subscription-')
+        created['metadata']=params['metadata']
+        return {'id':'sub_1','status':'incomplete','latest_invoice':{'payment_intent':{
+            'id':'pi_fixture','client_secret':'pi_fixture_secret'}}}
+    monkeypatch.setattr(native_module,'create_subscription',subscription)
+    response=client.post(f'/supporters/{contact_id}/native-payment',data={
+        'csrf':csrf(client),'amount':'18.00','frequency':'Monthly','payment_method_id':'pm_fixture'})
+    assert response.status_code==200
+    assert response.json['client_secret']=='pi_fixture_secret'
+    event={'id':'evt_invoice_1','type':'invoice.paid','data':{'object':{
+        'id':'in_1','subscription':'sub_1','amount_paid':1800,'charge':'ch_fixture',
+        'customer_email':'donor@example.test','metadata':created['metadata']}}}
+    monkeypatch.setattr(app_module,'construct_webhook_event',lambda *_:event)
+    monkeypatch.setattr(native_module,'construct_webhook_event',lambda *_:event)
+    monkeypatch.setattr(native_module,'retrieve_charge',lambda *_:{'id':'ch_fixture',
+        'balance_transaction':{'id':'txn_fixture','amount':1800,'fee':80,'net':1720,'currency':'usd'}})
+    webhook_client=app.test_client()
+    for _ in range(2):
+        assert webhook_client.post('/stripe/webhook',data=b'{}',headers={'Stripe-Signature':'test'}).status_code==200
+    with app.app_context():
+        payment=db.session.scalar(db.select(StripePayment))
+        assert db.session.scalar(db.select(db.func.count()).select_from(Receipt))==1
+        assert db.session.scalar(db.select(db.func.count()).select_from(StripeEvent))==1
+        assert payment.status=='active' and payment.successful_charges==1
+        settlement=db.session.scalar(db.select(native_module.StripeSettlement))
+        assert (settlement.gross_cents,settlement.fee_cents,settlement.net_cents)==(1800,80,1720)
+
+
+def test_checkout_can_open_through_plain_get_navigation(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+    monkeypatch.setattr(app_module, 'create_checkout_session',
+                        lambda *_args: {'id': 'cs_get_1',
+                                       'url': 'https://checkout.stripe.test/cs_get_1'})
+    response = client.get(
+        f'/supporters/{contact_id}/stripe-checkout?amount=1.00&frequency=One+time')
+    assert response.status_code == 303
+    assert response.location == f'/supporters/{contact_id}/donate'
+
+
+def test_checkout_failure_returns_to_supporter_with_visible_error(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+
+    class LiveAccountError(Exception):
+        user_message = 'Your Stripe account cannot currently make live charges.'
+
+    monkeypatch.setattr(native_module, 'create_payment_intent',
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(LiveAccountError()))
+    response = client.post(f'/supporters/{contact_id}/native-payment', data={
+        'csrf': csrf(client), 'amount': '1.00', 'frequency': 'One time', 'payment_method_id':'pm_fixture'},
+        follow_redirects=True)
+    assert response.status_code == 502
+    assert 'Your Stripe account cannot currently make live charges.' in response.text
+    with app.app_context():
+        assert db.session.scalar(db.select(StripePayment)).status == 'failed'

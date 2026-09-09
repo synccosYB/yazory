@@ -17,8 +17,8 @@ Use the same production database and secrets as the current deployment.
 
 The combined application preserves the central supporter lists, family print
 filters, son/son-in-law connections, shared donor identities, weekly pledges,
-shul/yeshivah directories, and current Yiddish corrections. `app.py` is again
-the primary implementation; `app_original.py` remains a compatibility import.
+shul/yeshivah directories, and current Yiddish corrections. `app.py` retains the current entry-point wrapper; `app_original.py`
+retains the established application implementation.
 Both existing staff status and workflow access must allow login.
 
 1. Back up the production database using the hosting provider.
@@ -125,7 +125,9 @@ Stripe receipt emails continue through the current email service.
 
 ## Scope and external-service boundaries
 
-The existing Stripe checkout and payout paths remain available. After governance
+The current native Stripe donation entry and payout paths remain available.
+After cutover, donation entry also requires approved fundraising and reviewed
+contact permission. Legacy checkout URLs follow the current native entry flow. After governance
 approval, sending an expense through Stripe also requires the workflow to be at
 Payment release, the caller to hold the independent release responsibility,
 available approved funds, and a recipient matching the **Stripe connected account ID**

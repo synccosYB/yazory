@@ -547,3 +547,8 @@ Linked cases must use the same shared donation amount and frequency.|תיקים 
 Stop the active Stripe subscription before closing this case.|בטלו את המנוי הפעיל ב־Stripe לפני סגירת התיק.|שטעלט אפ דעם אקטיוון Stripe צוזאג איידער פארמאכן דעם קעיס.
 Use the staff departure workflow to preserve access history.|השתמשו בתהליך עזיבת עובד כדי לשמור את היסטוריית הגישה.|נוצט דעם workflow פאר אוועקגיין פונעם שטאב כדי צו האלטן די היסטאריע.
 """
+
+ROWS += """
+Processing fee ($)|עמלת סליקה ($)|פראסעסינג אפצאל ($)
+Record processing fees during finance review before posting.|רשמו עמלות במהלך הבדיקה הכספית לפני הרישום בספר.|שרייבט אריין די פראסעסינג אפצאל ביים פינאנץ איבערקוקן איידער בוקן.
+"""

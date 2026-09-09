@@ -304,7 +304,7 @@ def test_governance_cutover_is_durable_and_respects_staff_status(env):
 
 
 def test_stripe_release_requires_workflow_signature_funds_and_verified_destination(env,monkeypatch):
-    import app as app_module
+    import app_original as app_module
     from app import StripeRecipient,StripeTransfer
     _,_,plan,_=prepare_case(env);collection(env)
     vendor=env.create('vendor',{'payee':'Grocery store','banking':'Verified by finance',
@@ -378,11 +378,11 @@ def test_existing_receipt_review_preserves_source_and_posts_once(env):
     payload['amount']='18'
     assert env.client().post(f'/operations/{wid}',data=payload).status_code==302
     for role in ['owner','owner','finance','finance']:
-        assert env.act(wid,role,payment_result='Verified Stripe receipt').status_code==302
+        assert env.act(wid,role,payment_result='Verified Stripe receipt',**({'processing_fee':'0.80'} if role=='finance' else {})).status_code==302
     with env.app.app_context():
         assert db.session.get(Receipt,rid).amount_cents==1800
-        assert env.app.extensions['workflows']['financials'](env.fid)['balance']==1800
-        assert db.session.scalar(db.select(db.func.count()).select_from(env.M['LedgerEntry']))==1
+        assert env.app.extensions['workflows']['financials'](env.fid)['balance']==1720
+        assert db.session.scalar(db.select(db.func.count()).select_from(env.M['LedgerEntry']))==2
 
 
 def test_central_lists_and_hierarchies_keep_contact_level_privacy(env):
@@ -396,8 +396,10 @@ def test_central_lists_and_hierarchies_keep_contact_level_privacy(env):
             assigned_to=user.id,permission='Permitted',verified=True))
         db.session.add(Receipt(family_id=env.fid,contact_id=parent.id,amount_cents=1234,
             received_on=env.today,reference='HIDDEN-RECEIPT',note='Hidden private note'))
-        db.session.commit()
+        db.session.commit();parent_id=parent.id
     client=env.client('fundraising')
+    assert env.client().post(f'/supporters/{env.cid}/native-payment',data={'csrf':'test'}).status_code==400
+    assert client.post(f'/supporters/{parent_id}/embedded-checkout-session',data={'csrf':'test'}).status_code==403
     for path in ['/supporters','/collections',f'/supporters/{env.cid}',f'/fundraising/{env.fid}']:
         response=client.get(path)
         assert response.status_code==200,(path,response.text)

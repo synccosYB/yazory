@@ -33,7 +33,7 @@ def install_receipt_workflows(app, db, Receipt, helpers):
             owner_id=user.id,created_by=user.id,due=date.today(),data={
                 'receipt_id':receipt.id,'contact_id':receipt.contact_id,'amount':receipt.amount_cents,
                 'processing_fee':0,'reference':'receipt:'+(receipt.reference[:160] or str(receipt.id)),
-                'payment_method':'Stripe' if receipt.note=='Processed securely by Stripe' else 'Manual receipt',
+                'payment_method':'Stripe' if 'Stripe' in receipt.note else 'Manual receipt',
                 'receipt':receipt.reference or str(receipt.id),'restrictions':receipt.note})
         db.session.add(item);db.session.flush()
         ext['emit'](item,'Imported receipt linked',{'receipt_id':receipt.id,'amount_cents':receipt.amount_cents})

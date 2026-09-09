@@ -327,6 +327,12 @@ def install_workflows(app, db, entities, helpers):
                 # The transaction identity on a submitted collection cannot be changed.
                 if key=='reference' and data.get(key) and data[key]!=raw: fail('Submitted references cannot be replaced.')
                 data[key]=raw
+        fee=request.form.get('processing_fee','').strip()
+        if fee and item.kind=='collection':
+            parsed=money(fee)
+            if item.stage not in (2,3) or parsed>data['amount']:fail('Record processing fees during finance review before posting.')
+            if data.get('abcharity_donation_id') and parsed!=data.get('processing_fee',0):fail('The imported receipt changed. Review the original before continuing.')
+            data['processing_fee']=parsed
         item.data=data
 
     def post_ledger(item,entry_type,amount,fid=None,external=True):
@@ -417,7 +423,7 @@ def install_workflows(app, db, entities, helpers):
         if item.kind=='closure' and next_label=='Closed' and 'StripePayment' in entities:
             payment=entities['StripePayment']
             if db.session.scalar(select(payment.id).join(Contact,Contact.id==payment.contact_id).where(
-                Contact.family_id==item.family_id,payment.frequency!='One time',payment.status.in_(['pending','active']))):
+                Contact.family_id==item.family_id,payment.frequency!='One time',payment.status.in_(['pending','creating','incomplete','trialing','active','past_due','unpaid']))):
                 fail('Stop the active Stripe subscription before closing this case.')
         if item.kind=='expense' and next_label in ('Approved','Scheduled','Payment release','Paid'): check_budget(item)
         if item.kind in ('expense','emergency','refund') and next_label in ('Paid','Documentation review','Completed'):
