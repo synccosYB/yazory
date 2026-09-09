@@ -283,6 +283,28 @@ class StripeTransfer(db.Model):
     expense = db.relationship('Expense')
     recipient = db.relationship('StripeRecipient')
 
+
+class ApplicantPayout(db.Model):
+    """A direct family payout and, for checks, its complete lifecycle."""
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, index=True)
+    method = db.Column(db.String(20), nullable=False, default='check', index=True)
+    amount_cents = db.Column(db.Integer, nullable=False)
+    payee_name = db.Column(db.String(160), nullable=False)
+    mailing_address = db.Column(db.Text, nullable=False, default='')
+    memo = db.Column(db.String(160), nullable=False, default='')
+    check_number = db.Column(db.String(40), nullable=False, default='', index=True)
+    check_date = db.Column(db.Date, nullable=True)
+    stripe_reference = db.Column(db.String(255), nullable=False, default='', index=True)
+    status = db.Column(db.String(30), nullable=False, default='created', index=True)
+    mailed_at = db.Column(db.DateTime, nullable=True)
+    cleared_at = db.Column(db.DateTime, nullable=True)
+    voided_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True)
+    family = db.relationship('Family', backref=db.backref('applicant_payouts', lazy=True))
+    creator = db.relationship('StaffUser')
+
 class Expense(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False)
@@ -2795,9 +2817,124 @@ def create_app(test_config=None):
         families = db.session.scalars(select(Family).order_by(Family.name)).all()
         approved_expenses = db.session.scalars(select(Expense).where(
             Expense.status == 'Approved').order_by(Expense.id.desc())).all()
-        return render_template('payouts.html', title='Stripe payouts', recipients=recipients,
+        applicant_payouts = db.session.scalars(select(ApplicantPayout).order_by(
+            ApplicantPayout.created_at.desc()).limit(250)).all()
+        return render_template('payouts.html', title='Payouts', recipients=recipients,
                                transfers=transfers, families=families,
-                               approved_expenses=approved_expenses)
+                               approved_expenses=approved_expenses,
+                               applicant_payouts=applicant_payouts, today=date.today())
+
+    @app.post('/payouts/checks')
+    def create_check_payout():
+        require_organization_admin()
+        family = db.session.get(Family, request.form.get('family_id', type=int))
+        if family is None:
+            abort(400, 'Choose a valid family.')
+        if family.status != 'Active':
+            abort(400, 'Payouts can only be created for an active family.')
+        check_number = field('check_number', True, 40)
+        existing = db.session.scalar(select(ApplicantPayout.id).where(
+            ApplicantPayout.method == 'check', ApplicantPayout.check_number == check_number,
+            ApplicantPayout.status != 'voided'))
+        if existing:
+            abort(400, 'This check number is already in use.')
+        try:
+            check_date = date.fromisoformat(field('check_date', True, 10))
+        except ValueError:
+            abort(400, 'Enter a valid check date.')
+        locality = ', '.join(part for part in (family.city, family.state) if part)
+        if family.zip_code:
+            locality = f'{locality} {family.zip_code}'.strip()
+        mailing_address = '\n'.join(part for part in (family.address, locality) if part)
+        if not mailing_address:
+            abort(400, 'Add the applicant mailing address before creating a check.')
+        payee_name = field('payee_name', True)
+        if not re.search(r'[A-Za-z]', payee_name) or re.search(r'[^A-Za-z0-9 .,&\'()-]', payee_name):
+            abort(400, 'Enter the check payee name in English.')
+        payout = ApplicantPayout(
+            family_id=family.id, method='check', amount_cents=amount('amount'),
+            payee_name=payee_name, mailing_address=mailing_address,
+            memo=field('memo', limit=160), check_number=check_number,
+            check_date=check_date, status='created',
+            created_by=current_user().id if current_user() else None)
+        db.session.add(payout)
+        db.session.flush()
+        audit(f'Created applicant payout check #{check_number} for ${payout.amount_cents / 100:,.2f}', family.id)
+        db.session.commit()
+        flash('Check created. Download the PDF to print it.')
+        return redirect(url_for('download_payout_check', payout_id=payout.id))
+
+    @app.post('/payouts/stripe')
+    def create_stripe_payout():
+        require_organization_admin()
+        if not app.config['STRIPE_SECRET_KEY']:
+            abort(503, 'Stripe payments are not configured.')
+        family = db.session.get(Family, request.form.get('family_id', type=int))
+        recipient = db.session.get(StripeRecipient, request.form.get('recipient_id', type=int))
+        if family is None or family.status != 'Active':
+            abort(400, 'Choose an active family.')
+        if (recipient is None or recipient.kind != 'family' or
+                recipient.family_id != family.id or not recipient.payouts_enabled):
+            abort(400, 'Choose the verified Stripe recipient for this family.')
+        payout = ApplicantPayout(
+            family_id=family.id, method='stripe', amount_cents=amount('amount'),
+            payee_name=recipient.name, mailing_address='', memo=field('memo', limit=160),
+            status='processing', created_by=current_user().id if current_user() else None)
+        db.session.add(payout)
+        db.session.flush()
+        try:
+            transfer = create_transfer(app.config['STRIPE_SECRET_KEY'], {
+                'amount': payout.amount_cents, 'currency': app.config['STRIPE_CURRENCY'],
+                'destination': recipient.stripe_account_id,
+                'transfer_group': f'YAZORY_PAYOUT_{payout.id}',
+                'metadata': {'yazory_payout_id': str(payout.id),
+                             'yazory_family_id': str(family.id)}},
+                f'yazory-payout-{payout.id}')
+        except Exception:
+            db.session.rollback()
+            abort(502, 'Stripe could not send this payout. No Yazory payout record was created.')
+        payout.stripe_reference = stripe_value(transfer, 'id', '')
+        if not payout.stripe_reference:
+            db.session.rollback()
+            abort(502, 'Stripe did not return a payout reference. No Yazory payout record was created.')
+        payout.status = 'sent'
+        audit(f'Sent applicant payout #{payout.id} through Stripe: {payout.stripe_reference}', family.id)
+        db.session.commit()
+        flash('Applicant payout sent through Stripe.')
+        return redirect(url_for('payouts'))
+
+    @app.get('/payouts/<int:payout_id>/check.pdf')
+    def download_payout_check(payout_id):
+        require_organization_admin()
+        payout = db.get_or_404(ApplicantPayout, payout_id)
+        if payout.method != 'check' or payout.status == 'voided':
+            abort(400, 'This check cannot be printed.')
+        from check_pdf import build_check_pdf
+        return send_file(build_check_pdf(payout), mimetype='application/pdf', as_attachment=True,
+                         download_name=f'Yazory-check-{secure_filename(payout.check_number)}.pdf')
+
+    @app.post('/payouts/<int:payout_id>/status')
+    def update_payout_status(payout_id):
+        require_organization_admin()
+        payout = db.get_or_404(ApplicantPayout, payout_id)
+        next_status = field('status', True, 30)
+        transitions = {'created': {'mailed', 'voided'}, 'mailed': {'cleared', 'voided'},
+                       'cleared': set(), 'voided': set()}
+        if next_status not in transitions.get(payout.status, set()):
+            abort(400, 'This payout status change is not allowed.')
+        changed_at = utcnow()
+        payout.status = next_status
+        if next_status == 'mailed':
+            payout.mailed_at = changed_at
+        elif next_status == 'cleared':
+            payout.cleared_at = changed_at
+        elif next_status == 'voided':
+            payout.voided_at = changed_at
+        audit(f'Applicant payout check #{payout.check_number}: {next_status}', payout.family_id)
+        db.session.commit()
+        flash({'mailed': 'Check marked as mailed.', 'cleared': 'Check marked as cleared.',
+               'voided': 'Check voided.'}[next_status])
+        return redirect(url_for('payouts'))
 
     @app.post('/payouts/recipients')
     def create_payout_recipient():
