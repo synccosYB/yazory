@@ -583,22 +583,46 @@ def test_family_form_offers_existing_institutions_and_accepts_new_names(app, cli
         ])
         db.session.commit()
     page = client.get('/families/1/edit').text
-    assert '<select name="yeshivah"' in page
+    assert 'name="yeshivah_name"' in page
+    assert 'name="yeshivah_grade"' in page
+    assert 'name="yeshivah_year_from"' in page
+    assert 'name="yeshivah_year_to"' in page
     assert '<select name="weekday_shul"' in page
     assert '<select name="shabbos_shul"' in page
     assert 'value="Listed Yeshivah"' in page
     assert 'value="Listed Shul"' in page
 
     assert post(client, '/families/1/edit', {
-        'name': 'Sample family', 'yeshivah': '__new__',
-        'yeshivah_new': 'Brand New Yeshivah',
+        'name': 'Sample family',
+        'yeshivah_name': ['Brand New Yeshivah', 'Second Yeshivah'],
+        'yeshivah_grade': ['Kitah 9', 'Kitah 11'],
+        'yeshivah_year_from': ['2001', '2003'],
+        'yeshivah_year_to': ['2003', '2005'],
         'weekday_shul': '__new__', 'weekday_shul_new': 'Brand New Shul',
     }).status_code == 302
     with app.app_context():
-        assert db.session.scalar(db.select(Institution).where(
+        first = db.session.scalar(db.select(Institution).where(
             Institution.kind == 'Yeshivah', Institution.name == 'Brand New Yeshivah'))
+        second = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Yeshivah', Institution.name == 'Second Yeshivah'))
+        history = db.session.scalars(db.select(PersonAffiliation).where(
+            PersonAffiliation.person_type == 'family',
+            PersonAffiliation.person_id == 1,
+            PersonAffiliation.institution_id.in_((first.id, second.id))).order_by(
+                PersonAffiliation.year_from)).all()
+        assert [(row.grade, row.year_from, row.year_to) for row in history] == [
+            ('Kitah 9', 2001, 2003), ('Kitah 11', 2003, 2005)]
         assert db.session.scalar(db.select(Institution).where(
             Institution.kind == 'Shul', Institution.name == 'Brand New Shul'))
+
+def test_family_form_rejects_incomplete_yeshivah_history(client):
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family', 'yeshivah_name': 'Incomplete Yeshivah',
+        'yeshivah_grade': 'Kitah 9', 'yeshivah_year_from': '2001',
+        'yeshivah_year_to': '',
+    })
+    assert response.status_code == 400
+    assert 'For every yeshivah' in response.text
 
 def test_schema_upgrade_merges_same_named_institutions(app):
     with app.app_context():
