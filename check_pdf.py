@@ -1,8 +1,12 @@
 """Printable top-check PDFs for manual Yazory applicant payouts."""
 
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 
@@ -39,7 +43,12 @@ def amount_words(amount_cents):
     return f"{' '.join(parts) or 'Zero'} and {cents:02d}/100 Dollars"
 
 
-def build_check_pdf(payout):
+ASSET_ROOT = Path(__file__).resolve().parent / 'static'
+MICR_FONT_PATH = ASSET_ROOT / 'fonts' / 'Nimra-MICR.ttf'
+LOGO_PATH = ASSET_ROOT / 'yazory-logo.png'
+
+
+def build_check_pdf(payout, routing_number, account_number):
     """Return an in-memory US Letter top-check ready for preprinted check stock."""
     stream = BytesIO()
     pdf = canvas.Canvas(stream, pagesize=letter)
@@ -50,12 +59,9 @@ def build_check_pdf(payout):
     pdf.setTitle(f'Check {payout.check_number} - {payout.payee_name}')
     pdf.setStrokeColorRGB(.72, .72, .72)
     pdf.rect(left, bottom, right - left, top - bottom, stroke=1, fill=0)
-    pdf.setFillColorRGB(.08, .16, .28)
-    pdf.setFont('Helvetica-Bold', 13)
-    pdf.drawString(left + 12, top - 22, 'YAZORY')
+    pdf.drawImage(ImageReader(LOGO_PATH), left + 10, top - 67, width=58, height=58,
+                  preserveAspectRatio=True, anchor='c', mask='auto')
     pdf.setFillColorRGB(0, 0, 0)
-    pdf.setFont('Helvetica', 8)
-    pdf.drawString(left + 12, top - 35, 'Family support payout')
     pdf.setFont('Helvetica-Bold', 11)
     pdf.drawRightString(right - 12, top - 22, payout.check_number)
     pdf.setFont('Helvetica', 9)
@@ -80,15 +86,23 @@ def build_check_pdf(payout):
     for index, line in enumerate(address_lines[:3]):
         pdf.drawString(left + 82, top - 151 - index * 10, line[:78])
 
-    pdf.drawString(left + 12, bottom + 20, 'MEMO')
-    pdf.drawString(left + 50, bottom + 20, (payout.memo or '')[:52])
-    pdf.line(left + 47, bottom + 17, left + 260, bottom + 17)
-    pdf.line(right - 210, bottom + 17, right - 12, bottom + 17)
-    pdf.drawCentredString(right - 111, bottom + 7, 'AUTHORIZED SIGNATURE')
+    pdf.drawString(left + 12, bottom + 42, 'MEMO')
+    pdf.drawString(left + 50, bottom + 42, (payout.memo or '')[:52])
+    pdf.line(left + 47, bottom + 39, left + 260, bottom + 39)
+    pdf.line(right - 210, bottom + 39, right - 12, bottom + 39)
+    pdf.drawCentredString(right - 111, bottom + 29, 'AUTHORIZED SIGNATURE')
+
+    if 'NimraMICR' not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont('NimraMICR', MICR_FONT_PATH))
+    pdf.setFont('NimraMICR', 11)
+    micr_line = (f'{chr(0x2446)}{routing_number}{chr(0x2446)} '
+                 f'{chr(0x2449)}{account_number}{chr(0x2449)}  {payout.check_number}')
+    pdf.drawCentredString(width / 2, bottom + 7, micr_line)
     pdf.setDash(3, 3)
     pdf.line(left, bottom - 18, right, bottom - 18)
     pdf.setDash()
     pdf.setFillColorRGB(.35, .35, .35)
+    pdf.setFont('Helvetica', 8)
     pdf.drawCentredString(width / 2, bottom - 32,
                          'Print at Actual Size (100%) on compatible top-check stock. Do not use Fit to Page.')
     pdf.showPage()

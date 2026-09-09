@@ -17,6 +17,11 @@ def test_check_create_download_and_status_lifecycle(tmp_path):
     client.get('/payouts')
     with client.session_transaction() as session:
         csrf = session['csrf']
+    saved = client.post('/payouts/check-settings', data={
+        'csrf': csrf, 'routing_number': '021000021',
+        'account_number': '1234567890'}, follow_redirects=True)
+    assert saved.status_code == 200
+    assert '1234567890' not in saved.text
     with app.app_context():
         family = db.session.scalar(db.select(Family))
         family.status = 'Active'
@@ -38,6 +43,9 @@ def test_check_create_download_and_status_lifecycle(tmp_path):
     assert 'Test Applicant' in text
     assert '$1,234.56' in text
     assert 'One Thousand Two Hundred Thirty-Four and 56/100 Dollars' in text
+    assert '021000021' in text
+    assert '1234567890' in text
+    assert 'Family support payout' not in text
 
     with app.app_context():
         payout = db.session.scalar(db.select(ApplicantPayout))

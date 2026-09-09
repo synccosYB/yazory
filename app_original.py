@@ -22,6 +22,7 @@ from intake import validate_intake, intake_for_form
 from budget_report import household_report
 import child_budget
 from email_service import deliver
+from abcharity import decrypt_api_key, encrypt_api_key
 from stripe_gateway import (create_account_link, create_checkout_session,
                             create_billing_portal_session, create_connected_account, create_transfer,
                             construct_webhook_event, retrieve_connected_account)
@@ -296,6 +297,8 @@ class ApplicantPayout(db.Model):
     check_number = db.Column(db.String(40), nullable=False, default='', index=True)
     check_date = db.Column(db.Date, nullable=True)
     stripe_reference = db.Column(db.String(255), nullable=False, default='', index=True)
+    routing_number_encrypted = db.Column(db.Text, nullable=False, default='')
+    account_number_encrypted = db.Column(db.Text, nullable=False, default='')
     status = db.Column(db.String(30), nullable=False, default='created', index=True)
     mailed_at = db.Column(db.DateTime, nullable=True)
     cleared_at = db.Column(db.DateTime, nullable=True)
@@ -714,6 +717,11 @@ def create_app(test_config=None):
         if 'api_key_encrypted' not in campaign_columns:
             db.session.execute(text(
                 "ALTER TABLE charity_campaign ADD COLUMN api_key_encrypted TEXT NOT NULL DEFAULT ''"))
+        payout_columns = {column['name'] for column in inspect(db.engine).get_columns('applicant_payout')}
+        for column in ('routing_number_encrypted', 'account_number_encrypted'):
+            if column not in payout_columns:
+                db.session.execute(text(
+                    f"ALTER TABLE applicant_payout ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"))
         # Backfill the central directories from every profile that already has
         # shul or yeshivah details. The helpers are idempotent, so startup never
         # creates duplicate people or institutions.
@@ -2872,10 +2880,48 @@ def create_app(test_config=None):
             Expense.status == 'Approved').order_by(Expense.id.desc())).all()
         applicant_payouts = db.session.scalars(select(ApplicantPayout).order_by(
             ApplicantPayout.created_at.desc()).limit(250)).all()
+        bank_setting = db.session.get(OrganizationSetting, 'check_bank_details')
+        bank_details = bank_setting.value if bank_setting and isinstance(bank_setting.value, dict) else {}
         return render_template('payouts.html', title='Payouts', recipients=recipients,
                                transfers=transfers, families=families,
                                approved_expenses=approved_expenses,
-                               applicant_payouts=applicant_payouts, today=date.today())
+                               applicant_payouts=applicant_payouts, today=date.today(),
+                               bank_configured=bool(bank_details.get('routing') and bank_details.get('account')),
+                               bank_account_last4=bank_details.get('account_last4', ''))
+
+    def check_bank_details():
+        row = db.session.get(OrganizationSetting, 'check_bank_details')
+        values = row.value if row and isinstance(row.value, dict) else {}
+        try:
+            return (decrypt_api_key(values.get('routing', ''), app.config['SECRET_KEY']),
+                    decrypt_api_key(values.get('account', ''), app.config['SECRET_KEY']))
+        except Exception:
+            abort(400, 'Save the check routing and account numbers again.')
+
+    @app.post('/payouts/check-settings')
+    def save_check_settings():
+        require_organization_admin()
+        routing_number = re.sub(r'\D', '', field('routing_number', True, 20))
+        account_number = re.sub(r'\D', '', field('account_number', True, 30))
+        if len(routing_number) != 9 or sum(int(digit) * weight for digit, weight in
+                zip(routing_number, (3, 7, 1, 3, 7, 1, 3, 7, 1))) % 10:
+            abort(400, 'Enter a valid 9-digit ABA routing number.')
+        if not 4 <= len(account_number) <= 17:
+            abort(400, 'Enter a valid bank account number.')
+        value = {
+            'routing': encrypt_api_key(routing_number, app.config['SECRET_KEY']),
+            'account': encrypt_api_key(account_number, app.config['SECRET_KEY']),
+            'account_last4': account_number[-4:],
+        }
+        row = db.session.get(OrganizationSetting, 'check_bank_details')
+        if row:
+            row.value = value
+        else:
+            db.session.add(OrganizationSetting(key='check_bank_details', value=value))
+        audit('Updated secure check-printing bank details')
+        db.session.commit()
+        flash('Check routing and account numbers saved securely.')
+        return redirect(url_for('payouts'))
 
     @app.post('/payouts/checks')
     def create_check_payout():
@@ -2901,6 +2947,7 @@ def create_app(test_config=None):
         mailing_address = '\n'.join(part for part in (family.address, locality) if part)
         if not mailing_address:
             abort(400, 'Add the applicant mailing address before creating a check.')
+        routing_number, account_number = check_bank_details()
         payee_name = field('payee_name', True)
         if not re.search(r'[A-Za-z]', payee_name) or re.search(r'[^A-Za-z0-9 .,&\'()-]', payee_name):
             abort(400, 'Enter the check payee name in English.')
@@ -2909,6 +2956,8 @@ def create_app(test_config=None):
             payee_name=payee_name, mailing_address=mailing_address,
             memo=field('memo', limit=160), check_number=check_number,
             check_date=check_date, status='created',
+            routing_number_encrypted=encrypt_api_key(routing_number, app.config['SECRET_KEY']),
+            account_number_encrypted=encrypt_api_key(account_number, app.config['SECRET_KEY']),
             created_by=current_user().id if current_user() else None)
         db.session.add(payout)
         db.session.flush()
@@ -2963,7 +3012,13 @@ def create_app(test_config=None):
         if payout.method != 'check' or payout.status == 'voided':
             abort(400, 'This check cannot be printed.')
         from check_pdf import build_check_pdf
-        return send_file(build_check_pdf(payout), mimetype='application/pdf', as_attachment=True,
+        try:
+            routing_number = decrypt_api_key(payout.routing_number_encrypted, app.config['SECRET_KEY'])
+            account_number = decrypt_api_key(payout.account_number_encrypted, app.config['SECRET_KEY'])
+        except Exception:
+            routing_number, account_number = check_bank_details()
+        return send_file(build_check_pdf(payout, routing_number, account_number),
+                         mimetype='application/pdf', as_attachment=True,
                          download_name=f'Yazory-check-{secure_filename(payout.check_number)}.pdf')
 
     @app.post('/payouts/<int:payout_id>/status')
