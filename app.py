@@ -201,16 +201,25 @@ def _sync_family_gabbais(family_id, role, institution, gabbais):
     current = _app.db.session.scalars(select(FamilyGabbaiConnection).where(
         FamilyGabbaiConnection.family_id == family_id,
         FamilyGabbaiConnection.role == role)).all()
+    desired_ids = {gabbai.id for gabbai in gabbais} if institution is not None else set()
+    existing_by_gabbai = {row.gabbai_id: row for row in current}
+
+    # Keep existing links that still belong to the selected shul. This makes
+    # repeated profile saves idempotent and avoids delete/reinsert collisions on
+    # the unique (family, role, gabbai) key.
     for row in current:
-        _app.db.session.delete(row)
-    # Remove prior links before inserting replacements with the same unique key.
-    _app.db.session.flush()
+        if row.gabbai_id not in desired_ids:
+            _app.db.session.delete(row)
+        elif institution is not None:
+            row.institution_id = institution.id
+
     if institution is None:
         return
     for gabbai in gabbais:
-        _app.db.session.add(FamilyGabbaiConnection(
-            family_id=family_id, institution_id=institution.id,
-            gabbai_id=gabbai.id, role=role))
+        if gabbai.id not in existing_by_gabbai:
+            _app.db.session.add(FamilyGabbaiConnection(
+                family_id=family_id, institution_id=institution.id,
+                gabbai_id=gabbai.id, role=role))
 
 
 def _save_shul_gabbai_connections(family_id):
