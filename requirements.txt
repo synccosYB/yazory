@@ -9,3 +9,4 @@ stripe==15.6.1
 
 requests==2.32.5
 cryptography==46.0.0
+pyluach==2.3.0

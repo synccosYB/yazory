@@ -259,6 +259,8 @@ def test_imported_receipt_fees_reconciliation_and_reviewed_correction(env):
         donor=CharityDonor(campaign_id=camp.id,identity='receipt:1',name='Donor',email='',phone='',address='',contact_id=env.cid);db.session.add(donor);db.session.flush()
         d=CharityDonation(campaign_id=camp.id,donor_id=donor.id,external_id='1',amount_cents=10000,net_cents=9700,donation_time=datetime.now(),anonymous=False,subscription=False,team='',notes='')
         db.session.add(d);db.session.commit();did=d.id
+        f=env.app.extensions['workflows']['financials'](env.fid)
+        assert f['collected']==10000 and f['balance']==9700 and f['overhead']==300 and f['imported_pending']==1
     response=env.client().post(f'/families/{env.fid}/donations/{did}/workflow',data={'csrf':'test'})
     assert response.status_code==302
     wid=int(response.location.split('/')[-1].split('?')[0])
@@ -268,7 +270,7 @@ def test_imported_receipt_fees_reconciliation_and_reviewed_correction(env):
     for role in ['owner','owner','finance','finance']:assert env.act(wid,role,payment_result='Settled receipt').status_code==302
     with env.app.app_context():
         f=env.app.extensions['workflows']['financials'](env.fid)
-        assert f['balance']==9700 and f['collected']==10000 and f['overhead']==300
+        assert f['balance']==9700 and f['collected']==10000 and f['overhead']==300 and f['imported_pending']==0
         entry=db.session.scalar(db.select(env.M['LedgerEntry']).where(env.M['LedgerEntry'].source_item_id==wid,env.M['LedgerEntry'].entry_type=='Donation'));lid=entry.id
     r=env.create('reconciliation',{'ledger_id':lid,'bank_ref':'processor-deposit-1','bank_date':env.today.isoformat(),'bank_amount':'97'})
     env.finish(r)

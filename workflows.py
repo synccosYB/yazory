@@ -19,8 +19,9 @@ import child_budget
 
 
 def install_workflows(app, db, entities, helpers):
-    Family, StaffUser, Assignment, Contact, Expense, Document, HouseholdBudget = (
-        entities[n] for n in ('Family','StaffUser','FamilyAssignment','Contact','Expense','Document','HouseholdBudget'))
+    Family, StaffUser, Assignment, Contact, Expense, Document, HouseholdBudget, CharityCampaign, CharityDonation = (
+        entities[n] for n in ('Family','StaffUser','FamilyAssignment','Contact','Expense','Document','HouseholdBudget',
+                              'CharityCampaign','CharityDonation'))
     M=workflow_models(db)
     Work=M['WorkItem']; Decision=M['WorkflowDecision']; Event=M['WorkflowEvent']; Notice=M['WorkflowNotice']
     Grant=M['WorkflowRole']; Access=M['StaffAccess']; Ledger=M['LedgerEntry']; Match=M['BankMatch']
@@ -206,7 +207,21 @@ def install_workflows(app, db, entities, helpers):
 
     def financials(fid):
         entries=db.session.scalars(select(Ledger).where(Ledger.family_id==fid)).all()
-        balance=sum(e.amount_cents for e in entries)
+        # ABCharity is the processor record of money already received. Include
+        # valid USD receipts as soon as they are imported, but stop adding the
+        # import overlay once its reviewed workflow has posted ledger entries.
+        posted_sources={e.source_item_id for e in entries}
+        posted_imports=set()
+        for item in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind=='collection')):
+            donation_id=item.data.get('abcharity_donation_id')
+            if donation_id and item.id in posted_sources:posted_imports.add(donation_id)
+        campaign_ids=list(db.session.scalars(select(CharityCampaign.id).where(
+            CharityCampaign.family_id==fid,CharityCampaign.currency=='USD')))
+        imported=[d for d in db.session.scalars(select(CharityDonation).where(
+            CharityDonation.campaign_id.in_(campaign_ids))) if d.id not in posted_imports] if campaign_ids else []
+        imported_gross=sum(d.amount_cents for d in imported)
+        imported_net=sum(d.net_cents for d in imported)
+        balance=sum(e.amount_cents for e in entries)+imported_net
         reserved=0
         for item in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind.in_(['expense','emergency']),Work.disposition=='Open')):
             if (item.kind=='expense' and item.stage>=4) or (item.kind=='emergency' and item.stage>=4):
@@ -221,10 +236,11 @@ def install_workflows(app, db, entities, helpers):
             for w in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind=='collection')):
                 if w.data.get('abcharity_donation_id') and any(e.source_item_id==w.id for e in entries) and not consistency(w):held=True
         return dict(balance=balance,reserved=reserved,protected_reserve=protected,held_for_review=held,available=0 if held else balance-reserved-protected,
-                    collected=sum(e.amount_cents for e in entries if e.entry_type in ('Donation','Donation adjustment')),
+                    collected=sum(e.amount_cents for e in entries if e.entry_type in ('Donation','Donation adjustment'))+imported_gross,
                     assistance=-sum(e.amount_cents for e in entries if e.entry_type=='Family assistance'),
-                    overhead=-sum(e.amount_cents for e in entries if e.entry_type in ('Organization expense','Processing fee','Processing fee adjustment')),
+                    overhead=-sum(e.amount_cents for e in entries if e.entry_type in ('Organization expense','Processing fee','Processing fee adjustment'))+(imported_gross-imported_net),
                     refunds=-sum(e.amount_cents for e in entries if e.entry_type=='Refund'),
+                    imported_pending=len(imported),imported_pending_gross=imported_gross,imported_pending_net=imported_net,
                     unmatched=sum(1 for e in entries if e.entry_type not in ('Transfer in','Transfer out') and not db.session.scalar(select(Match.id).where(Match.ledger_id==e.id))))
 
     def report_snapshot(fid,period):
