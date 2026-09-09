@@ -1,6 +1,7 @@
 import re
 
 import app_original as app_module
+import app_original as core_module
 from werkzeug.security import generate_password_hash
 
 from app import (AccountToken, EmailMessage, Family, FamilyAssignment, StaffUser,
@@ -120,7 +121,7 @@ def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch):
                          subject=subject, html=html, text=text)
         return 'email_123', None
 
-    monkeypatch.setattr(app_module, 'deliver', capture_delivery)
+    monkeypatch.setattr(core_module, 'deliver', capture_delivery)
     app.config['TESTING'] = False
     response = post(owner, '/people-access', {'name': 'Family Admin',
         'email': 'brand@example.test', 'role': 'family_admin'})
