@@ -402,6 +402,13 @@ def create_app(test_config=None):
                       STRIPE_CURRENCY=os.getenv('STRIPE_CURRENCY', 'usd').lower())
     if test_config:
         app.config.update(test_config)
+    # Tests must stay isolated from Replit's production environment variables.
+    # Otherwise production cookies are unusable in Flask's local test client
+    # and demo fixtures are not created in the requested in-memory database.
+    if app.config.get('TESTING'):
+        app.config['SESSION_COOKIE_SECURE'] = False
+        if not test_config or 'DEMO' not in test_config:
+            app.config['DEMO'] = True
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
         raise RuntimeError('Demo mode must use a local SQLite database, never a shared production database.')
     db.init_app(app)
