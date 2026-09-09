@@ -737,12 +737,30 @@ def create_app(test_config=None):
         if 'api_key_encrypted' not in campaign_columns:
             db.session.execute(text(
                 "ALTER TABLE charity_campaign ADD COLUMN api_key_encrypted TEXT NOT NULL DEFAULT ''"))
-        payout_columns = {column['name'] for column in inspect(db.engine).get_columns('applicant_payout')}
+        # PostgreSQL's full SQLAlchemy reflection query calls
+        # pg_get_serial_sequence() for every column and can wait indefinitely
+        # behind an otherwise harmless lock held by a live deployment.  This
+        # lightweight catalog lookup is sufficient for additive migrations.
+        if db.engine.dialect.name == 'postgresql':
+            payout_columns = set(db.session.scalars(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = 'applicant_payout'"
+            )).all())
+        else:
+            payout_columns = {column['name'] for column in inspect(db.engine).get_columns(
+                'applicant_payout')}
         for column in ('routing_number_encrypted', 'account_number_encrypted'):
             if column not in payout_columns:
                 db.session.execute(text(
                     f"ALTER TABLE applicant_payout ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"))
-        payout_columns = {column['name'] for column in inspect(db.engine).get_columns('applicant_payout')}
+        if db.engine.dialect.name == 'postgresql':
+            payout_columns = set(db.session.scalars(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = 'applicant_payout'"
+            )).all())
+        else:
+            payout_columns = {column['name'] for column in inspect(db.engine).get_columns(
+                'applicant_payout')}
         for column, definition in {
             'check_bank_account_id': 'INTEGER REFERENCES check_bank_account(id)',
             'check_bank_account_name': "VARCHAR(160) NOT NULL DEFAULT ''",
