@@ -1,0 +1,177 @@
+From 31fdd019600815b2a773880f75247c9c03f18609 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Wed, 9 Sep 2026 10:13:02 -0400
+Subject: [PATCH] Add supporter email addresses for receipts
+
+---
+ app_original.py                  | 22 ++++++++++++++++++++--
+ native_payments.py               |  2 +-
+ templates/donation_checkout.html |  2 +-
+ templates/supporter_edit.html    | 21 +++++++++++++++++++--
+ templates/supporters.html        |  2 ++
+ translations.py                  |  1 +
+ 6 files changed, 44 insertions(+), 6 deletions(-)
+
+diff --git a/app_original.py b/app_original.py
+index 564e2d7..555d2bc 100644
+--- a/app_original.py
++++ b/app_original.py
+@@ -178,6 +178,7 @@ class Contact(db.Model):
+     name = db.Column(db.String(160), nullable=False)
+     relationship = db.Column(db.String(80), nullable=False)
+     phone = db.Column(db.String(80), default='')
++    email = db.Column(db.String(254), default='')
+     # The same real person may support several cases.  This stable key keeps the
+     # case-specific relationship rows linked to one billing identity.
+     supporter_key = db.Column(db.String(200), nullable=False, default='', index=True)
+@@ -621,6 +622,10 @@ def create_app(test_config=None):
+             ))
+             # Nested supporters previously displayed as sons-in-law, so retain
+             # that meaning for existing records while making it explicit.
++        if 'email' not in contact_columns:
++            db.session.execute(text(
++                "ALTER TABLE contact ADD COLUMN email VARCHAR(254) NOT NULL DEFAULT ''"
++            ))
+         # Older versions stored names entered through "Add another child" as
+         # display-only ContactChild rows. Promote them once into real supporter
+         # profiles so they have their own status, pledge, history, and page.
+@@ -1041,6 +1046,12 @@ def create_app(test_config=None):
+             abort(400, 'Enter a valid email address.')
+         return value
+ 
++    def optional_email_field(name='email'):
++        value = field(name, limit=254).lower()
++        if value and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
++            abort(400, 'Enter a valid email address.')
++        return value
++
+     def amount(name, allow_zero=False):
+         try:
+             value = Decimal(field(name, True, 20))
+@@ -1065,8 +1076,9 @@ def create_app(test_config=None):
+                           amount_cents=amount_cents, received_on=date.today(),
+                           reference=reference, note='Processed securely by Stripe')
+         db.session.add(receipt)
+-        if donor_email:
+-            send_email('donation_receipt', donor_email, 'Your Yazory donation receipt',
++        receipt_email = donor_email or contact.email
++        if receipt_email:
++            send_email('donation_receipt', receipt_email, 'Your Yazory donation receipt',
+                        f'Thank you for your donation of ${amount_cents / 100:,.2f}.\n\n'
+                        f'Receipt reference: {reference}\n\n'
+                        'Yazory is developed and operated by Synccos Inc.',
+@@ -1925,6 +1937,7 @@ def create_app(test_config=None):
+             parent_connection = ''
+         name = field('name', True)
+         phone = field('phone', limit=80)
++        email = optional_email_field()
+         key = supporter_key(name, phone)
+         existing = db.session.scalar(select(Contact).where(Contact.supporter_key == key).order_by(Contact.id))
+         duplicate_case = db.session.scalar(select(Contact.id).where(
+@@ -1935,7 +1948,10 @@ def create_app(test_config=None):
+             pledge, pledge_frequency, status = existing.monthly_cents, existing.pledge_frequency, existing.status
+             if not phone:
+                 phone = existing.phone
++            if not email:
++                email = existing.email
+         db.session.add(Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
++                               email=email,
+                                supporter_key=key, parent_contact_id=parent_contact_id,
+                                parent_connection=parent_connection, monthly_cents=pledge,
+                                pledge_frequency=pledge_frequency, status=status))
+@@ -2008,12 +2024,14 @@ def create_app(test_config=None):
+                 parent_connection = ''
+             name = field('name', True)
+             phone = field('phone', limit=80)
++            email = optional_email_field()
+             new_key = supporter_key(name, phone, contact.supporter_key)
+             linked = db.session.scalars(select(Contact).where(
+                 Contact.supporter_key == contact.supporter_key)).all() if contact.supporter_key else [contact]
+             for linked_contact in linked:
+                 linked_contact.name = name
+                 linked_contact.phone = phone
++                linked_contact.email = email
+                 linked_contact.supporter_key = new_key
+                 linked_contact.status = status
+                 linked_contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
+diff --git a/native_payments.py b/native_payments.py
+index b24788f..112e6f4 100644
+--- a/native_payments.py
++++ b/native_payments.py
+@@ -160,7 +160,7 @@ def register_native_payments(app):
+         if not payment_method_id.startswith('pm_'):
+             return {'error': 'The secure card token is missing. Re-enter the card and try again.'}, 400
+         billing_name = (request.form.get('billing_name') or contact.name).strip()[:160]
+-        billing_email = (request.form.get('billing_email') or '').strip().lower()[:254]
++        billing_email = (request.form.get('billing_email') or contact.email or '').strip().lower()[:254]
+ 
+         payment = core.StripePayment(
+             contact_id=contact.id,
+diff --git a/templates/donation_checkout.html b/templates/donation_checkout.html
+index aca61c0..475e832 100644
+--- a/templates/donation_checkout.html
++++ b/templates/donation_checkout.html
+@@ -9,7 +9,7 @@
+ <label>{{ _('Amount ($)') }}<input name="amount" type="number" min="1" max="1000000" step="0.01" value="{{ '%.2f'|format(default_amount) }}" required></label>
+ <label>{{ _('Frequency') }}<select name="frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency == default_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
+ <label>{{ _('Name on card') }}<input name="billing_name" autocomplete="cc-name" value="{{ supporter.name }}" required></label>
+-<label>{{ _('Email for receipt') }}<input name="billing_email" type="email" autocomplete="email"></label>
++<label>{{ _('Email for receipt') }}<input name="billing_email" type="email" autocomplete="email" value="{{ supporter.email }}"></label>
+ </div>
+ <div class="field-stack"><label>{{ _('Card information') }}</label><div id="card-element" class="stripe-card-field"></div><p id="card-errors" class="muted" role="alert"></p></div>
+ <button id="donation-submit" type="submit">{{ _('Process donation') }}</button>
+diff --git a/templates/supporter_edit.html b/templates/supporter_edit.html
+index 8a6f0fc..f6b1680 100644
+--- a/templates/supporter_edit.html
++++ b/templates/supporter_edit.html
+@@ -1,3 +1,20 @@
+-{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
+-<div class="page-heading"><div><div class="eyebrow">{{ _('EDIT SUPPORTER') }}</div><h1>{{ contact.name }}</h1><p>{{ contact.family.name }}</p></div><a class="button secondary" href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a></div><form class="card padded" method="post">{{ token(csrf) }}<div class="form-grid"><label>{{ _('Name *') }}<input name="name" value="{{ contact.name }}" required maxlength="160"></label><label>{{ _('Phone') }}<input name="phone" value="{{ contact.phone }}" maxlength="80"></label><label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship==contact.relationship }}>{{ _(relationship) }}</option>{% endfor %}</select></label><label>{{ _('Whose son or son-in-law is he?') }}<input type="search" class="select-search" data-select-filter="parent-contact" placeholder="{{ _('Search names') }}" autocomplete="off"><select name="parent_contact_id" id="parent-contact"><option value="">{{ _('Not connected under another supporter') }}</option>{% for parent in possible_parents %}<option value="{{ parent.id }}" {{ 'selected' if parent.id==contact.parent_contact_id }}>{{ parent.name }} · {{ _(parent.relationship) }}{% if parent.phone %} · {{ parent.phone }}{% endif %}</option>{% endfor %}</select></label><label>{{ _('What is he to that supporter?') }}<select name="parent_connection" id="parent-connection"><option value="">{{ _('Choose') }}</option><option value="Son" {{ 'selected' if contact.parent_connection=='Son' }}>{{ _('Son') }}</option><option value="Son-in-law" {{ 'selected' if contact.parent_connection=='Son-in-law' }}>{{ _('Son-in-law') }}</option></select><small>{{ _('Choose the supporter above first, then specify whether this person is his son or son-in-law.') }}</small></label><label>{{ _('Donation amount ($)') }}<input name="monthly" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(contact.monthly_cents/100) }}" required></label><label>{{ _('Donation frequency') }}<select name="pledge_frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency==contact.pledge_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label><label>{{ _('Outreach status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status==contact.status }}>{{ _(status) }}</option>{% endfor %}</select></label></div><div class="form-actions"><a href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a><button>{{ _('Save') }}</button></div></form>
++{% extends 'base.html' %}
++{% from 'macros.html' import token with context %}
++{% block content %}
++<div class="page-heading"><div><div class="eyebrow">{{ _('EDIT SUPPORTER') }}</div><h1>{{ contact.name }}</h1><p>{{ contact.family.name }}</p></div><a class="button secondary" href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a></div>
++<form class="card padded" method="post">
++{{ token(csrf) }}
++<div class="form-grid">
++<label>{{ _('Name *') }}<input name="name" value="{{ contact.name }}" required maxlength="160"></label>
++<label>{{ _('Phone') }}<input name="phone" value="{{ contact.phone }}" maxlength="80" autocomplete="tel"></label>
++<label>{{ _('Email address') }}<input name="email" type="email" value="{{ contact.email }}" maxlength="254" autocomplete="email"></label>
++<label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship==contact.relationship }}>{{ _(relationship) }}</option>{% endfor %}</select></label>
++<label>{{ _('Whose son or son-in-law is he?') }}<input type="search" class="select-search" data-select-filter="parent-contact" placeholder="{{ _('Search names') }}" autocomplete="off"><select name="parent_contact_id" id="parent-contact"><option value="">{{ _('Not connected under another supporter') }}</option>{% for parent in possible_parents %}<option value="{{ parent.id }}" {{ 'selected' if parent.id==contact.parent_contact_id }}>{{ parent.name }} · {{ _(parent.relationship) }}{% if parent.phone %} · {{ parent.phone }}{% endif %}</option>{% endfor %}</select></label>
++<label>{{ _('What is he to that supporter?') }}<select name="parent_connection" id="parent-connection"><option value="">{{ _('Choose') }}</option><option value="Son" {{ 'selected' if contact.parent_connection=='Son' }}>{{ _('Son') }}</option><option value="Son-in-law" {{ 'selected' if contact.parent_connection=='Son-in-law' }}>{{ _('Son-in-law') }}</option></select><small>{{ _('Choose the supporter above first, then specify whether this person is his son or son-in-law.') }}</small></label>
++<label>{{ _('Donation amount ($)') }}<input name="monthly" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(contact.monthly_cents/100) }}" required></label>
++<label>{{ _('Donation frequency') }}<select name="pledge_frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency==contact.pledge_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
++<label>{{ _('Outreach status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status==contact.status }}>{{ _(status) }}</option>{% endfor %}</select></label>
++</div>
++<div class="form-actions"><a href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a><button>{{ _('Save') }}</button></div>
++</form>
+ {% endblock %}
+diff --git a/templates/supporters.html b/templates/supporters.html
+index 1bebdb8..2a8391f 100644
+--- a/templates/supporters.html
++++ b/templates/supporters.html
+@@ -107,6 +107,8 @@
+ </label>
+ <label>{{ _('Phone') }}<input name="phone" maxlength="80">
+ </label>
++<label>{{ _('Email address') }}<input name="email" type="email" maxlength="254" autocomplete="email">
++</label>
+ <label>{{ _('Donation amount ($)') }}<input type="number" name="monthly" min="0" max="1000000" step="0.01" value="0" required>
+ </label>
+ <label>{{ _('Donation frequency') }}<select name="pledge_frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}">{{ _(frequency) }}</option>{% endfor %}</select>
+diff --git a/translations.py b/translations.py
+index 64818ee..d0a6a45 100644
+--- a/translations.py
++++ b/translations.py
+@@ -18,6 +18,7 @@ _EXTRA = {
+     },
+     'Name on card': {'he': 'שם על הכרטיס', 'yi': 'נאמען אויפן קארטל'},
+     'Email for receipt': {'he': 'אימייל לקבלה', 'yi': 'אימעיל פאר קבלה'},
++    'Email address': {'he': 'כתובת אימייל', 'yi': 'אימעיל אדרעס'},
+     'Card information': {'he': 'פרטי כרטיס', 'yi': 'קארטל אינפארמאציע'},
+     'Process donation': {'he': 'עיבוד התרומה', 'yi': 'באארבעטן די נדבה'},
+     'Scheduled amount': {'he': 'סכום קבוע', 'yi': 'באשטימטע סכום'},
+-- 
+2.51.1
+
