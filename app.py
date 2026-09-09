@@ -8,6 +8,13 @@ if 'Shul friend' not in _app.RELATIONSHIPS:
     _app.RELATIONSHIPS.insert(insert_at, 'Shul friend')
 
 from app_original import *  # noqa: F401,F403,E402
+from native_payments import register_native_payments  # noqa: E402
+
+
+def create_app(test_config=None):
+    app = _app.create_app(test_config)
+    return register_native_payments(app)
+
 
 if __name__ == '__main__':
     create_app().run(host='0.0.0.0', port=int(os.getenv('PORT', '5000')))
