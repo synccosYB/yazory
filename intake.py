@@ -30,8 +30,6 @@ def validate_intake(form):
     data['foodstamps'] = text('foodstamps')
     if data['foodstamps'] not in ('', 'yes', 'no'):
         raise ValueError('Choose Yes or No for food stamps.')
-    if data['foodstamps'] == 'yes' and data['foodstamps_amount'] is None:
-        raise ValueError('Enter the monthly food stamp amount.')
     if data['foodstamps'] != 'yes':
         data['foodstamps_amount'] = None
     data['other_assistance'] = text('other_assistance')
@@ -57,13 +55,9 @@ def validate_intake(form):
                     raise ValueError('Invalid account or assistance entry.')
                 cleaned[key] = value.strip()
             if not any(cleaned.values()): continue
-            if not cleaned['provider']:
-                raise ValueError('Enter the provider or organization name.')
             if group == 'assistance':
                 cleaned['amount'] = money(cleaned['amount'])
-                if cleaned['amount'] is None:
-                    raise ValueError('Enter the monthly assistance amount.')
-            elif cleaned['kind'] not in ('utility', 'grocery', 'mosdos', 'other'):
+            elif cleaned['kind'] not in ('', 'utility', 'grocery', 'mosdos', 'other'):
                 raise ValueError('Choose an account type.')
             if group == 'accounts':
                 cleaned['monthly_bill'] = money(cleaned['monthly_bill'])
@@ -73,8 +67,6 @@ def validate_intake(form):
         if group == 'assistance':
             if data['other_assistance'] == 'no':
                 result = []
-            elif data['other_assistance'] == 'yes' and not result:
-                raise ValueError('Add the assistance source and monthly amount.')
         data[group] = result
     return data
 

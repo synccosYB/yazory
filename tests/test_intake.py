@@ -20,7 +20,7 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
         assert 'class="sheet-field circumstances-field"' in page.text
         assert 'id="intake-review"' not in page.text
         assert 'style.css?v=20260909-profile-sheet-v2' in page.text
-        assert 'intake.js?v=20260909-intake-sheet' in page.text
+        assert 'intake.js?v=20260909-intake-optional-v2' in page.text
         label = {'en':'Monthly bill ($)', 'he':'סכום החשבון החודשי ($)', 'yi':'וויפיל איז דער ביל א חודש ($)'}[lang]
         assert label in page.text and 'data-entry="monthly_bill"' in page.text
     with client.session_transaction() as session: csrf=session['csrf']
@@ -48,8 +48,7 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
 
 @pytest.mark.parametrize('fields',[
  {'rent':'NaN'}, {'rent':'1.001'}, {'children_count':'-1'},
- {'foodstamps':'yes'}, {'accounts_json':'{}'},
- {'accounts_json':'[{"kind":"utility","provider":""}]'},
+ {'accounts_json':'{}'},
  {'assistance_json':'[{"provider":"Fund","amount":"-1"}]'},
  {'accounts_json':'[{"kind":"madeup","provider":"Foo"}]'},
 ])

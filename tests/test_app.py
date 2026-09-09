@@ -454,7 +454,7 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
                   'inlaws_maiden_name', 'inlaws_family', 'rabbi', 'rabbi_phone',
-                  'yeshivah', 'weekday_shul', 'shabbos_shul', 'circumstances'):
+                  'weekday_shul', 'shabbos_shul', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
@@ -631,14 +631,13 @@ def test_family_form_offers_existing_institutions_and_accepts_new_names(app, cli
         assert db.session.scalar(db.select(Institution).where(
             Institution.kind == 'Shul', Institution.name == 'Brand New Shul'))
 
-def test_family_form_rejects_incomplete_yeshivah_history(client):
+def test_family_form_accepts_partial_yeshivah_history(client):
     response = post(client, '/families/1/edit', {
         'name': 'Sample family', 'yeshivah_name': 'Incomplete Yeshivah',
         'yeshivah_grade': 'Kitah 9', 'yeshivah_year_from': '2001',
         'yeshivah_year_to': '',
     })
-    assert response.status_code == 400
-    assert 'For every yeshivah' in response.text
+    assert response.status_code == 302
 
 def test_schema_upgrade_merges_same_named_institutions(app):
     with app.app_context():

@@ -128,10 +128,12 @@ function fillGabbais(select,fields){
 }
 document.querySelectorAll('[data-institution-picker]').forEach(root=>{
   const select=root.querySelector('[data-institution-select]'),newField=root.querySelector('[data-new-institution]'),input=newField.querySelector('input'),
-  rabbi=rabbiFields(root,select),assistants=assistantFields(root,select),gabbais=gabbaiFields(root,select);
+  advanced=document.createElement('details'),advancedTitle=document.createElement('summary');
+  advanced.className='shul-contact-editor';advancedTitle.textContent=form.dataset.shulContactsLabel||'Shul contacts';advanced.appendChild(advancedTitle);root.appendChild(advanced);
+  const rabbi=rabbiFields(advanced,select),assistants=assistantFields(advanced,select),gabbais=gabbaiFields(advanced,select);
   if(select.name==='weekday_shul'||select.name==='shabbos_shul')selectedShuls[select.name]=select;
   function update(){
-    const adding=select.value==='__new__';newField.hidden=!adding;input.disabled=!adding;input.required=adding;
+    const adding=select.value==='__new__';newField.hidden=!adding;input.disabled=!adding;input.required=false;advanced.open=adding;
     root.classList.toggle('has-institution',Boolean(select.value));
     if(adding&&!input.value)input.focus();fillRabbi(select,rabbi,assistants);fillGabbais(select,gabbais);applySuggestion();
   }
