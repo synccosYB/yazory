@@ -116,7 +116,6 @@ def _record_settlement(payment, *, payment_intent_id='', charge_id=''):
         return
     balance = _value(charge, 'balance_transaction')
     if isinstance(balance, str) and balance:
-        # retrieve_charge requests expansion, but tolerate an unexpanded response.
         return
     if not balance:
         return
@@ -136,7 +135,7 @@ def _record_settlement(payment, *, payment_intent_id='', charge_id=''):
 
 
 def register_native_payments(app):
-    """Replace Embedded Checkout with a native Yazory form + Stripe Elements."""
+    """Replace every Checkout entry point with Yazory UI + Stripe Elements."""
     legacy_webhook = app.view_functions.get('stripe_webhook')
 
     def native_payment_submit(contact_id):
@@ -237,6 +236,10 @@ def register_native_payments(app):
         _authorized_contact(payment.contact_id)
         return render_template('stripe_result.html', title='Donation received', success=True, payment=payment)
 
+    def legacy_checkout_redirect(contact_id):
+        _authorized_contact(contact_id)
+        return redirect(url_for('supporter_donation', contact_id=contact_id), code=303)
+
     def wrapped_webhook():
         event = None
         try:
@@ -247,7 +250,6 @@ def register_native_payments(app):
                     app.config['STRIPE_WEBHOOK_SECRET'],
                 )
         except Exception:
-            # Let the established webhook return the canonical signature error.
             event = None
         response = legacy_webhook() if legacy_webhook else ({'received': True}, 200)
         if not event:
@@ -281,19 +283,23 @@ def register_native_payments(app):
                 )
             elif event_type == 'invoice.paid':
                 payment.status = 'active'
-                payment_intent_id = _value(obj, 'payment_intent', '') or ''
-                charge_id = _value(obj, 'charge', '') or ''
-                _record_settlement(payment, payment_intent_id=payment_intent_id, charge_id=charge_id)
+                _record_settlement(
+                    payment,
+                    payment_intent_id=_value(obj, 'payment_intent', '') or '',
+                    charge_id=_value(obj, 'charge', '') or '',
+                )
             core.db.session.commit()
         except Exception:
             core.db.session.rollback()
             app.logger.exception('Could not store Stripe processor fee details')
         return response
 
+    app.add_url_rule('/supporters/<int:contact_id>/native-payment', 'native_payment_submit', native_payment_submit, methods=['POST'])
+    app.add_url_rule('/stripe/native-success/<int:payment_id>', 'native_payment_success', native_payment_success, methods=['GET'])
     if 'embedded_checkout_session' in app.view_functions:
         app.view_functions['embedded_checkout_session'] = native_payment_submit
-    app.add_url_rule('/stripe/native-success/<int:payment_id>', 'native_payment_success', native_payment_success, methods=['GET'])
+    if 'stripe_checkout' in app.view_functions:
+        app.view_functions['stripe_checkout'] = legacy_checkout_redirect
     if legacy_webhook:
         app.view_functions['stripe_webhook'] = wrapped_webhook
-
     return app
