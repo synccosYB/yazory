@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import token %}
-{% block content %}
+{% from 'macros.html' import token with context %}
+{% block content %}{% if workflow_active %}<a class="button" href="{{ url_for('workflow_access') }}">{{ _('Workflow responsibilities') }}</a>{% endif %}
 <div class="page-heading">
   <div><div class="eyebrow">{{ _('STAFF ADMINISTRATION') }}</div><h1>{{ _('People & access') }}</h1><p>{{ _('Invite staff, manage roles, and control explicit family access.') }}</p></div>
   <a class="button secondary" href="{{ url_for('email_history') }}">{{ _('Email history') }}</a>

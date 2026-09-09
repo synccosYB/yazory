@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'macros.html' import token %}{% block content %}
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
 <div class="printable-list">
 <div class="page-heading">
 <div>
@@ -44,7 +44,7 @@
 <tbody>{% for c in contacts %}<tr class="{{ 'nested-supporter-row' if c.parent_supporter }}">
 <td>
 <div class="supporter-name">
-<a class="strong" href="{{ url_for('supporter_detail', contact_id=c.id) }}">{{ c.name }}</a>{% if c.parent_supporter %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% endif %}<details class="supporter-family add-child-panel no-print">
+<a class="strong" href="{{ url_for('supporter_detail', contact_id=c.id) }}">{{ c.name }}</a>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% endif %}<details class="supporter-family add-child-panel no-print">
 <summary>{{ _('Add another child') }}</summary>
 <form method="post" action="{{ url_for('add_contact_child', contact_id=c.id) }}">{{ token(csrf) }}<div class="supporter-child-form">
 <label>{{ _('Child name *') }}<input name="name" required maxlength="160">
@@ -68,7 +68,7 @@
 <bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi>
 </td>
 <td>{{ c.family.name }}</td>
-<td>{% if c.parent_supporter %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
+<td>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
 <td>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</td>
 <td>{{ received[c.id]|money }}</td>
 <td>{{ _(c.status) }}</td>

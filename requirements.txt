@@ -6,3 +6,5 @@ sqlalchemy
 werkzeug
 pytest==9.1.1
 stripe==15.6.1
+
+requests==2.32.5

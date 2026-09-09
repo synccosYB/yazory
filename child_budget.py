@@ -64,7 +64,6 @@ def calculate(data, intake, children, fallback_bands=None):
             value=override if override is not None else rate
             if value is None and key == 'children' and fallback is not None:
                 value=fallback
-            missing+=value is None
             if override is not None: actual_children[key]+=value or 0
             else: estimates[key]+=value or 0
             parts.append(dict(key=key,label=label,amount=value,override=override))
@@ -85,7 +84,9 @@ def calculate(data, intake, children, fallback_bands=None):
         # Explicit category totals supersede provider bills and child estimates.
         if actual is not None: value=actual; source='Actual household total'
         elif legacy is not None or key in known: value=(legacy or 0)+provider[key]; source='Saved household bills'
-        elif key in estimates and children: value=estimates[key] + actual_children[key]; source='Child estimate'
+        elif key in estimates and children:
+            value=estimates[key] + actual_children[key]; source='Child estimate'
+            missing+=sum(part['amount'] is None for child in child_rows for part in child['parts'] if part['key']==key)
         else: value=None; source='Not entered'
         missing+=value is None
         rows.append(dict(key=key,label=label,amount=value,source=source))
@@ -93,6 +94,10 @@ def calculate(data, intake, children, fallback_bands=None):
     missing+=sum(intake.get(k) is None for k in ('his_income','her_income','other_income'))
     missing+=sum(intake.get(k) not in ('yes','no') for k in ('foodstamps','other_assistance'))
     missing+=int(intake.get('children_count') is not None and intake['children_count']!=len(children))
+    missing+=int(intake.get('foodstamps')=='yes' and intake.get('foodstamps_amount') is None)
+    if intake.get('other_assistance')=='yes':
+        missing+=int(not intake.get('assistance'))
+        missing+=sum(r.get('amount') is None for r in intake.get('assistance',[]))
     assistance=sum(r.get('amount') or 0 for r in intake.get('assistance',[]) if intake.get('other_assistance')!='no')
     stamps=(intake.get('foodstamps_amount') or 0) if intake.get('foodstamps')=='yes' else 0
     food=next(r['amount'] or 0 for r in rows if r['key']=='food')

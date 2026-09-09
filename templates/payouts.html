@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import token %}
+{% from 'macros.html' import token with context %}
 {% block content %}
 <div class="page-heading"><div><div class="eyebrow">{{ _('STRIPE CONNECT') }}</div><h1>{{ _('Recipient payouts') }}</h1><p>{{ _('Verify families and vendors with Stripe, then send approved assistance securely.') }}</p></div></div>
 <section class="card padded"><h2>{{ _('Add payout recipient') }}</h2>{% if stripe_enabled %}<form method="post" action="{{ url_for('create_payout_recipient') }}">{{ token(csrf) }}<div class="form-grid"><label>{{ _('Recipient type') }}<select name="kind"><option value="family">{{ _('Family') }}</option><option value="vendor">{{ _('Vendor') }}</option></select></label><label>{{ _('Family') }}<select name="family_id"><option value="">{{ _('Choose') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select></label><label>{{ _('Vendor name') }}<input name="name" maxlength="160"></label><label>{{ _('Recipient email') }}<input name="email" type="email" required maxlength="254"></label></div><button>{{ _('Create and begin Stripe verification') }}</button></form>{% else %}<p>{{ _('Stripe is not configured yet.') }}</p>{% endif %}</section>

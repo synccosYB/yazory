@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'macros.html' import token %}
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
 {% block content %}
 <div class="page-heading"><div><h1>{{ _(title) }}</h1></div></div>
 {% if intake_error %}<div class="flash error" role="alert">{{ _(intake_error) }}</div>{% endif %}

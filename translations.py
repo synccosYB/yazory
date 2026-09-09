@@ -1,5 +1,5 @@
 from flask import session
-from translations_original import LANGUAGES, translate as _translate, translate_audit
+from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
     'Shul friend': {

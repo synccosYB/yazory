@@ -1,4 +1,4 @@
-import app as app_module
+import app_original as app_module
 import app_original as core_module
 import native_payments as native_module
 from app import (Contact, Expense, Family, Receipt, StripeEvent, StripePayment,
@@ -216,3 +216,78 @@ def test_unverified_recipient_cannot_receive_transfer():
         expense_id, recipient_id = expense.id, recipient.id
     assert client.post(f'/expenses/{expense_id}/stripe-transfer', data={
         'csrf': csrf(client), 'recipient_id': recipient_id}).status_code == 400
+
+
+def test_checkout_and_webhook_create_one_receipt(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact))
+        contact_id = contact.id
+    page = client.get(f'/supporters/{contact_id}/donate').text
+    assert 'value="180.00"' in page
+
+    created = {}
+    monkeypatch.setattr(native_module,'create_customer',lambda *_: {'id':'cus_fixture'})
+    def subscription(_secret,params,key):
+        assert params['items'][0]['price_data']['recurring']['interval']=='month'
+        assert key.startswith('yazory-native-subscription-')
+        created['metadata']=params['metadata']
+        return {'id':'sub_1','status':'incomplete','latest_invoice':{'payment_intent':{
+            'id':'pi_fixture','client_secret':'pi_fixture_secret'}}}
+    monkeypatch.setattr(native_module,'create_subscription',subscription)
+    response=client.post(f'/supporters/{contact_id}/native-payment',data={
+        'csrf':csrf(client),'amount':'18.00','frequency':'Monthly','payment_method_id':'pm_fixture'})
+    assert response.status_code==200
+    assert response.json['client_secret']=='pi_fixture_secret'
+    event={'id':'evt_invoice_1','type':'invoice.paid','data':{'object':{
+        'id':'in_1','subscription':'sub_1','amount_paid':1800,'charge':'ch_fixture',
+        'customer_email':'donor@example.test','metadata':created['metadata']}}}
+    monkeypatch.setattr(app_module,'construct_webhook_event',lambda *_:event)
+    monkeypatch.setattr(native_module,'construct_webhook_event',lambda *_:event)
+    monkeypatch.setattr(native_module,'retrieve_charge',lambda *_:{'id':'ch_fixture',
+        'balance_transaction':{'id':'txn_fixture','amount':1800,'fee':80,'net':1720,'currency':'usd'}})
+    webhook_client=app.test_client()
+    for _ in range(2):
+        assert webhook_client.post('/stripe/webhook',data=b'{}',headers={'Stripe-Signature':'test'}).status_code==200
+    with app.app_context():
+        payment=db.session.scalar(db.select(StripePayment))
+        assert db.session.scalar(db.select(db.func.count()).select_from(Receipt))==1
+        assert db.session.scalar(db.select(db.func.count()).select_from(StripeEvent))==1
+        assert payment.status=='active' and payment.successful_charges==1
+        settlement=db.session.scalar(db.select(native_module.StripeSettlement))
+        assert (settlement.gross_cents,settlement.fee_cents,settlement.net_cents)==(1800,80,1720)
+
+
+def test_checkout_can_open_through_plain_get_navigation(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+    monkeypatch.setattr(app_module, 'create_checkout_session',
+                        lambda *_args: {'id': 'cs_get_1',
+                                       'url': 'https://checkout.stripe.test/cs_get_1'})
+    response = client.get(
+        f'/supporters/{contact_id}/stripe-checkout?amount=1.00&frequency=One+time')
+    assert response.status_code == 303
+    assert response.location == f'/supporters/{contact_id}/donate'
+
+
+def test_checkout_failure_returns_to_supporter_with_visible_error(monkeypatch):
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(Contact.id))
+
+    class LiveAccountError(Exception):
+        user_message = 'Your Stripe account cannot currently make live charges.'
+
+    monkeypatch.setattr(native_module, 'create_payment_intent',
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(LiveAccountError()))
+    response = client.post(f'/supporters/{contact_id}/native-payment', data={
+        'csrf': csrf(client), 'amount': '1.00', 'frequency': 'One time', 'payment_method_id':'pm_fixture'},
+        follow_redirects=True)
+    assert response.status_code == 502
+    assert 'Your Stripe account cannot currently make live charges.' in response.text
+    with app.app_context():
+        assert db.session.scalar(db.select(StripePayment)).status == 'failed'

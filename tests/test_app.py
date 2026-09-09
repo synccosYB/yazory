@@ -71,7 +71,7 @@ def test_add_and_view_provider_expense_without_edit_mode(app, client):
     with app.app_context():
         account = db.session.get(HouseholdIntake, family_id).data['accounts'][0]
         assert account['monthly_bill'] == 8425
-        assert db.session.execute(db.select(Contact.monthly_cents).where(Contact.family_id==family_id)).scalar_one()==1825
+        assert db.session.scalar(db.select(db.func.count()).select_from(Contact).where(Contact.family_id==family_id)) == 0
 
 def test_married_child_records_spouse(app, client):
     assert post(client, '/families/new', {'name':'Parents'}).status_code == 302
@@ -182,9 +182,9 @@ def test_supporter_can_have_multiple_children_and_spouses(app, client):
     supporter_page = client.get(f'/supporters/{contact_id}').text
     assert 'Married child one' in supporter_page
     assert 'Spouse one' in supporter_page
-    assert 'Niece / nephew of applicant' in supporter_page
+    assert 'Son-in-law' in supporter_page and 'Supporter hierarchy' in supporter_page
     profile = client.get('/families/1').text
-    assert 'inline-children' in profile
+    assert 'nested-supporter-row' in profile
     assert profile.index('Supporter parent') < profile.index('Married child one')
     assert post(client, f'/contacts/{contact_id}/children', {
         'name':'Married child one', 'spouse_name':'Different person'}).status_code == 302
@@ -273,7 +273,8 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     supporter_detail = client.get(f'/supporters/{hersh_id}').text
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_detail
     assert 'Supporter hierarchy' in supporter_detail
-    assert supporter_detail.index('Shlomo supporter') < supporter_detail.index('Hersh Levy')
+    hierarchy = supporter_detail.split('class="supporter-hierarchy"', 1)[1]
+    assert hierarchy.index('Shlomo supporter') < hierarchy.index('Hersh Levy')
     assert f'/supporters/{shlomo_id}' in supporter_detail
     parent_detail = client.get(f'/supporters/{shlomo_id}').text
     assert 'Supporter hierarchy' in parent_detail
@@ -1041,6 +1042,11 @@ def test_office_and_fundraiser_permissions_and_isolation(monkeypatch):
     assert download.status_code == 200
     assert download.headers['Content-Disposition'].startswith('attachment;')
 
+    # A family assignment no longer exposes every donor: individual contact assignment is required.
+    with app.app_context():
+        Link=app.extensions['workflows']['models']['SupporterLink']
+        db.session.add(Link(contact_id=assigned_contact_id,side='Husband',relationship='Friend',assigned_to=fundraiser_id,permission='Permitted',verified=True))
+        db.session.commit()
     fundraiser_client = login('fundraiser@example.test', 'staff-passphrase-123')
     assert fundraiser_client.get('/').location == '/fundraising'
     summary = fundraiser_client.get('/fundraising').text

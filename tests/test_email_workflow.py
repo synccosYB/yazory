@@ -1,6 +1,6 @@
 import re
 
-import app as app_module
+import app_original as app_module
 import app_original as core_module
 from werkzeug.security import generate_password_hash
 

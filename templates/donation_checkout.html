@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import token %}
+{% from 'macros.html' import token with context %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='donation.css') }}">
 <div class="page-heading"><div><div class="eyebrow">{{ _('SECURE DONATION') }}</div><h1>{{ supporter.name }}</h1><p>{{ _('Enter the donation here. Card details are secured directly by Stripe without leaving Yazory.') }}</p></div><a class="button secondary" href="{{ url_for('supporter_detail', contact_id=supporter.id) }}">{{ _('Back to supporter') }}</a></div>

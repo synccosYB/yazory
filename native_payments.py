@@ -61,6 +61,16 @@ def _authorized_contact(contact_id):
         ))
         if not assigned:
             abort(403, 'You are not assigned to this family.')
+    workflows=current_app.extensions.get('workflows')
+    if workflows and workflows['enforced']():
+        workflows['contact_allowed'](contact,edit=request.method=='POST')
+        if request.method=='POST':
+            family=core.db.session.get(core.Family,contact.family_id)
+            if family.status!='Active' or not workflows['approved']('fundraising_plan',contact.family_id):
+                abort(400,'An active, approved fundraising plan is required.')
+            link=core.db.session.get(workflows['models']['SupporterLink'],contact.id)
+            if not link or not link.verified or link.permission!='Permitted' or not link.assigned_to:
+                abort(400,'Verify the relationship, contact permission and fundraiser assignment first.')
     return contact
 
 
