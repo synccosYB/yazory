@@ -797,6 +797,28 @@ def create_app(test_config=None):
 
     @app.context_processor
     def shul_rabbi_context():
+        # This directory data is only rendered on the family and community
+        # directory screens. Loading it globally caused an N+1 query storm on
+        # every page (dashboard, lists, payouts, etc.): each shul triggered
+        # separate phone, assistant, gabbai and gabbai-phone queries.
+        #
+        # Keep harmless defaults available to every template, but do no
+        # directory work unless the current screen can actually use it.
+        empty_context = {
+            'rabbi_people': [],
+            'family_rabbi_preference': lambda family_id: None,
+            'family_gabbai_contacts': lambda family_id: [],
+            'family_rabbi_assistant_contacts': lambda family: [],
+            'family_yeshivah_history': lambda family_id: [],
+            'shul_rabbi_map': {},
+            'family_phone_values': lambda family: (
+                _clean_phones(_app.request.form.getlist('phone'))
+                if _app.request.method == 'POST' else _family_phones(family)),
+        }
+        if _app.request.endpoint not in {
+                'new_family', 'edit_family', 'family_detail', 'directories'}:
+            return empty_context
+
         rows = _app.db.session.execute(select(_app.Institution, ShulRabbi).join(
             ShulRabbi, ShulRabbi.institution_id == _app.Institution.id, isouter=True).where(
             _app.Institution.kind == 'Shul')).all()
