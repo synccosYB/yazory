@@ -9,7 +9,7 @@
 <label>{{ _('Amount ($)') }}<input name="amount" type="number" min="1" max="1000000" step="0.01" value="{{ '%.2f'|format(default_amount) }}" required></label>
 <label>{{ _('Frequency') }}<select name="frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency == default_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
 <label>{{ _('Name on card') }}<input name="billing_name" autocomplete="cc-name" value="{{ supporter.name }}" required></label>
-<label>{{ _('Email for receipt') }}<input name="billing_email" type="email" autocomplete="email"></label>
+<label>{{ _('Email for receipt') }}<input name="billing_email" type="email" autocomplete="email" value="{{ supporter.email }}"></label>
 </div>
 <div class="field-stack"><label>{{ _('Card information') }}</label><div id="card-element" class="stripe-card-field"></div><p id="card-errors" class="muted" role="alert"></p></div>
 <button id="donation-submit" type="submit">{{ _('Process donation') }}</button>

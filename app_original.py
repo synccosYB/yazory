@@ -178,6 +178,7 @@ class Contact(db.Model):
     name = db.Column(db.String(160), nullable=False)
     relationship = db.Column(db.String(80), nullable=False)
     phone = db.Column(db.String(80), default='')
+    email = db.Column(db.String(254), default='')
     # The same real person may support several cases.  This stable key keeps the
     # case-specific relationship rows linked to one billing identity.
     supporter_key = db.Column(db.String(200), nullable=False, default='', index=True)
@@ -621,6 +622,10 @@ def create_app(test_config=None):
             ))
             # Nested supporters previously displayed as sons-in-law, so retain
             # that meaning for existing records while making it explicit.
+        if 'email' not in contact_columns:
+            db.session.execute(text(
+                "ALTER TABLE contact ADD COLUMN email VARCHAR(254) NOT NULL DEFAULT ''"
+            ))
         # Older versions stored names entered through "Add another child" as
         # display-only ContactChild rows. Promote them once into real supporter
         # profiles so they have their own status, pledge, history, and page.
@@ -1041,6 +1046,12 @@ def create_app(test_config=None):
             abort(400, 'Enter a valid email address.')
         return value
 
+    def optional_email_field(name='email'):
+        value = field(name, limit=254).lower()
+        if value and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
+            abort(400, 'Enter a valid email address.')
+        return value
+
     def amount(name, allow_zero=False):
         try:
             value = Decimal(field(name, True, 20))
@@ -1065,8 +1076,9 @@ def create_app(test_config=None):
                           amount_cents=amount_cents, received_on=date.today(),
                           reference=reference, note='Processed securely by Stripe')
         db.session.add(receipt)
-        if donor_email:
-            send_email('donation_receipt', donor_email, 'Your Yazory donation receipt',
+        receipt_email = donor_email or contact.email
+        if receipt_email:
+            send_email('donation_receipt', receipt_email, 'Your Yazory donation receipt',
                        f'Thank you for your donation of ${amount_cents / 100:,.2f}.\n\n'
                        f'Receipt reference: {reference}\n\n'
                        'Yazory is developed and operated by Synccos Inc.',
@@ -1925,6 +1937,7 @@ def create_app(test_config=None):
             parent_connection = ''
         name = field('name', True)
         phone = field('phone', limit=80)
+        email = optional_email_field()
         key = supporter_key(name, phone)
         existing = db.session.scalar(select(Contact).where(Contact.supporter_key == key).order_by(Contact.id))
         duplicate_case = db.session.scalar(select(Contact.id).where(
@@ -1935,7 +1948,10 @@ def create_app(test_config=None):
             pledge, pledge_frequency, status = existing.monthly_cents, existing.pledge_frequency, existing.status
             if not phone:
                 phone = existing.phone
+            if not email:
+                email = existing.email
         db.session.add(Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
+                               email=email,
                                supporter_key=key, parent_contact_id=parent_contact_id,
                                parent_connection=parent_connection, monthly_cents=pledge,
                                pledge_frequency=pledge_frequency, status=status))
@@ -2008,12 +2024,14 @@ def create_app(test_config=None):
                 parent_connection = ''
             name = field('name', True)
             phone = field('phone', limit=80)
+            email = optional_email_field()
             new_key = supporter_key(name, phone, contact.supporter_key)
             linked = db.session.scalars(select(Contact).where(
                 Contact.supporter_key == contact.supporter_key)).all() if contact.supporter_key else [contact]
             for linked_contact in linked:
                 linked_contact.name = name
                 linked_contact.phone = phone
+                linked_contact.email = email
                 linked_contact.supporter_key = new_key
                 linked_contact.status = status
                 linked_contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')

@@ -160,7 +160,7 @@ def register_native_payments(app):
         if not payment_method_id.startswith('pm_'):
             return {'error': 'The secure card token is missing. Re-enter the card and try again.'}, 400
         billing_name = (request.form.get('billing_name') or contact.name).strip()[:160]
-        billing_email = (request.form.get('billing_email') or '').strip().lower()[:254]
+        billing_email = (request.form.get('billing_email') or contact.email or '').strip().lower()[:254]
 
         payment = core.StripePayment(
             contact_id=contact.id,
