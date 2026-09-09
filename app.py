@@ -563,6 +563,8 @@ def _save_family_rabbi_preference(family_id):
         person = _app.db.session.get(RabbiPerson, selected_id) if selected_id else None
         if person is None:
             _app.abort(400, 'Choose a valid rabbi.')
+        _save_primary_rabbi_phone(
+            person, _app.request.form.get('rabbi_phone', '').strip())
         preference.overridden = True
         preference.rabbi_person_id = person.id
         family.rabbi, family.rabbi_phone = person.name, person.phone
@@ -835,6 +837,26 @@ def create_app(test_config=None):
                     'phones': _gabbai_phones(gabbai),
                 })
             return result
+        def family_rabbi_assistant_contacts(family):
+            if family is None:
+                return []
+            result = []
+            seen = set()
+            for shul_name in (family.weekday_shul, family.shabbos_shul):
+                institution = _find_shul(shul_name)
+                if institution is None:
+                    continue
+                primary = _primary_association(institution.id)
+                if (primary is None or _normalize_rabbi_name(primary.rabbi_person.name) !=
+                        _normalize_rabbi_name(family.rabbi)):
+                    continue
+                for assistant in _assistant_payload(institution):
+                    identity = assistant['name'].casefold()
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    result.append(assistant)
+            return result
         def family_yeshivah_history(family_id):
             return _app.db.session.execute(select(_app.PersonAffiliation, _app.Institution).join(
                 _app.Institution, _app.Institution.id == _app.PersonAffiliation.institution_id
@@ -847,6 +869,7 @@ def create_app(test_config=None):
             'rabbi_people': people,
             'family_rabbi_preference': family_rabbi_preference,
             'family_gabbai_contacts': family_gabbai_contacts,
+            'family_rabbi_assistant_contacts': family_rabbi_assistant_contacts,
             'family_yeshivah_history': family_yeshivah_history,
             'shul_rabbi_map': mapping,
             'family_phone_values': lambda family: (

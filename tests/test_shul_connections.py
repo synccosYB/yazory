@@ -3,9 +3,11 @@ from pathlib import Path
 import pytest
 
 from app import (
+    Family,
     FamilyGabbaiConnection,
     FamilyRabbiConnection,
     Institution,
+    RabbiPerson,
     ShulGabbaiDirectory,
     ShulGabbaiPhone,
     ShulRabbi,
@@ -15,6 +17,35 @@ from app import (
     create_app,
     db,
 )
+
+
+def test_directory_rabbi_selection_saves_phone_entered_on_family_form(app, client):
+    add_shuls(app)
+    with app.app_context():
+        person = RabbiPerson(
+            name='Rabbi Directory', normalized_name='rabbi directory', phone='')
+        db.session.add(person)
+        db.session.commit()
+        person_id = person.id
+
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'rabbi_mode': 'canonical',
+        'rabbi_person_id': str(person_id),
+        'rabbi': 'Rabbi Directory',
+        'rabbi_phone': '845-555-7777',
+    })
+    assert response.status_code == 302
+
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        person = db.session.get(RabbiPerson, person_id)
+        assert person.phone == '845-555-7777'
+        assert family.rabbi == 'Rabbi Directory'
+        assert family.rabbi_phone == '845-555-7777'
+
+    assert b'845-555-7777' in client.get('/families/1').data
 
 
 @pytest.fixture
@@ -237,6 +268,9 @@ def test_rabbi_and_shul_gabbai_can_have_multiple_phones_and_rabbi_has_own_assist
     profile = client.get('/families/1')
     assert profile.status_code == 200
     assert b'845-555-6101' in profile.data
+    assert b'Rabbi Gabbai' in profile.data
+    assert b'845-555-6201' in profile.data
+    assert b'845-555-6202' in profile.data
     assert b'845-555-6301' in profile.data
     assert b'845-555-6302' in profile.data
 
