@@ -1185,11 +1185,21 @@ def create_app(test_config=None):
             gabbais = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
                 ShulGabbaiDirectory.institution_id == institution.id
             ).order_by(ShulGabbaiDirectory.id)).all()
+            assistants = _assistant_payload(institution)
+            if _app.request.endpoint == 'family_detail':
+                assistant_role = {
+                    'yi': 'גבאי פונעם רב',
+                    'he': 'גבאי הרב',
+                }.get(_app.session.get('language', 'en'), 'Rabbi assistant / gabbai')
+                assistants = [
+                    {**assistant, 'name': f"{assistant['name']} · {assistant_role}"}
+                    for assistant in assistants
+                ]
             payload = {
                 'name': assignment.rabbi_name if assignment else '',
                 'phone': phones[0] if phones else '',
                 'phones': phones,
-                'assistants': _assistant_payload(institution),
+                'assistants': assistants,
                 'gabbais': [
                         {'name': row.name, 'phones': _gabbai_phones(row)}
                         for row in gabbais
