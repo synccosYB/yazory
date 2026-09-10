@@ -271,9 +271,10 @@ def test_profile_does_not_classify_rabbi_assistant_as_shul_gabbai(app, client):
     assert 'Shared Assistant Gabbai' not in shul_gabbai_block
     assert 'Shared Assistant Gabbai' in page
     assert '845-555-4666' in page
+    assert '<h2>Rabbi assistants / gabbaim</h2>' not in page
 
 
-def test_legacy_family_gabbai_moves_to_shul_and_connects_every_linked_family(app):
+def test_legacy_family_gabbai_moves_to_shul_and_appears_for_every_linked_family(app, client):
     with app.app_context():
         shul = Institution(kind='Shul', name='Shared Migration Shul')
         second = Family(name='Second linked family', weekday_shul=shul.name)
@@ -282,6 +283,7 @@ def test_legacy_family_gabbai_moves_to_shul_and_connects_every_linked_family(app
         first.shabbos_shul = shul.name
         db.session.add_all([shul, second])
         db.session.flush()
+        second_id = second.id
         db.session.add_all([
             PersonAffiliation(institution_id=shul.id, person_type='family',
                               person_id=first.id, note='Weekday shul · Family profile'),
@@ -299,12 +301,14 @@ def test_legacy_family_gabbai_moves_to_shul_and_connects_every_linked_family(app
             ShulGabbaiDirectory.institution_id == shul.id,
             ShulGabbaiDirectory.name == 'Migrated Shared Gabbai'))
         assert shared is not None
-        connected_family_ids = set(db.session.scalars(db.select(
-            FamilyGabbaiConnection.family_id
-        ).where(FamilyGabbaiConnection.gabbai_id == shared.id)).all())
-        assert connected_family_ids == {first.id, second.id}
+        assert db.session.scalar(db.select(FamilyGabbaiConnection).where(
+            FamilyGabbaiConnection.gabbai_id == shared.id)) is None
         assert db.session.scalar(db.select(ShulGabbai).where(
             ShulGabbai.name == 'Migrated Shared Gabbai')) is None
+
+    assert 'Migrated Shared Gabbai' in client.get('/families/1').get_data(as_text=True)
+    assert 'Migrated Shared Gabbai' in client.get(
+        f'/families/{second_id}').get_data(as_text=True)
 
 
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
