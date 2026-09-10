@@ -334,10 +334,35 @@ def _sync_legacy_helper_phones(person):
     """Keep compatibility rows aligned while helper phones are globally owned."""
     phones = _helper_phones(person)
     normalized = person.normalized_name
-    for row in _app.db.session.scalars(select(ShulGabbaiDirectory)).all():
-        if _normalize_rabbi_name(row.name) == normalized:
-            row.phone = phones[0] if phones else ''
-            _replace_gabbai_phones(row, phones)
+    matching_gabbais = [
+        row for row in _app.db.session.scalars(
+            select(ShulGabbaiDirectory).order_by(ShulGabbaiDirectory.id)).all()
+        if _normalize_rabbi_name(row.name) == normalized
+    ]
+    # Legacy imports may have stored the same helper more than once at one
+    # shul, distinguished only by phone.  Once phones became globally owned,
+    # assigning the same primary phone to both rows violates the old
+    # (institution, name, phone) unique constraint.  Collapse those rows
+    # before propagating the canonical phone list.
+    canonical_by_shul = {}
+    duplicate_ids = []
+    for row in matching_gabbais:
+        identity = (row.institution_id, _normalize_rabbi_name(row.name))
+        if identity in canonical_by_shul:
+            duplicate_ids.append(row.id)
+        else:
+            canonical_by_shul[identity] = row
+    if duplicate_ids:
+        _app.db.session.execute(_app.db.delete(FamilyGabbaiConnection).where(
+            FamilyGabbaiConnection.gabbai_id.in_(duplicate_ids)))
+        _app.db.session.execute(_app.db.delete(ShulGabbaiPhone).where(
+            ShulGabbaiPhone.gabbai_id.in_(duplicate_ids)))
+        _app.db.session.execute(_app.db.delete(ShulGabbaiDirectory).where(
+            ShulGabbaiDirectory.id.in_(duplicate_ids)))
+        _app.db.session.flush()
+    for row in canonical_by_shul.values():
+        row.phone = phones[0] if phones else ''
+        _replace_gabbai_phones(row, phones)
     for assistant in _app.db.session.scalars(select(ShulRabbiAssistant)).all():
         if _normalize_rabbi_name(assistant.name) != normalized:
             continue
