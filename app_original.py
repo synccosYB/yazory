@@ -1171,6 +1171,24 @@ def create_app(test_config=None):
         except (InvalidOperation, ValueError):
             abort(400, 'Enter a valid amount with up to two decimal places, no greater than $1,000,000.')
 
+    def case_fund_totals(family_id):
+        """Cash received, committed/disbursed, and the remaining case balance."""
+        manual_collected = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.family_id == family_id)) or 0
+        abcharity_collected = db.session.scalar(select(
+            func.coalesce(func.sum(CharityDonation.net_cents), 0)
+        ).join(CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
+            CharityCampaign.family_id == family_id)) or 0
+        paid_expenses = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
+            Expense.family_id == family_id, Expense.status == 'Paid')) or 0
+        direct_payouts = db.session.scalar(select(func.coalesce(func.sum(ApplicantPayout.amount_cents), 0)).where(
+            ApplicantPayout.family_id == family_id,
+            ApplicantPayout.status != 'voided')) or 0
+        collected = manual_collected + abcharity_collected
+        given_out = paid_expenses + direct_payouts
+        return {'collected': collected, 'given_out': given_out,
+                'available': collected - given_out}
+
     def stripe_value(value, key, default=None):
         if value is None:
             return default
@@ -1803,20 +1821,12 @@ def create_app(test_config=None):
         # Preserve access to legacy/orphaned records whose parent is unavailable.
         contact_rows.extend((contact, False) for contact in family.contacts
                             if contact.parent_contact_id and contact.id not in included_contact_ids)
-        manual_collected = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
-            Receipt.family_id == family.id))
-        # ABCharity deposits are stored separately from manual/Stripe receipts.
-        # Count the net amount (after ABCharity fees), never the gross donation.
-        abcharity_collected = db.session.scalar(select(
-            func.coalesce(func.sum(CharityDonation.net_cents), 0)
-        ).join(CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
-            CharityCampaign.family_id == family.id))
-        collected = manual_collected + abcharity_collected
-        sent = sum(expense.amount_cents for expense in family.expenses if expense.status == 'Paid')
+        fund_totals = case_fund_totals(family.id)
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                contact_rows=contact_rows,
                                budget=budget_totals(family),
-                               collected=collected, sent=sent,
+                               collected=fund_totals['collected'], sent=fund_totals['given_out'],
+                               available_to_give=fund_totals['available'],
                                pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family.id))
 
     @app.get('/families/<int:family_id>/print')
@@ -2930,11 +2940,12 @@ def create_app(test_config=None):
             ApplicantPayout.created_at.desc()).limit(250)).all()
         bank_accounts = db.session.scalars(select(CheckBankAccount).where(
             CheckBankAccount.active.is_(True)).order_by(CheckBankAccount.name)).all()
+        family_funds = {family.id: case_fund_totals(family.id) for family in families}
         return render_template('payouts.html', title='Payouts', recipients=recipients,
                                transfers=transfers, families=families,
                                approved_expenses=approved_expenses,
                                applicant_payouts=applicant_payouts, today=date.today(),
-                               bank_accounts=bank_accounts)
+                               bank_accounts=bank_accounts, family_funds=family_funds)
 
     @app.post('/payouts/check-accounts')
     def save_check_account():
