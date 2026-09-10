@@ -110,6 +110,7 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
     assert 'data-initial-email-draft' in draft.text
     assert 'What time works for a short call?' in draft.text
     sent = post(client, f'/contacts/{contact_id}/communications/initial-email', {
+        'recipient_email': 'supporter@example.test',
         'subject': 'A good time to speak',
         'body': 'Dear Test Supporter,\n\nWhat time works for a short call?'})
     assert sent.status_code == 302
@@ -120,6 +121,26 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
             SupporterCommunication.kind == 'initial_email'))
         assert message.recipient == 'supporter@example.test'
         assert timeline.email_message_id == message.id
+
+
+def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        db.session.get(Contact, contact_id).email = ''
+        db.session.commit()
+    monkeypatch.setattr('app.draft_initial_email', lambda *args: 'Hello {supporter_name}')
+    page = client.get('/communications')
+    assert 'data-ai-email-form' in page.text
+    assert 'disabled' not in page.text.split('data-ai-email-form', 1)[1].split('</form>', 1)[0]
+    draft = post(client, f'/contacts/{contact_id}/communications/initial-email/draft', {})
+    assert draft.status_code == 200
+    assert 'name="recipient_email"' in draft.text
+    sent = post(client, f'/contacts/{contact_id}/communications/initial-email', {
+        'recipient_email': 'new-address@example.test',
+        'subject': 'Hello', 'body': 'A short message'})
+    assert sent.status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).email == 'new-address@example.test'
 
 
 def test_no_answer_button_opens_fallback_when_ai_fails(monkeypatch):

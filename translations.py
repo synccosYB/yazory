@@ -38,6 +38,7 @@ _EXTRA = {
     'Review the AI email draft': {'he': 'בדיקת טיוטת האימייל של AI', 'yi': 'קוק איבער דעם AI אימעיל דרעפט'},
     'Subject': {'he': 'נושא', 'yi': 'סאבדזשעקט'},
     'Email message': {'he': 'תוכן האימייל', 'yi': 'אימעיל מעסעדזש'},
+    'Supporter email address': {'he': 'כתובת האימייל של התומך', 'yi': 'אימעיל אדרעס פונעם העלפער'},
     'Email preview': {'he': 'תצוגה מקדימה של האימייל', 'yi': 'אימעיל פריוויו'},
     'Review and change the draft before sending. AI never sends it automatically.': {'he': 'בדקו וערכו את הטיוטה לפני השליחה. ה־AI לעולם אינו שולח אותה אוטומטית.', 'yi': 'קוקט איבער און טוישט דעם דרעפט איידער מען שיקט. דער AI שיקט עס קיינמאל נישט אליין.'},
     'Send initial email': {'he': 'שליחת האימייל הראשון', 'yi': 'שיק דעם ערשטן אימעיל'},
