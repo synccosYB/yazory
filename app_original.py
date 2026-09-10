@@ -1832,7 +1832,15 @@ def create_app(test_config=None):
             intake_step = request.form.get('intake_step', type=int)
             if intake_step is None or not 0 <= intake_step <= 4:
                 intake_step = 0
-            return redirect(url_for('edit_family', family_id=family.id, step=intake_step))
+            profile_section = {
+                0: 'household-community',
+                1: 'children-schools',
+                2: 'provider-expenses',
+                3: 'provider-expenses',
+                4: 'provider-expenses',
+            }[intake_step]
+            return redirect(url_for('family_detail', family_id=family.id,
+                                    _anchor=profile_section))
         return intake_form(family, 'Edit family profile')
 
     @app.get('/families/<int:family_id>')

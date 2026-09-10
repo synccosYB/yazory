@@ -42,9 +42,9 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
     with app.app_context(): assert db.session.get(HouseholdIntake,f.id).data['rent']==170025
     cleared=client.post(path+'/edit',data={**values,'foodstamps':'no','accounts_json':'[]','assistance_json':'[]','intake_step':'3'})
     assert cleared.status_code==302
-    assert cleared.location.endswith(path+'/edit?step=3')
+    assert cleared.location.endswith(path+'#provider-expenses')
     reopened=client.get(cleared.location)
-    assert 'name="intake_step" value="3"' in reopened.text
+    assert 'id="provider-expenses"' in reopened.text
     with app.app_context():
         stored=db.session.get(HouseholdIntake,f.id).data
         assert stored['foodstamps_amount'] is None and stored['accounts']==[]
