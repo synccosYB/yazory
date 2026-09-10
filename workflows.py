@@ -634,6 +634,11 @@ def install_workflows(app, db, entities, helpers):
         if kind:query=query.where(Work.kind==kind)
         if fid:query=query.where(Work.family_id==fid)
         items=[w for w in db.session.scalars(query) if readable(w)]
+        # Imported ABCharity receipts already affect the case balance as soon as
+        # they are imported.  Legacy review drafts are therefore not staff
+        # actions unless the posted receipt later changed and needs attention.
+        items=[w for w in items if not (w.kind=='collection' and w.data.get('abcharity_donation_id')
+            and (not app.extensions['workflows'].get('import_consistent') or app.extensions['workflows']['import_consistent'](w)))]
         all_items=items
         if view=='open':items=[w for w in items if w.disposition=='Open']
         elif view=='mine':items=[w for w in items if w.owner_id==user.id and w.disposition=='Open']
@@ -643,11 +648,20 @@ def install_workflows(app, db, entities, helpers):
         page=max(1,request.args.get('page',1,type=int));pages=max(1,(len(items)+7)//8);page=min(page,pages)
         accessible_families=[f for f in db.session.scalars(select(Family).order_by(Family.name)) if scope(user,f.id)]
         notices=[n for n in db.session.scalars(select(Notice).where(Notice.user_id==user.id,Notice.read_at.is_(None)).order_by(Notice.id.desc()).limit(30)) if readable(db.session.get(Work,n.item_id))]
-        return render_template('operations.html',title='Operations',catalog=CATALOG,items=items[(page-1)*8:page*8],
+        family_names={f.id:f.name for f in accessible_families}
+        queue=[]
+        for item in items[(page-1)*8:page*8]:
+            approval=can_sign(item)
+            mine=item.owner_id==user.id
+            queue.append(dict(item=item,
+                reason='Your approval is required' if approval else ('Continue this work' if mine else 'Waiting for assigned staff'),
+                next_action='Review and approve' if approval else ('Continue' if mine else 'View'),
+                family=family_names.get(item.family_id,'Organization')))
+        return render_template('operations.html',title='Operations',catalog=CATALOG,items=items[(page-1)*8:page*8],queue=queue,
             kind=kind,selected_family=fid,view=view,page=page,pages=pages,staff={u.id:u.email for u in db.session.scalars(select(StaffUser))},
             families=accessible_families,today=date.today(),notices=notices,
-            counts={'open':sum(w.disposition=='Open' for w in all_items),'overdue':sum(w.disposition=='Open' and w.due<date.today() for w in all_items),
-                    'approvals':sum(can_sign(w) for w in all_items)})
+            counts={'open':sum(w.disposition=='Open' for w in all_items),'mine':sum(w.disposition=='Open' and w.owner_id==user.id for w in all_items),
+                    'overdue':sum(w.disposition=='Open' and w.due<date.today() for w in all_items),'approvals':sum(can_sign(w) for w in all_items)})
 
     @app.route('/operations/new/<kind>',methods=['GET','POST'])
     def work_new(kind):

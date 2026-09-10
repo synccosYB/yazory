@@ -264,6 +264,11 @@ def test_imported_receipt_fees_reconciliation_and_reviewed_correction(env):
     response=env.client().post(f'/families/{env.fid}/donations/{did}/workflow',data={'csrf':'test'})
     assert response.status_code==302
     wid=int(response.location.split('/')[-1].split('?')[0])
+    queue=env.client().get('/operations')
+    assert queue.status_code==200
+    assert 'Action queue' in queue.text
+    assert 'All workflows' not in queue.text
+    assert 'ABCharity donation 1' not in queue.text
     with env.app.app_context():w=db.session.get(env.M['WorkItem'],wid);version=w.version
     assert env.client().post(f'/operations/{wid}',data={'csrf':'test','version':version,'title':'Imported donation','due':env.today.isoformat(),'contact_id':env.cid,'amount':'100','reference':'abcharity:55:1','restrictions':'Family','payment_method':'ABCharity','receipt_preference':'Email'}).status_code==302
     assert env.upload(wid,'Supporting evidence').status_code==302
