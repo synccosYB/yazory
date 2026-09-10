@@ -100,6 +100,39 @@ def test_staff_cannot_view_someone_elses_task_or_assign_work():
         'assigned_to': outsider_id, 'priority': 'Normal'}).status_code == 403
 
 
+def test_task_filters_and_open_task_ordering():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        login(client, 'admin@example.test')
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        collector = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'collector@example.test'))
+        db.session.add_all([
+            StaffTask(title='Completed item', assigned_to=admin.id,
+                      created_by=admin.id, status='Completed', priority='Urgent'),
+            StaffTask(title='Normal open item', assigned_to=admin.id,
+                      created_by=admin.id, status='To do', priority='Normal'),
+            StaffTask(title='Urgent collector item', assigned_to=collector.id,
+                      created_by=admin.id, status='To do', priority='Urgent'),
+        ])
+        db.session.commit()
+        collector_id = collector.id
+
+    page = client.get('/tasks')
+    assert page.text.index('Urgent collector item') < page.text.index('Normal open item')
+    assert page.text.index('Normal open item') < page.text.index('Completed item')
+
+    page = client.get('/tasks?status=Completed')
+    assert 'Completed item' in page.text
+    assert 'Normal open item' not in page.text
+
+    page = client.get(f'/tasks?assigned_to={collector_id}&priority=Urgent')
+    assert 'Urgent collector item' in page.text
+    assert 'Completed item' not in page.text
+
+
 def test_to_contact_automatically_creates_and_completes_one_task():
     app = make_app()
     client = app.test_client()

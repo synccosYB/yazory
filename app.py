@@ -4,7 +4,7 @@ import re
 
 import app_original as _app
 from flask import current_app, has_request_context, session
-from sqlalchemy import Index, UniqueConstraint, select, text
+from sqlalchemy import Index, UniqueConstraint, case, select, text
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
@@ -1541,13 +1541,38 @@ def create_app(test_config=None):
         statement = select(StaffTask).where(StaffTask.parent_id.is_(None))
         if not task_is_admin(user):
             statement = statement.where(StaffTask.assigned_to == (user.id if user else -1))
-        selected_status = _app.request.args.get('status', '')
+        selected_status = _app.request.args.get('status', '').strip()
         if selected_status:
             if selected_status not in TASK_STATUSES:
                 _app.abort(400)
             statement = statement.where(StaffTask.status == selected_status)
+
+        selected_assignee_id = _app.request.args.get('assigned_to', type=int)
+        if selected_assignee_id:
+            statement = statement.where(StaffTask.assigned_to == selected_assignee_id)
+        selected_family_id = _app.request.args.get('family_id', type=int)
+        if selected_family_id:
+            statement = statement.where(StaffTask.family_id == selected_family_id)
+        selected_priority = _app.request.args.get('priority', '').strip()
+        if selected_priority:
+            if selected_priority not in TASK_PRIORITIES:
+                _app.abort(400)
+            statement = statement.where(StaffTask.priority == selected_priority)
+
+        status_rank = case(
+            (StaffTask.status == 'In progress', 0),
+            (StaffTask.status == 'To do', 1),
+            (StaffTask.status == 'Waiting', 2),
+            (StaffTask.status == 'Completed', 3),
+            else_=4)
+        priority_rank = case(
+            (StaffTask.priority == 'Urgent', 0),
+            (StaffTask.priority == 'High', 1),
+            (StaffTask.priority == 'Normal', 2),
+            else_=3)
         rows = _app.db.session.scalars(statement.order_by(
-            StaffTask.due_date.is_(None), StaffTask.due_date, StaffTask.id.desc())).all()
+            status_rank, priority_rank, StaffTask.due_date.is_(None),
+            StaffTask.due_date, StaffTask.id.desc())).all()
         staff = _app.db.session.scalars(select(_app.StaffUser).where(
             _app.StaffUser.status == 'active').order_by(_app.StaffUser.name, _app.StaffUser.email)).all()
         families = (_app.db.session.scalars(select(_app.Family).order_by(_app.Family.name)).all()
@@ -1555,7 +1580,9 @@ def create_app(test_config=None):
         return _app.render_template(
             'tasks.html', title='Tasks', tasks=rows, staff=staff, families=families,
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
-            selected_status=selected_status, may_assign=task_is_admin(user), today=_app.date.today())
+            selected_status=selected_status, selected_assignee_id=selected_assignee_id,
+            selected_family_id=selected_family_id, selected_priority=selected_priority,
+            may_assign=task_is_admin(user), today=_app.date.today())
 
     @app.get('/tasks/<int:task_id>')
     def task_detail(task_id):
