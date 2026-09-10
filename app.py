@@ -439,6 +439,77 @@ def _migrate_canonical_helpers():
     _app.db.session.commit()
 
 
+def _family_profile_shuls(family):
+    if family is None:
+        return []
+    selected_names = {
+        (name or '').strip().casefold()
+        for name in (family.weekday_shul, family.shabbos_shul) if (name or '').strip()
+    }
+    rows = _app.db.session.scalars(select(_app.Institution).join(
+        _app.PersonAffiliation,
+        _app.PersonAffiliation.institution_id == _app.Institution.id
+    ).where(
+        _app.PersonAffiliation.person_type == 'family',
+        _app.PersonAffiliation.person_id == family.id,
+        _app.Institution.kind == 'Shul',
+    ).order_by(_app.Institution.id)).all()
+    return [row for row in rows if row.name.strip().casefold() in selected_names]
+
+
+def _connect_shul_gabbaim_to_linked_families(institution):
+    gabbais = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
+        ShulGabbaiDirectory.institution_id == institution.id
+    ).order_by(ShulGabbaiDirectory.id)).all()
+    family_ids = _app.db.session.scalars(select(
+        _app.PersonAffiliation.person_id
+    ).where(
+        _app.PersonAffiliation.institution_id == institution.id,
+        _app.PersonAffiliation.person_type == 'family',
+    )).all()
+    for family_id in set(family_ids):
+        family = _app.db.session.get(_app.Family, family_id)
+        if family is None:
+            continue
+        for role, name in (('weekday_shul', family.weekday_shul),
+                           ('shabbos_shul', family.shabbos_shul)):
+            if (name or '').strip().casefold() == institution.name.strip().casefold():
+                _sync_family_gabbais(family.id, role, institution, gabbais)
+
+
+def _migrate_family_gabbaim_to_shared_shuls():
+    """Move unambiguous legacy family gabbaim onto their one shared shul."""
+    marker_key = 'shared_shul_gabbaim_v2'
+    if _app.db.session.get(_app.OrganizationSetting, marker_key) is not None:
+        return
+    for family in _app.db.session.scalars(select(_app.Family).order_by(_app.Family.id)).all():
+        shuls = _family_profile_shuls(family)
+        if len(shuls) != 1:
+            continue
+        institution = shuls[0]
+        for legacy in list(family.gabbais):
+            phones = _clean_phones([legacy.phone])
+            shared = _app.db.session.scalar(select(ShulGabbaiDirectory).where(
+                ShulGabbaiDirectory.institution_id == institution.id,
+                ShulGabbaiDirectory.name == legacy.name,
+            ))
+            if shared is None:
+                shared = ShulGabbaiDirectory(
+                    institution_id=institution.id, name=legacy.name,
+                    phone=phones[0] if phones else '')
+                _app.db.session.add(shared)
+                _app.db.session.flush()
+            if phones:
+                _replace_gabbai_phones(shared, phones)
+            person = _canonical_helper(shared.name, _gabbai_phones(shared))
+            if person is not None:
+                _attach_helper(institution, person, 'shul_gabbai')
+            _app.db.session.delete(legacy)
+        _connect_shul_gabbaim_to_linked_families(institution)
+    _app.db.session.add(_app.OrganizationSetting(key=marker_key, value={'completed': True}))
+    _app.db.session.commit()
+
+
 def _submitted_institution_name(key):
     value = _app.request.form.get(key, '').strip()
     if value == '__new__':
@@ -966,6 +1037,44 @@ def create_app(test_config=None):
         _app.db.session.commit()
         _migrate_canonical_rabbis()
         _migrate_canonical_helpers()
+        _migrate_family_gabbaim_to_shared_shuls()
+
+    def add_shared_gabbai(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        shuls = _family_profile_shuls(family)
+        institution_id = _app.request.form.get('institution_id', type=int)
+        institution = next((row for row in shuls if row.id == institution_id), None)
+        if institution is None and len(shuls) == 1:
+            institution = shuls[0]
+        if institution is None:
+            _app.abort(400, 'Choose which shul this gabbai belongs to.')
+        name = (_app.request.form.get('name') or '').strip()
+        phone = (_app.request.form.get('phone') or '').strip()
+        if not name:
+            _app.abort(400, 'Gabbai name is required.')
+        if len(name) > 160 or len(phone) > 80:
+            _app.abort(400, 'Value is too long.')
+        shared = _app.db.session.scalar(select(ShulGabbaiDirectory).where(
+            ShulGabbaiDirectory.institution_id == institution.id,
+            ShulGabbaiDirectory.name == name,
+        ))
+        if shared is None:
+            shared = ShulGabbaiDirectory(
+                institution_id=institution.id, name=name, phone=phone)
+            _app.db.session.add(shared)
+            _app.db.session.flush()
+        _replace_gabbai_phones(shared, [phone])
+        person = _canonical_helper(name, [phone])
+        if person is not None:
+            _attach_helper(institution, person, 'shul_gabbai')
+        _connect_shul_gabbaim_to_linked_families(institution)
+        audit('Added shared shul gabbai', family.id)
+        _app.db.session.commit()
+        _app.flash('Shul gabbai added.')
+        return _app.redirect(_app.url_for('family_detail', family_id=family.id))
+
+    app.view_functions['add_gabbai'] = add_shared_gabbai
 
     @app.get('/api/shul-rabbis')
     def shul_rabbis_api():
@@ -1015,6 +1124,7 @@ def create_app(test_config=None):
             'rabbi_people': [],
             'family_rabbi_preference': lambda family_id: None,
             'family_gabbai_contacts': lambda family_id: [],
+            'family_shul_choices': lambda family: [],
             'family_rabbi_assistant_contacts': lambda family: [],
             'family_yeshivah_history': lambda family_id: [],
             'shul_rabbi_map': {},
@@ -1167,6 +1277,7 @@ def create_app(test_config=None):
             'rabbi_people': people,
             'family_rabbi_preference': family_rabbi_preference,
             'family_gabbai_contacts': family_gabbai_contacts,
+            'family_shul_choices': _family_profile_shuls,
             'family_rabbi_assistant_contacts': family_rabbi_assistant_contacts,
             'family_yeshivah_history': family_yeshivah_history,
             'shul_rabbi_map': mapping,
