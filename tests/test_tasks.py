@@ -133,6 +133,31 @@ def test_task_filters_and_open_task_ordering():
     assert 'Completed item' not in page.text
 
 
+def test_tasks_page_backfills_all_existing_to_contact_supporters_once():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        login(client, 'admin@example.test')
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        family = Family(name='Existing family')
+        db.session.add(family)
+        db.session.flush()
+        db.session.add(FamilyAssignment(staff_user_id=admin.id, family_id=family.id))
+        db.session.add_all([
+            Contact(family_id=family.id, name=f'Existing supporter {number}',
+                    relationship='Friend', status='To contact')
+            for number in range(1, 21)
+        ])
+        db.session.commit()
+
+    assert client.get('/tasks').status_code == 200
+    assert client.get('/tasks').status_code == 200
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count(StaffTask.id)).where(
+            StaffTask.source_contact_id.is_not(None))) == 20
+
+
 def test_to_contact_automatically_creates_and_completes_one_task():
     app = make_app()
     client = app.test_client()

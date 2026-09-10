@@ -1491,6 +1491,19 @@ def create_app(test_config=None):
                 sync_supporter_followup_task(contact)
         _app.db.session.commit()
 
+    def backfill_missing_supporter_tasks():
+        """Create only missing follow-up tasks for existing open supporters."""
+        missing_ids = _app.db.session.scalars(
+            select(_app.Contact.id).outerjoin(
+                StaffTask, StaffTask.source_contact_id == _app.Contact.id
+            ).where(
+                _app.Contact.status == 'To contact',
+                StaffTask.id.is_(None),
+            ).order_by(_app.Contact.id)
+        ).all()
+        if missing_ids:
+            sync_contact_ids(missing_ids)
+
     # Keep supporter outreach and the team task list in lockstep. The original
     # handlers remain authoritative for validation and permissions.
     for endpoint in ('add_contact', 'update_contact', 'edit_contact'):
@@ -1571,6 +1584,11 @@ def create_app(test_config=None):
             _app.db.session.commit()
             _app.flash('Task created and assigned.')
             return _app.redirect(_app.url_for('task_detail', task_id=task.id))
+
+        # Older supporters may predate automatic task creation. Reconcile only
+        # missing rows here so opening this page repairs the list once without
+        # resetting work already marked in progress or waiting.
+        backfill_missing_supporter_tasks()
 
         statement = select(StaffTask).where(StaffTask.parent_id.is_(None))
         if not task_is_admin(user):
