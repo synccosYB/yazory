@@ -3678,6 +3678,8 @@ def create_app(test_config=None):
         for contact in db.session.scalars(select(Contact).where(Contact.supporter_key == '')).all():
             contact.supporter_key = supporter_key(contact.name, contact.phone)
         db.session.commit()
+        for hook in app.extensions.get('init_db_hooks', ()):
+            hook()
         ensure_bootstrap_owner()
         print('Database initialized. Existing records preserved.')
 
@@ -3688,10 +3690,13 @@ def create_app(test_config=None):
         print('Database migration completed. Existing records preserved.')
 
     with app.app_context():
-        # Hosting can start Gunicorn without executing the configured pre-start
-        # command. Apply the additive, idempotent upgrades here as well so no
-        # request can reach a model whose columns are missing in production.
-        ensure_schema()
+        # Production schema work is performed explicitly with `flask init-db`
+        # before publishing. Running reflection, DDL and legacy backfills while
+        # every Gunicorn worker boots can hold the worker past Replit's short
+        # health-check window, so production startup must remain read-only and
+        # fast. Demo/test databases are disposable and still self-initialize.
+        if app.config['DEMO'] or app.config.get('TESTING'):
+            ensure_schema()
         if app.config['DEMO']:
             if not db.session.scalar(select(Family.id).limit(1)):
                 family = Family(name='Sample family', spouse='Sample spouse', father='Sample father', inlaws='Sample in-laws', rabbi='Community rabbi', weekday_shul='Local shul', shabbos_shul='Local shul', circumstances='Fictional example: a household needs help with everyday expenses during illness.', status='Active')
