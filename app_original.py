@@ -2131,10 +2131,12 @@ def create_app(test_config=None):
         contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
         if contact is None:
             abort(403, 'You are not assigned to this family.')
-        if app.extensions['workflows']['enforced']():
-            app.extensions['workflows']['contact_allowed'](contact, edit=request.method=='POST')
+        if app.extensions['workflows']['enforced']() and request.method == 'GET':
+            app.extensions['workflows']['contact_allowed'](contact, edit=False)
             return redirect(url_for('supporter_network',family_id=contact.family_id,edit=contact.id))
-        possible_parents = db.session.scalars(select(Contact).where(
+        if app.extensions['workflows']['enforced']():
+            app.extensions['workflows']['contact_allowed'](contact, edit=True)
+        possible_parents = db.session.scalars(scoped_contacts_statement().where(
             Contact.family_id == contact.family_id,
             Contact.id != contact.id
         ).order_by(Contact.name)).all()
@@ -2143,7 +2145,8 @@ def create_app(test_config=None):
             found = db.session.scalars(select(Contact.id).where(Contact.parent_contact_id.in_(pending))).all()
             pending = [row_id for row_id in found if row_id not in descendants]
             descendants.update(pending)
-        possible_parents = [row for row in possible_parents if row.id not in descendants]
+        possible_parents = [row for row in possible_parents
+                            if row.id not in descendants and contact_visible(row)]
         if request.method == 'POST':
             relationship = field('relationship', True)
             status = field('status', True)
@@ -2585,10 +2588,22 @@ def create_app(test_config=None):
         payments = db.session.scalars(select(StripePayment).where(
             StripePayment.contact_id.in_(contact_ids)
         ).order_by(StripePayment.created_at.desc())).all() if contact_ids else []
+        possible_parents = db.session.scalars(select(Contact).where(
+            Contact.family_id == contact.family_id,
+            Contact.id != contact.id
+        ).order_by(Contact.name)).all()
+        descendants, pending = set(), [contact.id]
+        while pending:
+            found = db.session.scalars(select(Contact.id).where(Contact.parent_contact_id.in_(pending))).all()
+            pending = [row_id for row_id in found if row_id not in descendants]
+            descendants.update(pending)
+        possible_parents = [row for row in possible_parents
+                            if row.id not in descendants and contact_visible(row)]
         return render_template('supporter_detail.html', title='Supporter history',
                                supporter=contact, linked_contacts=linked_contacts,
                                hierarchy_groups=hierarchy_groups,
                                receipts=receipts, payments=payments,
+                               possible_parents=possible_parents,
                                total_received=sum(receipt.amount_cents for receipt in receipts))
 
     @app.get('/approvals')

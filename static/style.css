@@ -140,3 +140,6 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 .profile-linked-row,.profile-linked-contacts small{display:block}.profile-linked-contacts{font-weight:400}.profile-linked-contacts>summary{cursor:pointer;color:var(--blue);font-weight:700}
 @media(max-width:1150px){.profile-record-main{grid-template-columns:1fr auto}.profile-record-metrics{grid-column:1/-1}}@media(max-width:650px){.profile-record-metrics{grid-template-columns:repeat(2,1fr)}.shul-contact-editor .form-grid{grid-template-columns:1fr}}
 .selected-family-funds{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:7px;padding:8px 10px;border-inline-start:3px solid var(--gold);border-radius:4px;background:var(--gold-soft)}.selected-family-funds[hidden]{display:none}.selected-family-funds small{color:var(--ink)}.selected-family-funds strong{direction:ltr;unicode-bidi:isolate;font-size:16px;color:var(--navy);font-variant-numeric:tabular-nums}
+.supporter-inline-edit > summary{width:max-content;cursor:pointer;list-style:none}
+.supporter-inline-edit > summary::-webkit-details-marker{display:none}
+.supporter-inline-edit[open] > summary{margin-bottom:1.25rem}

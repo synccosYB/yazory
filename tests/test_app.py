@@ -153,6 +153,19 @@ def test_supporter_history_and_safe_duplicate_deletion(app, client):
     detail = client.get(f'/supporters/{duplicate_contact_id}').text
     assert 'History family A' in detail and 'History family B' in detail
     assert 'HISTORY-1' in detail and '$12.50' in detail
+    assert f'action="/contacts/{duplicate_contact_id}/edit"' in detail
+    assert 'name="name" value="History supporter"' in detail
+    assert 'name="pledge_frequency"' in detail
+
+    assert post(client, f'/contacts/{duplicate_contact_id}/edit', {
+        'name': 'History supporter updated', 'phone': '845-555-0199',
+        'relationship': 'First cousin', 'status': 'Contacted', 'monthly': '40',
+        'pledge_frequency': 'Weekly'}).status_code == 302
+    with app.app_context():
+        updated = db.session.get(Contact, duplicate_contact_id)
+        assert (updated.name, updated.relationship, updated.status,
+                updated.monthly_cents, updated.pledge_frequency) == (
+                    'History supporter updated', 'First cousin', 'Contacted', 4000, 'Weekly')
 
     assert post(client, f'/contacts/{duplicate_contact_id}/delete', {'next': '/supporters'}).status_code == 302
     with app.app_context():
