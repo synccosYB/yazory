@@ -187,6 +187,15 @@ class Contact(db.Model):
     relationship = db.Column(db.String(80), nullable=False)
     phone = db.Column(db.String(80), default='')
     email = db.Column(db.String(254), default='')
+    home_phone = db.Column(db.String(80), default='')
+    cell_phone = db.Column(db.String(80), default='')
+    home_address = db.Column(db.String(240), default='')
+    city = db.Column(db.String(120), default='')
+    state = db.Column(db.String(80), default='')
+    zip_code = db.Column(db.String(20), default='')
+    workplace = db.Column(db.String(160), default='')
+    work_phone = db.Column(db.String(80), default='')
+    notes = db.Column(db.Text, default='')
     # The same real person may support several cases.  This stable key keeps the
     # case-specific relationship rows linked to one billing identity.
     supporter_key = db.Column(db.String(200), nullable=False, default='', index=True)
@@ -694,6 +703,19 @@ def create_app(test_config=None):
             db.session.execute(text(
                 "ALTER TABLE contact ADD COLUMN email VARCHAR(254) NOT NULL DEFAULT ''"
             ))
+        for column, definition in {
+            'home_phone': "VARCHAR(80) NOT NULL DEFAULT ''",
+            'cell_phone': "VARCHAR(80) NOT NULL DEFAULT ''",
+            'home_address': "VARCHAR(240) NOT NULL DEFAULT ''",
+            'city': "VARCHAR(120) NOT NULL DEFAULT ''",
+            'state': "VARCHAR(80) NOT NULL DEFAULT ''",
+            'zip_code': "VARCHAR(20) NOT NULL DEFAULT ''",
+            'workplace': "VARCHAR(160) NOT NULL DEFAULT ''",
+            'work_phone': "VARCHAR(80) NOT NULL DEFAULT ''",
+            'notes': "TEXT NOT NULL DEFAULT ''",
+        }.items():
+            if column not in contact_columns:
+                db.session.execute(text(f'ALTER TABLE contact ADD COLUMN {column} {definition}'))
         # Older versions stored names entered through "Add another child" as
         # display-only ContactChild rows. Promote them once into real supporter
         # profiles so they have their own status, pledge, history, and page.
@@ -2213,7 +2235,11 @@ def create_app(test_config=None):
             if not parent_choice:
                 parent_connection = ''
             name = field('name', True)
-            phone = field('phone', limit=80)
+            home_phone = field('home_phone', limit=80)
+            cell_phone = field('cell_phone', limit=80)
+            # Keep the legacy primary-phone column populated because directory,
+            # deduplication, and older integrations still read it.
+            phone = cell_phone or home_phone or field('phone', limit=80)
             email = optional_email_field()
             new_key = supporter_key(name, phone, contact.supporter_key)
             linked = db.session.scalars(select(Contact).where(
@@ -2222,6 +2248,15 @@ def create_app(test_config=None):
                 linked_contact.name = name
                 linked_contact.phone = phone
                 linked_contact.email = email
+                linked_contact.home_phone = home_phone
+                linked_contact.cell_phone = cell_phone
+                linked_contact.home_address = field('home_address', limit=240)
+                linked_contact.city = field('city', limit=120)
+                linked_contact.state = field('state', limit=80)
+                linked_contact.zip_code = field('zip_code', limit=20)
+                linked_contact.workplace = field('workplace', limit=160)
+                linked_contact.work_phone = field('work_phone', limit=80)
+                linked_contact.notes = field('notes', limit=5000)
                 linked_contact.supporter_key = new_key
                 linked_contact.status = status
                 linked_contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')

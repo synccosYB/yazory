@@ -6,8 +6,15 @@
 {{ token(csrf) }}
 <div class="form-grid">
 <label>{{ _('Name *') }}<input name="name" value="{{ contact.name }}" required maxlength="160"></label>
-<label>{{ _('Phone') }}<input name="phone" value="{{ contact.phone }}" maxlength="80" autocomplete="tel"></label>
+<label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ contact.cell_phone or contact.phone }}" maxlength="80" autocomplete="tel"></label>
+<label>{{ _('Home phone') }}<input name="home_phone" value="{{ contact.home_phone }}" maxlength="80" autocomplete="tel"></label>
 <label>{{ _('Email address') }}<input name="email" type="email" value="{{ contact.email }}" maxlength="254" autocomplete="email"></label>
+<label>{{ _('Home address') }}<input name="home_address" value="{{ contact.home_address }}" maxlength="240" autocomplete="street-address"></label>
+<label>{{ _('City') }}<input name="city" value="{{ contact.city }}" maxlength="120" autocomplete="address-level2"></label>
+<label>{{ _('State') }}<input name="state" value="{{ contact.state }}" maxlength="80" autocomplete="address-level1"></label>
+<label>{{ _('ZIP code') }}<input name="zip_code" value="{{ contact.zip_code }}" maxlength="20" autocomplete="postal-code"></label>
+<label>{{ _('Workplace') }}<input name="workplace" value="{{ contact.workplace }}" maxlength="160" autocomplete="organization"></label>
+<label>{{ _('Work phone') }}<input name="work_phone" value="{{ contact.work_phone }}" maxlength="80" autocomplete="tel"></label>
 <label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship==contact.relationship }}>{{ _(relationship) }}</option>{% endfor %}</select></label>
 <label>{{ _('Whose son or son-in-law is he?') }}<input type="search" class="select-search" data-select-filter="parent-contact" placeholder="{{ _('Search names') }}" autocomplete="off"><select name="parent_contact_id" id="parent-contact"><option value="">{{ _('Not connected under another supporter') }}</option>{% if contact.family.father %}<option value="family-father" {{ 'selected' if contact.parent_connection.startswith('F:') }}>{{ contact.family.father }} · {{ _('Applicant’s father') }}</option>{% endif %}{% if contact.family.inlaws %}<option value="family-inlaws" {{ 'selected' if contact.parent_connection.startswith('I:') }}>{{ contact.family.inlaws }} · {{ _('Applicant’s father-in-law') }}</option>{% endif %}{% for parent in possible_parents %}<option value="{{ parent.id }}" {{ 'selected' if parent.id==contact.parent_contact_id }}>{{ parent.name }} · {{ _(parent.relationship) }}{% if parent.phone %} · {{ parent.phone }}{% endif %}</option>{% endfor %}</select></label>
 <label>{{ _('What is he to that person?') }}<select name="parent_connection" id="parent-connection"><option value="">{{ _('Choose') }}</option><option value="Son" {{ 'selected' if contact.parent_connection in ('Son','F:Son','I:Son') }}>{{ _('Son') }}</option><option value="Son-in-law" {{ 'selected' if contact.parent_connection in ('Son-in-law','F:Son-in-law','I:Son-in-law') }}>{{ _('Son-in-law') }}</option></select><small>{{ _('Choose the person above first, then specify whether this person is his son or son-in-law.') }}</small></label>
@@ -15,6 +22,7 @@
 <label>{{ _('Donation frequency') }}<select name="pledge_frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency==contact.pledge_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
 <label>{{ _('Outreach status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status==contact.status }}>{{ _(status) }}</option>{% endfor %}</select></label>
 </div>
+<label>{{ _('Identification notes') }}<textarea name="notes" maxlength="5000" rows="4">{{ contact.notes }}</textarea><small>{{ _('Add any detail that helps distinguish this supporter from another person with a similar name.') }}</small></label>
 <div class="form-actions"><a href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a><button>{{ _('Save') }}</button></div>
 </form>
 {% endblock %}
