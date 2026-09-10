@@ -50,6 +50,8 @@ def test_full_supporter_communication_workflow(monkeypatch):
     page = client.get('/communications')
     assert page.status_code == 200
     assert 'Test Supporter' in page.text and 'First phone call' in page.text
+    assert 'data-ai-email-form' in page.text
+    assert 'data-loading-text="Writing the email…"' in page.text
 
     assert post(client, f'/contacts/{contact_id}/communications/callback', {
         'scheduled_for': '2026-09-12T14:30', 'note': 'Call after work'}).status_code == 302
@@ -105,6 +107,7 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
     assert draft.status_code == 200
     assert 'Test Supporter' in draft.text
     assert 'supporter-email-preview-body' in draft.text
+    assert 'data-initial-email-draft' in draft.text
     assert 'What time works for a short call?' in draft.text
     sent = post(client, f'/contacts/{contact_id}/communications/initial-email', {
         'subject': 'A good time to speak',

@@ -24,6 +24,20 @@ const supporterEmailBody=document.querySelector('#supporter-email-body');
 const supporterEmailSubject=document.querySelector('#supporter-email-subject');
 const supporterEmailPreviewBody=document.querySelector('#supporter-email-preview-body');
 const supporterEmailPreviewSubject=document.querySelector('#supporter-email-preview-subject');
+document.querySelectorAll('form[data-ai-email-form]').forEach(form=>form.addEventListener('submit',()=>{
+  const button=form.querySelector('button[type="submit"]');
+  const status=form.querySelector('[data-ai-email-status]');
+  if(!button)return;
+  button.disabled=true;
+  button.textContent=button.dataset.loadingText;
+  form.setAttribute('aria-busy','true');
+  if(status)status.textContent=button.dataset.loadingText;
+}));
+const initialEmailDraft=document.querySelector('[data-initial-email-draft]');
+if(initialEmailDraft){
+  initialEmailDraft.scrollIntoView({block:'start'});
+  initialEmailDraft.focus({preventScroll:true});
+}
 if(supporterEmailBody&&supporterEmailSubject&&supporterEmailPreviewBody&&supporterEmailPreviewSubject){
   const updateSupporterEmailPreview=()=>{
     supporterEmailPreviewSubject.textContent=supporterEmailSubject.value||'—';

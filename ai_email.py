@@ -33,7 +33,7 @@ def initial_email_subject(language='en'):
     }.get(language, 'A good time to speak')
 
 
-def draft_initial_email(api_key, model='gpt-5-mini', language='en', timeout=20):
+def draft_initial_email(api_key, model='gpt-5-mini', language='en', timeout=8):
     if not api_key:
         raise ValueError('AI email writing is not configured.')
     language_instruction = {
