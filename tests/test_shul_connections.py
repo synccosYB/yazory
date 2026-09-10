@@ -284,12 +284,13 @@ def test_legacy_family_gabbai_moves_to_shul_and_appears_for_every_linked_family(
 
         _migrate_family_gabbaim_to_shared_shuls()
 
-        shared = db.session.scalar(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shul_id,
-            ShulGabbaiDirectory.name == 'Migrated Shared Gabbai'))
+        shared = db.session.scalar(db.select(HelperPerson).where(
+            HelperPerson.normalized_name == 'migrated shared gabbai'))
         assert shared is not None
-        assert db.session.scalar(db.select(FamilyGabbaiConnection).where(
-            FamilyGabbaiConnection.gabbai_id == shared.id)) is None
+        assert db.session.scalar(db.select(ShulHelperAssociation).where(
+            ShulHelperAssociation.institution_id == shul_id,
+            ShulHelperAssociation.helper_person_id == shared.id,
+            ShulHelperAssociation.role == 'shul_gabbai')) is not None
         assert db.session.scalar(db.select(ShulGabbai).where(
             ShulGabbai.name == 'Migrated Shared Gabbai')) is None
 
