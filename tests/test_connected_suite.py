@@ -41,6 +41,8 @@ def test_connected_routes_languages_receipts_and_controls(monkeypatch):
     january = client.get('/collections?month=2025-01').text
     february = client.get('/collections?month=2025-02').text
     assert '$12.34' in january
+    assert f'href="/supporters/{contact_id}"' in january
+    assert january.count(f'href="/supporters/{contact_id}"') >= 2
     assert '$12.34' in february  # lifetime column
     assert client.post('/controls', data={'csrf': csrf(client), 'categories': 'Bogus',
                                            'child_bands': '[]'}).status_code == 400
