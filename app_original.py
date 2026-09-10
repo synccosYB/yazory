@@ -617,7 +617,7 @@ def create_app(test_config=None):
             owner.password_hash = password_hash
             db.session.commit()
 
-    def ensure_schema():
+    def ensure_schema(run_data_migrations=False):
         """Create missing tables and apply the additive legacy-schema upgrades."""
         db.create_all()
         staff_columns = {column['name'] for column in inspect(db.engine).get_columns('staff_user')}
@@ -777,14 +777,30 @@ def create_app(test_config=None):
         }.items():
             if column not in payout_columns:
                 db.session.execute(text(f'ALTER TABLE applicant_payout ADD COLUMN {column} {definition}'))
-        # Backfill the central directories from every profile that already has
-        # shul or yeshivah details. The helpers are idempotent, so startup never
-        # creates duplicate people or institutions.
-        for family in db.session.scalars(select(Family)).all():
-            connect_family_profile_directories(family)
-        for child in db.session.scalars(select(Child)).all():
-            connect_child_profile_directory(child)
-        merge_duplicate_institutions()
+        # This historical backfill used to rescan every family and child on
+        # every Gunicorn worker start.  That made autoscale cold starts slower
+        # as real data accumulated. Existing installations with a populated
+        # institution directory have already completed it; a genuinely legacy
+        # database (profile data but no directory rows) still gets migrated.
+        directory_marker = db.session.get(
+            OrganizationSetting, 'profile_directory_backfill_v1')
+        if directory_marker is None or run_data_migrations:
+            has_directory = db.session.scalar(select(Institution.id).limit(1)) is not None
+            has_legacy_family_data = db.session.scalar(select(Family.id).where(or_(
+                Family.weekday_shul != '', Family.shabbos_shul != '',
+                Family.yeshivah != '')).limit(1)) is not None
+            has_legacy_child_data = db.session.scalar(select(Child.id).where(
+                Child.school != '').limit(1)) is not None
+            if run_data_migrations or (
+                    not has_directory and (has_legacy_family_data or has_legacy_child_data)):
+                for family in db.session.scalars(select(Family)).all():
+                    connect_family_profile_directories(family)
+                for child in db.session.scalars(select(Child)).all():
+                    connect_child_profile_directory(child)
+                merge_duplicate_institutions()
+            if directory_marker is None:
+                db.session.add(OrganizationSetting(
+                    key='profile_directory_backfill_v1', value={'completed': True}))
         db.session.commit()
 
     def current_user():
@@ -3597,7 +3613,9 @@ def create_app(test_config=None):
 
     @app.cli.command('init-db')
     def init_db():
-        ensure_schema()
+        # Explicit maintenance remains the place for full idempotent data
+        # repair. Normal web-worker startup uses the lightweight path below.
+        ensure_schema(run_data_migrations=True)
         contact_columns = {column['name'] for column in inspect(db.engine).get_columns('contact')}
         if 'supporter_key' not in contact_columns:
             db.session.execute(text("ALTER TABLE contact ADD COLUMN supporter_key VARCHAR(200) DEFAULT '' NOT NULL"))

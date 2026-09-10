@@ -1021,9 +1021,29 @@ def create_app(test_config=None):
                 'new_family', 'edit_family', 'family_detail', 'directories'}:
             return empty_context
 
-        rows = _app.db.session.execute(select(_app.Institution, ShulRabbi).join(
-            ShulRabbi, ShulRabbi.institution_id == _app.Institution.id, isouter=True).where(
-            _app.Institution.kind == 'Shul')).all()
+        # A family profile can display contacts for only its weekday and
+        # Shabbos shuls.  Do not build the entire organization-wide directory
+        # for that page: doing so used to issue several queries per shul and
+        # made profiles progressively slower as the directory grew.
+        institution_filter = [_app.Institution.kind == 'Shul']
+        if _app.request.endpoint == 'family_detail':
+            family_id = (_app.request.view_args or {}).get('family_id')
+            shul_names = _app.db.session.execute(select(
+                _app.Family.weekday_shul, _app.Family.shabbos_shul
+            ).where(_app.Family.id == family_id)).one_or_none()
+            relevant_names = {name for name in (shul_names or ()) if name}
+            if not relevant_names:
+                rows = []
+            else:
+                institution_filter.append(_app.Institution.name.in_(relevant_names))
+                rows = _app.db.session.execute(select(_app.Institution, ShulRabbi).join(
+                    ShulRabbi, ShulRabbi.institution_id == _app.Institution.id,
+                    isouter=True).where(*institution_filter)).all()
+        else:
+            # The intake form gets its shul names separately and the directory
+            # screen renders its own selected records; neither consumes this
+            # contact map.
+            rows = []
         mapping = {}
         for institution, assignment in rows:
             phones = _rabbi_phones(institution) if assignment else []

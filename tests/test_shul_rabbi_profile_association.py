@@ -1,6 +1,8 @@
 import pytest
+from sqlalchemy import event
 
-from app import FamilyRabbiConnection, Institution, create_app, db
+from app import (FamilyRabbiConnection, Institution, ShulGabbaiDirectory,
+                 ShulGabbaiPhone, ShulRabbi, ShulRabbiPhone, create_app, db)
 
 
 @pytest.fixture
@@ -55,3 +57,43 @@ def test_profile_inherits_single_rabbi_from_selected_shul(app, client):
         assert affiliated.rabbi_phone == '845-555-7001'
         assert affiliated.institution is not None
         assert affiliated.institution.name == 'Profile Test Shul'
+
+
+def test_family_profile_queries_do_not_grow_with_unrelated_shuls(app, client):
+    """Unrelated directory growth must not create an N+1 profile slowdown."""
+    def profile_query_count():
+        statements = []
+
+        def record_query(connection, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(db.engine, 'before_cursor_execute', record_query)
+        try:
+            response = client.get('/families/1')
+            assert response.status_code == 200
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', record_query)
+        return len(statements)
+
+    with app.app_context():
+        baseline = profile_query_count()
+        for index in range(30):
+            shul = Institution(kind='Shul', name=f'Unrelated shul {index}', city='Monroe')
+            db.session.add(shul)
+            db.session.flush()
+            db.session.add(ShulRabbi(
+                institution_id=shul.id, rabbi_name=f'Rabbi {index}',
+                rabbi_phone=f'845555{index:04d}'))
+            db.session.add(ShulRabbiPhone(
+                institution_id=shul.id, phone=f'845555{index:04d}'))
+            gabbai = ShulGabbaiDirectory(
+                institution_id=shul.id, name=f'Gabbai {index}',
+                phone=f'914555{index:04d}')
+            db.session.add(gabbai)
+            db.session.flush()
+            db.session.add(ShulGabbaiPhone(
+                gabbai_id=gabbai.id, phone=f'914555{index:04d}'))
+        db.session.commit()
+        expanded = profile_query_count()
+
+    assert expanded <= baseline + 1
