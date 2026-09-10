@@ -44,7 +44,7 @@
 <tbody>{% for c in contacts %}<tr class="{{ 'nested-supporter-row' if c.parent_supporter }}">
 <td>
 <div class="supporter-name">
-<a class="strong" href="{{ url_for('supporter_detail', contact_id=c.id) }}">{{ c.name }}</a>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% endif %}<details class="supporter-family add-child-panel no-print">
+<a class="strong" href="{{ url_for('supporter_detail', contact_id=c.id) }}">{{ c.name }}</a>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% elif c.parent_connection.startswith('F:') %}<small>{{ _('Son of applicant’s father') if c.parent_connection == 'F:Son' else _('Son-in-law of applicant’s father') }} · {{ c.family.father }}</small>{% elif c.parent_connection.startswith('I:') %}<small>{{ _('Son of applicant’s father-in-law') if c.parent_connection == 'I:Son' else _('Son-in-law of applicant’s father-in-law') }} · {{ c.family.inlaws }}</small>{% endif %}<details class="supporter-family add-child-panel no-print">
 <summary>{{ _('Add another child') }}</summary>
 <form method="post" action="{{ url_for('add_contact_child', contact_id=c.id) }}">{{ token(csrf) }}<div class="supporter-child-form">
 <label>{{ _('Child name *') }}<input name="name" required maxlength="160">
@@ -98,7 +98,7 @@
 </label>
 <label>{{ _('Whose son or son-in-law is he?') }}<input type="search" class="select-search" data-select-filter="new-parent-contact" placeholder="{{ _('Search names') }}" autocomplete="off">
 <select name="parent_contact_id" id="new-parent-contact">
-<option value="">{{ _('Not connected under another supporter') }}</option>{% for parent in possible_parents %}<option value="{{ parent.id }}" data-family-id="{{ parent.family_id }}">{{ parent.name }} · {{ _(parent.relationship) }}{% if parent.phone %} · {{ parent.phone|phone }}{% endif %}</option>{% endfor %}</select>
+<option value="">{{ _('Not connected under another supporter') }}</option>{% for family in families %}{% if family.father %}<option value="family-father" data-family-id="{{ family.id }}">{{ family.father }} · {{ _('Applicant’s father') }}</option>{% endif %}{% if family.inlaws %}<option value="family-inlaws" data-family-id="{{ family.id }}">{{ family.inlaws }} · {{ _('Applicant’s father-in-law') }}</option>{% endif %}{% endfor %}{% for parent in possible_parents %}<option value="{{ parent.id }}" data-family-id="{{ parent.family_id }}">{{ parent.name }} · {{ _(parent.relationship) }}{% if parent.phone %} · {{ parent.phone|phone }}{% endif %}</option>{% endfor %}</select>
 </label>
 <label>{{ _('What is he to that supporter?') }}<select name="parent_connection">
 <option value="">{{ _('Choose') }}</option>

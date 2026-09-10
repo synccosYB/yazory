@@ -2,6 +2,14 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Applicant’s father': {'he': 'אבי הפונה', 'yi': 'דער טאטע פונעם אפליקאנט'},
+    'Applicant’s father-in-law': {'he': 'חותן הפונה', 'yi': 'דער שווער פונעם אפליקאנט'},
+    'Son of applicant’s father': {'he': 'בן אבי הפונה', 'yi': 'א זון ביים טאטן פונעם אפליקאנט'},
+    'Son-in-law of applicant’s father': {'he': 'חתן אבי הפונה', 'yi': 'אן איידעם ביים טאטן פונעם אפליקאנט'},
+    'Son of applicant’s father-in-law': {'he': 'בן חותן הפונה', 'yi': 'א זון ביים שווער פונעם אפליקאנט'},
+    'Son-in-law of applicant’s father-in-law': {'he': 'חתן חותן הפונה', 'yi': 'אן איידעם ביים שווער פונעם אפליקאנט'},
+    'What is he to that person?': {'he': 'מה הקשר שלו לאותו אדם?', 'yi': 'וואס איז ער ביי יענעם מענטש?'},
+    'Choose the person above first, then specify whether this person is his son or son-in-law.': {'he': 'בחרו תחילה את האדם למעלה, ואז ציינו אם הוא בנו או חתנו.', 'yi': 'קלויבט קודם אויס דעם מענטש אויבן, דערנאך אויב ער איז זיין זון אדער איידעם.'},
     'One shared network. Applicants and people connect to the same shul or yeshivah without duplicate records.': {'he': 'רשת משותפת אחת. פונים ואנשים מתחברים לאותו בית כנסת או ישיבה ללא רשומות כפולות.', 'yi': 'איין געמיינזאמע ליסטע. אפליקאנטן און מענטשן ווערן פארבונדן צום זעלבן שול אדער ישיבה אן דאפלטע רעקארדס.'},
     'How this list works now': {'he': 'כיצד הרשימה פועלת', 'yi': 'ווי אזוי די ליסטע ארבעט'},
     'Each shul or yeshivah exists once. Every applicant and every supporter connects to that shared network. If two applicants use the same shul, a person connected to that shul is visible as a shul-network connection for both applicants without creating the person twice.': {'he': 'כל בית כנסת או ישיבה מופיעים פעם אחת. כל פונה וכל תומך מתחברים לאותה רשת משותפת, בלי ליצור את אותו אדם פעמיים.', 'yi': 'יעדער שול אדער ישיבה שטייט נאר איין מאל. יעדער אפליקאנט און העלפער ווערט פארבונדן צו דער זעלבער ליסטע, אן נאכאמאל מאכן דעם זעלבן מענטש.'},

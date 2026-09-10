@@ -2049,7 +2049,8 @@ def create_app(test_config=None):
             abort(400, 'Choose a valid applicant.')
         if not can_access_family(family_id):
             abort(403, 'You are not assigned to this family.')
-        if db.session.get(Family, family_id) is None:
+        family = db.session.get(Family, family_id)
+        if family is None:
             abort(404)
         relationship = field('relationship', True)
         status = field('status', True)
@@ -2057,9 +2058,21 @@ def create_app(test_config=None):
         pledge = amount('monthly', allow_zero=status!='Pledged')
         pledge_frequency = field('pledge_frequency') or 'Monthly'
         if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
-        parent_contact_id = request.form.get('parent_contact_id', type=int)
+        parent_choice = field('parent_contact_id', limit=40)
+        parent_contact_id = None
         parent_connection = field('parent_connection')
-        if parent_contact_id:
+        if parent_choice in ('family-father', 'family-inlaws'):
+            ancestor = family.father if parent_choice == 'family-father' else family.inlaws
+            if not ancestor:
+                abort(400, 'That family connection has not been entered on the applicant profile.')
+            if parent_connection not in ('Son', 'Son-in-law'):
+                abort(400, 'Choose whether this person is a son or son-in-law.')
+            parent_connection = ('F:' if parent_choice == 'family-father' else 'I:') + parent_connection
+        elif parent_choice:
+            try:
+                parent_contact_id = int(parent_choice)
+            except ValueError:
+                abort(400, 'Choose a valid family connection.')
             parent = db.session.scalar(select(Contact).where(
                 Contact.id == parent_contact_id,
                 Contact.family_id == family_id))
@@ -2155,13 +2168,26 @@ def create_app(test_config=None):
             pledge_frequency = field('pledge_frequency') or 'Monthly'
             if pledge_frequency not in PLEDGE_FREQUENCIES:
                 abort(400, 'Choose a valid donation frequency.')
-            parent_contact_id = request.form.get('parent_contact_id', type=int)
-            if parent_contact_id and not any(row.id == parent_contact_id for row in possible_parents):
-                abort(400, 'Choose a valid parent supporter.')
+            parent_choice = field('parent_contact_id', limit=40)
+            parent_contact_id = None
             parent_connection = field('parent_connection')
+            if parent_choice in ('family-father', 'family-inlaws'):
+                ancestor = contact.family.father if parent_choice == 'family-father' else contact.family.inlaws
+                if not ancestor:
+                    abort(400, 'That family connection has not been entered on the applicant profile.')
+                if parent_connection not in ('Son', 'Son-in-law'):
+                    abort(400, 'Choose whether this person is a son or son-in-law.')
+                parent_connection = ('F:' if parent_choice == 'family-father' else 'I:') + parent_connection
+            elif parent_choice:
+                try:
+                    parent_contact_id = int(parent_choice)
+                except ValueError:
+                    abort(400, 'Choose a valid family connection.')
+                if not any(row.id == parent_contact_id for row in possible_parents):
+                    abort(400, 'Choose a valid parent supporter.')
             if parent_contact_id and parent_connection not in ('Son', 'Son-in-law'):
                 abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
-            if not parent_contact_id:
+            if not parent_choice:
                 parent_connection = ''
             name = field('name', True)
             phone = field('phone', limit=80)

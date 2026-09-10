@@ -300,6 +300,48 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert 'nested-supporter-row' in profile
     assert profile.index('Shlomo supporter') < profile.index('Hersh Levy')
 
+
+def test_supporter_can_connect_to_applicant_father_or_father_in_law(app, client):
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        family.father = 'Applicant father name'
+        family.inlaws = 'Applicant father-in-law name'
+        db.session.commit()
+
+    page = client.get('/supporters?family_id=1').text
+    assert 'value="family-father"' in page
+    assert 'Applicant father name' in page
+    assert 'value="family-inlaws"' in page
+    assert 'Applicant father-in-law name' in page
+
+    assert post(client, '/families/1/contacts', {
+        'name': 'Father side brother', 'relationship': 'Sibling',
+        'parent_contact_id': 'family-father', 'parent_connection': 'Son',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+    assert post(client, '/families/1/contacts', {
+        'name': 'In-law side brother', 'relationship': 'Spouse’s sibling',
+        'parent_contact_id': 'family-inlaws', 'parent_connection': 'Son-in-law',
+        'status': 'To contact', 'monthly': '0'}).status_code == 302
+
+    with app.app_context():
+        father_side = db.session.scalar(db.select(Contact).where(
+            Contact.name == 'Father side brother'))
+        inlaw_side = db.session.scalar(db.select(Contact).where(
+            Contact.name == 'In-law side brother'))
+        assert father_side.parent_contact_id is None
+        assert father_side.parent_connection == 'F:Son'
+        assert inlaw_side.parent_contact_id is None
+        assert inlaw_side.parent_connection == 'I:Son-in-law'
+        father_side_id = father_side.id
+
+    page = client.get('/supporters?family_id=1').text
+    assert 'Son of applicant’s father' in page
+    assert 'Son-in-law of applicant’s father-in-law' in page
+
+    edit = client.get(f'/supporters/{father_side_id}').text
+    assert 'value="family-father" selected' in edit
+    assert 'value="Son" selected' in edit
+
 def test_supporter_relationships_use_current_heimish_yiddish(client):
     client.get('/language/yi')
     page = client.get('/supporters').text
