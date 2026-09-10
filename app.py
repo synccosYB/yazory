@@ -3,7 +3,7 @@ import os
 import re
 
 import app_original as _app
-from flask import current_app, session
+from flask import current_app, has_request_context, session
 from sqlalchemy import Index, UniqueConstraint, select, text
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
@@ -227,6 +227,9 @@ class StaffTask(_app.db.Model):
         _app.db.Integer, _app.db.ForeignKey('staff_task.id'), nullable=True, index=True)
     family_id = _app.db.Column(
         _app.db.Integer, _app.db.ForeignKey('family.id'), nullable=True, index=True)
+    source_contact_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('contact.id', ondelete='CASCADE'),
+        nullable=True, unique=True, index=True)
     assigned_to = _app.db.Column(
         _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=False, index=True)
     created_by = _app.db.Column(
@@ -244,6 +247,9 @@ class StaffTask(_app.db.Model):
         'StaffTask', remote_side=[id], backref=_app.db.backref(
             'subtasks', cascade='all, delete-orphan', order_by='StaffTask.id'))
     family = _app.db.relationship('Family')
+    source_contact = _app.db.relationship('Contact', backref=_app.db.backref(
+        'automatic_followup_task', uselist=False, cascade='all, delete-orphan',
+        single_parent=True))
     assignee = _app.db.relationship('StaffUser', foreign_keys=[assigned_to])
     creator = _app.db.relationship('StaffUser', foreign_keys=[created_by])
 
@@ -941,6 +947,18 @@ def create_app(test_config=None):
         # Models added by this compatibility layer are created after the base
         # application has initialized its database.
         _app.db.create_all()
+        task_columns = {
+            column['name'] for column in _app.inspect(_app.db.engine).get_columns('staff_task')
+        }
+        if 'source_contact_id' not in task_columns:
+            _app.db.session.execute(text(
+                'ALTER TABLE staff_task ADD COLUMN source_contact_id INTEGER REFERENCES contact(id)'
+            ))
+        _app.db.session.execute(text(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uq_staff_task_source_contact '
+            'ON staff_task (source_contact_id)'
+        ))
+        _app.db.session.commit()
         _migrate_canonical_rabbis()
         _migrate_canonical_helpers()
 
@@ -1194,6 +1212,107 @@ def create_app(test_config=None):
             _app.abort(403, 'You do not have permission to view this task.')
         return task
 
+    def automatic_task_assignee(contact):
+        """Choose the person already responsible for this supporter or case."""
+        if app.extensions['workflows']['enforced']():
+            link_model = app.extensions['workflows']['models']['SupporterLink']
+            link = _app.db.session.get(link_model, contact.id)
+            if link and link.assigned_to:
+                assignee = _app.db.session.get(_app.StaffUser, link.assigned_to)
+                if assignee and assignee.status == 'active':
+                    return assignee
+        assignee = _app.db.session.scalar(select(_app.StaffUser).join(
+            _app.FamilyAssignment,
+            _app.FamilyAssignment.staff_user_id == _app.StaffUser.id
+        ).where(
+            _app.FamilyAssignment.family_id == contact.family_id,
+            _app.StaffUser.status == 'active',
+            _app.StaffUser.role.in_(('fundraiser', 'family_admin')),
+        ).order_by(
+            (_app.StaffUser.role == 'fundraiser').desc(), _app.StaffUser.id
+        ))
+        if assignee:
+            return assignee
+        actor = task_user() if has_request_context() else None
+        if actor and actor.status == 'active':
+            return actor
+        return _app.db.session.scalar(select(_app.StaffUser).where(
+            _app.StaffUser.status == 'active',
+            _app.StaffUser.role == 'organization_admin').order_by(_app.StaffUser.id))
+
+    def sync_supporter_followup_task(contact):
+        task = _app.db.session.scalar(select(StaffTask).where(
+            StaffTask.source_contact_id == contact.id))
+        if contact.status == 'To contact':
+            assignee = automatic_task_assignee(contact)
+            if assignee is None:
+                return
+            if task is None:
+                task = StaffTask(
+                    family_id=contact.family_id,
+                    source_contact_id=contact.id,
+                    assigned_to=assignee.id,
+                    created_by=assignee.id,
+                    title=f'Contact supporter: {contact.name}',
+                    description='',
+                    priority='Normal')
+                _app.db.session.add(task)
+                add_audit(f'Created automatic supporter follow-up: {contact.name}')
+            else:
+                task.assigned_to = assignee.id
+                task.status = 'To do'
+                task.completed_at = None
+        elif task and task.status not in ('Completed', 'Cancelled'):
+            task.status = ('Cancelled' if contact.status in ('Paused', 'Declined')
+                           else 'Completed')
+            task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+                                 if task.status == 'Completed' else None)
+
+    def sync_contact_ids(contact_ids):
+        for contact_id in contact_ids:
+            contact = _app.db.session.get(_app.Contact, contact_id)
+            if contact is not None:
+                sync_supporter_followup_task(contact)
+        _app.db.session.commit()
+
+    # Keep supporter outreach and the team task list in lockstep. The original
+    # handlers remain authoritative for validation and permissions.
+    for endpoint in ('add_contact', 'update_contact', 'edit_contact'):
+        original = app.view_functions.get(endpoint)
+        if original is None:
+            continue
+
+        def contact_task_wrapper(*args, __original=original, __endpoint=endpoint, **kwargs):
+            before_ids = set()
+            if __endpoint == 'add_contact':
+                family_id = kwargs.get('family_id') or _app.request.form.get('family_id', type=int)
+                if family_id:
+                    before_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
+                        _app.Contact.family_id == family_id)).all())
+            response = app.make_response(__original(*args, **kwargs))
+            if _app.request.method == 'POST' and response.status_code < 400:
+                if __endpoint == 'add_contact':
+                    family_id = kwargs.get('family_id') or _app.request.form.get('family_id', type=int)
+                    after_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
+                        _app.Contact.family_id == family_id)).all()) if family_id else set()
+                    contact_ids = after_ids - before_ids
+                else:
+                    contact = _app.db.session.get(_app.Contact, kwargs.get('contact_id'))
+                    if contact and contact.supporter_key:
+                        contact_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
+                            _app.Contact.supporter_key == contact.supporter_key)).all())
+                    else:
+                        contact_ids = {contact.id} if contact else set()
+                sync_contact_ids(contact_ids)
+            return response
+
+        app.view_functions[endpoint] = contact_task_wrapper
+
+    # Backfill open outreach for records created before automatic tasks existed.
+    with app.app_context():
+        sync_contact_ids(_app.db.session.scalars(select(_app.Contact.id).where(
+            _app.Contact.status == 'To contact')).all())
+
     def parsed_due_date():
         raw = _app.request.form.get('due_date', '').strip()
         if not raw:
@@ -1281,6 +1400,19 @@ def create_app(test_config=None):
         task.status = status
         task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
                              if status == 'Completed' else None)
+        if task.source_contact:
+            linked = [task.source_contact]
+            if task.source_contact.supporter_key:
+                linked = _app.db.session.scalars(select(_app.Contact).where(
+                    _app.Contact.supporter_key == task.source_contact.supporter_key)).all()
+            if status == 'Completed':
+                for contact in linked:
+                    if contact.status == 'To contact':
+                        contact.status = 'Contacted'
+            elif status == 'Cancelled':
+                for contact in linked:
+                    if contact.status == 'To contact':
+                        contact.status = 'Paused'
         add_audit(f'Changed task #{task.id} status to {status}')
         _app.db.session.commit()
         _app.flash('Task status updated.')
