@@ -197,6 +197,25 @@ def test_reselecting_existing_shul_reuses_its_rabbi_and_all_gabbais(app, client)
         ]
 
 
+def test_profile_shows_gabbai_connected_to_shared_shul_without_family_copy(app, client):
+    add_shuls(app)
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        family.weekday_shul = 'Weekday Test Shul'
+        shul = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Shul', Institution.name == 'Weekday Test Shul'))
+        db.session.add(ShulGabbaiDirectory(
+            institution_id=shul.id, name='Shared Shul Gabbai', phone='845-555-4999'))
+        db.session.commit()
+
+        assert db.session.scalar(db.select(FamilyGabbaiConnection).where(
+            FamilyGabbaiConnection.family_id == family.id)) is None
+
+    page = client.get('/families/1').text
+    assert 'Shared Shul Gabbai' in page
+    assert '845-555-4999' in page
+
+
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
     add_shuls(app)
     response = post(client, '/families/1/edit', {
