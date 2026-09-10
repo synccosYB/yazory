@@ -341,6 +341,38 @@ def test_adding_phone_collapses_old_duplicate_gabbai_rows(app, client):
         assert rows[0].phone == '845-555-4444'
 
 
+def test_editing_helper_collapses_duplicates_at_another_shul(app, client):
+    """Global phone sync must tolerate duplicate legacy rows anywhere."""
+    add_shuls(app)
+    with app.app_context():
+        shabbos = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Shul', Institution.name == 'Shabbos Test Shul'))
+        shabbos_id = shabbos.id
+        db.session.add_all([
+            ShulGabbaiDirectory(
+                institution_id=shabbos.id, name='Shared Legacy Helper', phone=''),
+            ShulGabbaiDirectory(
+                institution_id=shabbos.id, name='Shared Legacy Helper',
+                phone='845-555-4998'),
+        ])
+        db.session.commit()
+
+    response = post(client, '/families/1/edit?field=weekday_shul', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'weekday_shul_gabbai_name': ['Shared Legacy Helper'],
+        'weekday_shul_gabbai_phone': ['845-555-4999'],
+    })
+
+    assert response.status_code == 302
+    with app.app_context():
+        rows = db.session.scalars(db.select(ShulGabbaiDirectory).where(
+            ShulGabbaiDirectory.institution_id == shabbos_id,
+            ShulGabbaiDirectory.name == 'Shared Legacy Helper')).all()
+        assert len(rows) == 1
+        assert rows[0].phone == '845-555-4999'
+
+
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
     add_shuls(app)
     response = post(client, '/families/1/edit', {
