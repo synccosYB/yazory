@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app import (
     Family,
@@ -371,6 +372,24 @@ def test_editing_helper_collapses_duplicates_at_another_shul(app, client):
             ShulGabbaiDirectory.name == 'Shared Legacy Helper')).all()
         assert len(rows) == 1
         assert rows[0].phone == '845-555-4999'
+
+
+def test_legacy_directory_conflict_does_not_reject_saved_family(monkeypatch, app, client):
+    """The primary profile commit remains successful if its projection fails."""
+    def conflict(_family_id):
+        raise IntegrityError('legacy directory conflict', {}, Exception('duplicate'))
+
+    monkeypatch.setattr('app._save_shul_connections', conflict)
+    response = post(client, '/families/1/edit?field=weekday_shul', {
+        'name': 'Sample family',
+        'weekday_shul': 'Saved despite legacy conflict',
+        'phone': '845-555-4111',
+    })
+
+    assert response.status_code == 302
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        assert family.weekday_shul == 'Saved despite legacy conflict'
 
 
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
