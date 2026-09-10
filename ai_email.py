@@ -4,6 +4,35 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
+def fallback_initial_email(language='en'):
+    """Return an editable draft when the AI service is unavailable."""
+    drafts = {
+        'yi': (
+            'לכבוד {supporter_name},\n\n'
+            'מיר האבן אייך פרובירט צו רופן און האבן אייך נישט געכאפט. '
+            'ווען וואלט געווען א גוטע צייט פאר א קורצן שמועס?\n\n'
+            'מיט דאנק,\n{staff_name}'),
+        'he': (
+            'לכבוד {supporter_name},\n\n'
+            'ניסינו להשיג אתכם בטלפון ולא הצלחנו. מתי יהיה זמן נוח '
+            'לשיחה קצרה?\n\nבתודה,\n{staff_name}'),
+        'en': (
+            'Dear {supporter_name},\n\n'
+            'We tried reaching you by phone and were unable to connect. '
+            'When would be a convenient time for a short call?\n\n'
+            'Thank you,\n{staff_name}'),
+    }
+    return drafts.get(language, drafts['en'])
+
+
+def initial_email_subject(language='en'):
+    return {
+        'yi': 'ווען איז א גוטע צייט צו רעדן?',
+        'he': 'מתי נוח לשוחח?',
+        'en': 'A good time to speak',
+    }.get(language, 'A good time to speak')
+
+
 def draft_initial_email(api_key, model='gpt-5-mini', language='en', timeout=20):
     if not api_key:
         raise ValueError('AI email writing is not configured.')

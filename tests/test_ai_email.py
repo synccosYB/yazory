@@ -3,7 +3,8 @@ import json
 
 import pytest
 
-from ai_email import draft_initial_email
+from ai_email import (draft_initial_email, fallback_initial_email,
+                      initial_email_subject)
 
 
 def test_ai_email_extracts_output_without_case_details(monkeypatch):
@@ -43,3 +44,9 @@ def test_ai_email_requests_heimish_yiddish(monkeypatch):
 def test_ai_email_requires_configuration():
     with pytest.raises(ValueError, match='not configured'):
         draft_initial_email('')
+
+
+def test_localized_fallback_draft_and_subject():
+    assert fallback_initial_email('yi').startswith('לכבוד {supporter_name}')
+    assert '{staff_name}' in fallback_initial_email('he')
+    assert initial_email_subject('yi') == 'ווען איז א גוטע צייט צו רעדן?'

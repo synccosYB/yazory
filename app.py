@@ -291,7 +291,8 @@ class SupporterCommunication(_app.db.Model):
 
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
-from ai_email import draft_initial_email  # noqa: E402
+from ai_email import (draft_initial_email, fallback_initial_email,
+                      initial_email_subject)  # noqa: E402
 
 
 def _normalize_rabbi_name(name):
@@ -1370,19 +1371,22 @@ def create_app(test_config=None):
         contact = communication_contact(contact_id)
         if not contact.email:
             _app.abort(400, 'Enter the supporter email address before writing the email.')
+        language = _app.session.get('language', 'en')
         try:
             body = draft_initial_email(
                 os.environ.get('OPENAI_API_KEY', ''),
                 os.environ.get('OPENAI_MODEL', 'gpt-5-mini'),
-                _app.session.get('language', 'en'))
+                language)
         except ValueError as exc:
-            _app.flash(str(exc), 'error')
-            return _app.redirect(_app.url_for('communications'))
+            body = fallback_initial_email(language)
+            _app.flash(
+                'The AI service was unavailable, so an editable standard draft was opened.',
+                'message')
         staff = task_user()
         body = body.replace('{supporter_name}', contact.name).replace(
             '{staff_name}', staff.name or 'the Yazory team')
         return render_communications(
-            ai_contact=contact, ai_subject='A good time to speak', ai_body=body)
+            ai_contact=contact, ai_subject=initial_email_subject(language), ai_body=body)
 
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):

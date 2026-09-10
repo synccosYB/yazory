@@ -117,3 +117,17 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
             SupporterCommunication.kind == 'initial_email'))
         assert message.recipient == 'supporter@example.test'
         assert timeline.email_message_id == message.id
+
+
+def test_no_answer_button_opens_fallback_when_ai_fails(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    monkeypatch.setattr(
+        'app.draft_initial_email',
+        lambda *args: (_ for _ in ()).throw(ValueError('AI unavailable')))
+    with client.session_transaction() as session:
+        session['language'] = 'yi'
+    draft = post(client, f'/contacts/{contact_id}/communications/initial-email/draft', {})
+    assert draft.status_code == 200
+    assert 'supporter-email-body' in draft.text
+    assert 'ווען איז א גוטע צייט צו רעדן?' in draft.text
+    assert 'Test Supporter' in draft.text

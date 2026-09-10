@@ -44,6 +44,7 @@ _EXTRA = {
     'A good time to speak': {'he': 'זמן נוח לשיחה', 'yi': 'א גוטע צייט צו רעדן'},
     'Initial email sent.': {'he': 'האימייל הראשון נשלח.', 'yi': 'דער ערשטער אימעיל איז געשיקט.'},
     'AI email writing is not configured.': {'he': 'כתיבת אימייל באמצעות AI אינה מוגדרת.', 'yi': 'AI אימעיל שרייבן איז נאכנישט אנגעשטעלט.'},
+    'The AI service was unavailable, so an editable standard draft was opened.': {'he': 'שירות ה־AI לא היה זמין, ולכן נפתחה טיוטה רגילה שניתן לערוך.', 'yi': 'דער AI סערוויס איז נישט געווען גרייט, דעריבער האט זיך געעפנט א געהעריגער דרעפט וואס מען קען טוישן.'},
     'Applicant’s father': {'he': 'אבי הפונה', 'yi': 'דער טאטע פונעם אפליקאנט'},
     'Applicant’s father-in-law': {'he': 'חותן הפונה', 'yi': 'דער שווער פונעם אפליקאנט'},
     'Son of applicant’s father': {'he': 'בן אבי הפונה', 'yi': 'א זון ביים טאטן פונעם אפליקאנט'},
