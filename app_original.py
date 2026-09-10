@@ -66,6 +66,13 @@ class Family(db.Model):
             locality = f'{locality} {self.zip_code}'.strip()
         return ', '.join(part for part in (self.address, locality) if part)
 
+    @property
+    def reported_children_count(self):
+        """The intake total; child detail rows may contain only married children."""
+        if not self.intake_record:
+            return None
+        return (self.intake_record.data or {}).get('children_count')
+
 class HouseholdIntake(db.Model):
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
     data = db.Column(db.JSON, nullable=False, default=dict)

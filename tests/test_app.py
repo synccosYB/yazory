@@ -93,6 +93,24 @@ def test_married_child_records_spouse(app, client):
     with app.app_context():
         assert db.session.get(Child, child_id).spouse_name == 'Updated spouse'
 
+def test_family_directory_uses_reported_children_count_not_detail_rows(app, client):
+    with app.app_context():
+        family = Family(name='Eight-child household', status='Active')
+        db.session.add(family)
+        db.session.flush()
+        db.session.add(HouseholdIntake(
+            family_id=family.id, data={'children_count': 8}))
+        for number in range(4):
+            db.session.add(Child(
+                family_id=family.id, name=f'Married child {number}', age=25,
+                school='', married=True, spouse_name=f'Spouse {number}'))
+        db.session.commit()
+
+    page = client.get('/families').text
+    row = page.split('Eight-child household', 1)[1].split('</tr>', 1)[0]
+    assert '<td>8</td>' in row
+    assert '<td>4</td>' not in row
+
 def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
     for name in ('Case A', 'Case B'):
         assert post(client, '/families/new', {'name':name}).status_code == 302
