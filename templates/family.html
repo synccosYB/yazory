@@ -4,9 +4,9 @@
   <div class="profile-record-main">
     <div class="profile-record-identity">
       <div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} {{ _("· FAMILY PROFILE") }}</div>
-      <h1>{{ family.name }} {{ pencil(family.id, 'name', 'Family / individual name') }}</h1>
+      <h1><bdi dir="auto">{{ family.name }}</bdi> {{ pencil(family.id, 'name', 'Family / individual name') }}</h1>
       <div class="profile-record-contact">
-        <span><bdi dir="auto">{{ family.full_address or _('Address not entered') }}</bdi> {{ pencil(family.id, 'address', 'Address') }}</span>
+        <span><bdi dir="ltr">{{ family.full_address or _('Address not entered') }}</bdi> {{ pencil(family.id, 'address', 'Address') }}</span>
         {% set profile_phones=family_phone_values(family) %}{% for phone in profile_phones %}<span><bdi dir="ltr">{{ phone }}</bdi>{{ pencil(family.id, 'phone', 'Phone') }}</span>{% else %}<span>{{ _('Phone not entered') }} {{ pencil(family.id, 'phone', 'Phone') }}</span>{% endfor %}
       </div>
     </div>
