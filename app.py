@@ -384,52 +384,6 @@ def _helper_payloads(institution, role):
     return result
 
 
-def _sync_legacy_helper_phones(person):
-    """Keep compatibility rows aligned while helper phones are globally owned."""
-    phones = _helper_phones(person)
-    normalized = person.normalized_name
-    matching_gabbais = [
-        row for row in _app.db.session.scalars(
-            select(ShulGabbaiDirectory).order_by(ShulGabbaiDirectory.id)).all()
-        if _normalize_rabbi_name(row.name) == normalized
-    ]
-    # Legacy imports may have stored the same helper more than once at one
-    # shul, distinguished only by phone.  Once phones became globally owned,
-    # assigning the same primary phone to both rows violates the old
-    # (institution, name, phone) unique constraint.  Collapse those rows
-    # before propagating the canonical phone list.
-    canonical_by_shul = {}
-    duplicate_ids = []
-    for row in matching_gabbais:
-        identity = (row.institution_id, _normalize_rabbi_name(row.name))
-        if identity in canonical_by_shul:
-            duplicate_ids.append(row.id)
-        else:
-            canonical_by_shul[identity] = row
-    if duplicate_ids:
-        _app.db.session.execute(_app.db.delete(FamilyGabbaiConnection).where(
-            FamilyGabbaiConnection.gabbai_id.in_(duplicate_ids)))
-        _app.db.session.execute(_app.db.delete(ShulGabbaiPhone).where(
-            ShulGabbaiPhone.gabbai_id.in_(duplicate_ids)))
-        _app.db.session.execute(_app.db.delete(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.id.in_(duplicate_ids)))
-        _app.db.session.flush()
-    for row in canonical_by_shul.values():
-        row.phone = phones[0] if phones else ''
-        _replace_gabbai_phones(row, phones)
-    for assistant in _app.db.session.scalars(select(ShulRabbiAssistant)).all():
-        if _normalize_rabbi_name(assistant.name) != normalized:
-            continue
-        existing = _app.db.session.scalars(select(ShulRabbiAssistantPhone).where(
-            ShulRabbiAssistantPhone.assistant_id == assistant.id)).all()
-        for row in existing:
-            _app.db.session.delete(row)
-        _app.db.session.flush()
-        for phone in phones:
-            _app.db.session.add(ShulRabbiAssistantPhone(
-                assistant_id=assistant.id, phone=phone))
-
-
 def _primary_association(institution_id):
     return _app.db.session.scalar(select(ShulRabbiAssociation).where(
         ShulRabbiAssociation.institution_id == institution_id,
@@ -546,19 +500,7 @@ def _migrate_family_gabbaim_to_shared_shuls():
         institution = shuls[0]
         for legacy in list(family.gabbais):
             phones = _clean_phones([legacy.phone])
-            shared = _app.db.session.scalar(select(ShulGabbaiDirectory).where(
-                ShulGabbaiDirectory.institution_id == institution.id,
-                ShulGabbaiDirectory.name == legacy.name,
-            ))
-            if shared is None:
-                shared = ShulGabbaiDirectory(
-                    institution_id=institution.id, name=legacy.name,
-                    phone=phones[0] if phones else '')
-                _app.db.session.add(shared)
-                _app.db.session.flush()
-            if phones:
-                _replace_gabbai_phones(shared, phones)
-            person = _canonical_helper(shared.name, _gabbai_phones(shared))
+            person = _canonical_helper(legacy.name, phones)
             if person is not None:
                 _attach_helper(institution, person, 'shul_gabbai')
             _app.db.session.delete(legacy)
@@ -927,88 +869,6 @@ def _submitted_gabbais(key):
         seen.add(identity)
         rows.append((name, phones))
     return rows
-
-
-def _replace_shul_gabbais(institution, submitted_rows):
-    current = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
-        ShulGabbaiDirectory.institution_id == institution.id).order_by(ShulGabbaiDirectory.id)).all()
-    # Older family-specific imports could leave two shared rows for the same
-    # person (commonly one with a blank phone and one with the phone). Updating
-    # the blank row to that phone would collide with the other row. Collapse
-    # those duplicates before applying the submitted edit.
-    canonical_by_name = {}
-    duplicates = []
-    for row in current:
-        identity = row.name.strip().casefold()
-        if identity in canonical_by_name:
-            duplicates.append(row)
-        else:
-            canonical_by_name[identity] = row
-    if duplicates:
-        duplicate_ids = [row.id for row in duplicates]
-        _app.db.session.execute(_app.db.delete(FamilyGabbaiConnection).where(
-            FamilyGabbaiConnection.gabbai_id.in_(duplicate_ids)))
-        _app.db.session.execute(_app.db.delete(ShulGabbaiPhone).where(
-            ShulGabbaiPhone.gabbai_id.in_(duplicate_ids)))
-        for row in duplicates:
-            _app.db.session.delete(row)
-        _app.db.session.flush()
-        current = list(canonical_by_name.values())
-    existing_by_name = {row.name.casefold(): row for row in current}
-    keep_ids = set()
-    result = []
-    helper_people = []
-    for name, phones in submitted_rows:
-        helper = _canonical_helper(name, phones)
-        if helper is not None:
-            helper_people.append(helper)
-        row = existing_by_name.get(name.casefold())
-        first_phone = phones[0] if phones else ''
-        if row is None:
-            row = ShulGabbaiDirectory(
-                institution_id=institution.id, name=name, phone=first_phone)
-            _app.db.session.add(row)
-            _app.db.session.flush()
-        else:
-            row.name = name
-            row.phone = first_phone
-        _replace_gabbai_phones(row, phones)
-        if helper is not None:
-            _sync_legacy_helper_phones(helper)
-        keep_ids.add(row.id)
-        result.append(row)
-    for row in current:
-        if row.id not in keep_ids:
-            linked = _app.db.session.scalar(select(FamilyGabbaiConnection.id).where(
-                FamilyGabbaiConnection.gabbai_id == row.id))
-            if not linked:
-                for phone in _app.db.session.scalars(select(ShulGabbaiPhone).where(
-                        ShulGabbaiPhone.gabbai_id == row.id)).all():
-                    _app.db.session.delete(phone)
-                _app.db.session.delete(row)
-    _sync_helper_associations(institution, 'shul_gabbai', helper_people)
-    return result
-
-
-def _sync_family_gabbais(family_id, role, institution, gabbais):
-    current = _app.db.session.scalars(select(FamilyGabbaiConnection).where(
-        FamilyGabbaiConnection.family_id == family_id,
-        FamilyGabbaiConnection.role == role)).all()
-    desired_ids = {gabbai.id for gabbai in gabbais} if institution is not None else set()
-    existing_by_gabbai = {row.gabbai_id: row for row in current}
-    for row in current:
-        if row.gabbai_id not in desired_ids:
-            _app.db.session.delete(row)
-        elif institution is not None:
-            row.institution_id = institution.id
-
-    if institution is None:
-        return
-    for gabbai in gabbais:
-        if gabbai.id not in existing_by_gabbai:
-            _app.db.session.add(FamilyGabbaiConnection(
-                family_id=family_id, institution_id=institution.id,
-                gabbai_id=gabbai.id, role=role))
 
 
 def _save_shul_gabbai_connections(family_id):
