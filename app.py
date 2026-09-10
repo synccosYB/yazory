@@ -1308,11 +1308,6 @@ def create_app(test_config=None):
 
         app.view_functions[endpoint] = contact_task_wrapper
 
-    # Backfill open outreach for records created before automatic tasks existed.
-    with app.app_context():
-        sync_contact_ids(_app.db.session.scalars(select(_app.Contact.id).where(
-            _app.Contact.status == 'To contact')).all())
-
     def parsed_due_date():
         raw = _app.request.form.get('due_date', '').strip()
         if not raw:

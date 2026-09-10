@@ -8,7 +8,7 @@ externalPort = 80
 
 [deployment]
 build = ["sh", "-c", "pip install -r requirements.txt"]
-run = ["sh", "-c", "APP_ENV=production python -m flask --app app init-db && APP_ENV=production exec gunicorn --bind 0.0.0.0:5000 --error-logfile - --capture-output 'app:create_app()'"]
+run = ["sh", "-c", "APP_ENV=production exec gunicorn --bind 0.0.0.0:${PORT:-5000} --error-logfile - --capture-output 'app:create_app()'"]
 deploymentTarget = "autoscale"
 
 [nix]
