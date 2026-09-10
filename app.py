@@ -1031,15 +1031,29 @@ def create_app(test_config=None):
         # for that page: doing so used to issue several queries per shul and
         # made profiles progressively slower as the directory grew.
         institution_filter = [_app.Institution.kind == 'Shul']
+        profile_institution_ids = []
         if _app.request.endpoint == 'family_detail':
             family_id = (_app.request.view_args or {}).get('family_id')
             # family_detail already loaded this object into the request's
             # identity map, so this does not require another database query.
             context_family = _app.db.session.get(_app.Family, family_id)
+            profile_institution_ids = list(_app.db.session.scalars(select(
+                _app.PersonAffiliation.institution_id
+            ).join(_app.Institution).where(
+                _app.PersonAffiliation.person_type == 'family',
+                _app.PersonAffiliation.person_id == family_id,
+                _app.Institution.kind == 'Shul',
+                _app.PersonAffiliation.note.contains('Family profile'),
+            )).all())
             relevant_names = {name for name in (
                 context_family.weekday_shul if context_family else '',
                 context_family.shabbos_shul if context_family else '') if name}
-            if not relevant_names:
+            if profile_institution_ids:
+                institution_filter.append(_app.Institution.id.in_(profile_institution_ids))
+                rows = _app.db.session.execute(select(_app.Institution, ShulRabbi).join(
+                    ShulRabbi, ShulRabbi.institution_id == _app.Institution.id,
+                    isouter=True).where(*institution_filter)).all()
+            elif not relevant_names:
                 rows = []
             else:
                 institution_filter.append(_app.Institution.name.in_(relevant_names))
@@ -1052,21 +1066,24 @@ def create_app(test_config=None):
             # contact map.
             rows = []
         mapping = {}
+        institution_contacts = {}
         for institution, assignment in rows:
             phones = _rabbi_phones(institution) if assignment else []
             gabbais = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
                 ShulGabbaiDirectory.institution_id == institution.id
             ).order_by(ShulGabbaiDirectory.id)).all()
-            mapping[institution.name] = {
+            payload = {
                 'name': assignment.rabbi_name if assignment else '',
                 'phone': phones[0] if phones else '',
                 'phones': phones,
                 'assistants': _assistant_payload(institution),
                 'gabbais': [
-                    {'name': row.name, 'phones': _gabbai_phones(row)}
-                    for row in gabbais
+                        {'name': row.name, 'phones': _gabbai_phones(row)}
+                        for row in gabbais
                 ],
             }
+            institution_contacts[institution.id] = payload
+            mapping[institution.name] = payload
         people = (_app.db.session.scalars(select(RabbiPerson).order_by(RabbiPerson.name)).all()
                   if _app.request.endpoint in {'new_family', 'edit_family', 'directories'}
                   else [])
@@ -1085,9 +1102,22 @@ def create_app(test_config=None):
             # Gabbaim belong to the shared shul, not to an individual family.
             # Read the current shul directory first so applicants who selected
             # the same shul also see gabbaim added after their profile was saved.
-            for shul_name in ((family.weekday_shul, family.shabbos_shul)
-                              if family is not None else ()):
-                for gabbai in mapping.get(shul_name, {}).get('gabbais', []):
+            linked_ids = profile_institution_ids if family_id == (
+                (_app.request.view_args or {}).get('family_id')) else list(
+                    _app.db.session.scalars(select(
+                        _app.PersonAffiliation.institution_id
+                    ).join(_app.Institution).where(
+                        _app.PersonAffiliation.person_type == 'family',
+                        _app.PersonAffiliation.person_id == family_id,
+                        _app.Institution.kind == 'Shul',
+                        _app.PersonAffiliation.note.contains('Family profile'),
+                    )).all())
+            contact_groups = [institution_contacts.get(row_id, {}) for row_id in linked_ids]
+            if not contact_groups:
+                contact_groups = [mapping.get(name, {}) for name in (
+                    (family.weekday_shul, family.shabbos_shul) if family is not None else ())]
+            for contacts in contact_groups:
+                for gabbai in contacts.get('gabbais', []):
                     identity = (gabbai['name'].casefold(), tuple(gabbai['phones']))
                     if identity in seen:
                         continue
