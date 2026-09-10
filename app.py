@@ -1048,9 +1048,9 @@ def _assistant_payload(institution):
 
 def create_app(test_config=None):
     app = _app.create_app(test_config)
-    with app.app_context():
-        # Models added by this compatibility layer are created after the base
-        # application has initialized its database.
+
+    def ensure_extension_schema():
+        """Create and migrate models supplied by this compatibility layer."""
         _app.db.create_all()
         task_columns = {
             column['name'] for column in _app.inspect(_app.db.engine).get_columns('staff_task')
@@ -1067,6 +1067,15 @@ def create_app(test_config=None):
         _migrate_canonical_rabbis()
         _migrate_canonical_helpers()
         _migrate_family_gabbaim_to_shared_shuls()
+
+    app.extensions.setdefault('init_db_hooks', []).append(ensure_extension_schema)
+    # Keep production worker startup below Replit's health-check deadline.
+    # Production receives schema/data maintenance through the explicit
+    # `flask --app 'app:create_app()' init-db` release step. Disposable demo
+    # and test databases continue to initialize themselves here.
+    if app.config['DEMO'] or app.config.get('TESTING'):
+        with app.app_context():
+            ensure_extension_schema()
 
     def add_shared_gabbai(family_id):
         require_capability(('family_admin', 'office_employee'))
