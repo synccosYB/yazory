@@ -2467,19 +2467,51 @@ def create_app(test_config=None):
         lifetime_by_contact = {contact_id: total for contact_id, total in db.session.execute(select(
             Receipt.contact_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
         ).where(Receipt.contact_id.in_(contact_ids)).group_by(Receipt.contact_id)).all()} if contact_ids else {}
+        family_statement = select(Family).order_by(Family.name)
+        if not organization_admin():
+            family_statement = family_statement.where(Family.id.in_(
+                select(FamilyAssignment.family_id).where(
+                    FamilyAssignment.staff_user_id == current_user().id)))
+        families = db.session.scalars(family_statement).all()
         return render_template('collections.html', title='Collections', contacts=contacts,
                                receipts=receipts, received_by_contact=received_by_contact,
-                               lifetime_by_contact=lifetime_by_contact, month=month)
+                               lifetime_by_contact=lifetime_by_contact, month=month,
+                               families=families)
 
     @app.post('/collections/receipts')
     def record_receipt():
         require_capability(('family_admin', 'fundraiser'))
-        contact_id = request.form.get('contact_id', type=int)
-        if not contact_id:
-            abort(400, 'Choose a supporter.')
-        contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
-        if contact is None:
-            abort(403, 'You are not assigned to this family.')
+        contact_value = request.form.get('contact_id', '')
+        if contact_value == '__new__':
+            family_id = request.form.get('family_id', type=int)
+            family = db.session.get(Family, family_id)
+            if family is None:
+                abort(400, 'Choose a family for the new donor.')
+            if not can_access_family(family.id):
+                abort(403, 'You are not assigned to this family.')
+            donor_name = field('donor_name', True, 160)
+            donor_phone = field('donor_phone', limit=80)
+            donor_key = supporter_key(donor_name, donor_phone)
+            contact = db.session.scalar(select(Contact).where(
+                Contact.family_id == family.id,
+                Contact.supporter_key == donor_key))
+            if contact is None:
+                contact = Contact(
+                    family_id=family.id, name=donor_name, phone=donor_phone,
+                    relationship='Other', supporter_key=donor_key,
+                    monthly_cents=0, pledge_frequency='One time',
+                    status='Contacted')
+                db.session.add(contact)
+                db.session.flush()
+                audit(f'Added supporter from manual donation: {donor_name}', family.id)
+        else:
+            contact_id = request.form.get('contact_id', type=int)
+            if not contact_id:
+                abort(400, 'Choose a supporter or enter a new donor.')
+            contact = db.session.scalar(scoped_contacts_statement().where(
+                Contact.id == contact_id))
+            if contact is None:
+                abort(403, 'You are not assigned to this family.')
         received_on = field('received_on', True, 10)
         try:
             received_date = datetime.strptime(received_on, '%Y-%m-%d').date()

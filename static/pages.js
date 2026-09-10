@@ -16,3 +16,18 @@ main.querySelectorAll('section.card').forEach(section=>{let rows=[...section.chi
 // Long household notes are paged rather than cut off or stretched vertically.
 main.querySelectorAll('.preserve').forEach(note=>{const text=note.textContent;if(text.length<=700)return;const chunks=text.match(/[\s\S]{1,650}(?:\s|$)|[\s\S]{1,650}/g)||[text];let i=0;const pager=document.createElement('div');pager.className='table-pager';const back=document.createElement('button'),next=document.createElement('button'),count=document.createElement('span');back.type=next.type='button';back.textContent=labels.previous;next.textContent=labels.next;pager.append(back,count,next);note.after(pager);function draw(){note.textContent=chunks[i];back.disabled=i===0;next.disabled=i===chunks.length-1;count.textContent=`${i+1} / ${chunks.length}`;}back.onclick=()=>{i--;draw();};next.onclick=()=>{i++;draw();};draw();});
 })();
+
+
+const manualDonationSupporter = document.querySelector('#manual-donation-supporter');
+const manualNewDonor = document.querySelector('#manual-new-donor');
+if (manualDonationSupporter && manualNewDonor) {
+  const updateManualDonorFields = () => {
+    const isNew = manualDonationSupporter.value === '__new__';
+    manualNewDonor.hidden = !isNew;
+    manualNewDonor.querySelectorAll('input, select').forEach((field) => {
+      field.required = isNew && (field.name === 'donor_name' || field.name === 'family_id');
+    });
+  };
+  manualDonationSupporter.addEventListener('change', updateManualDonorFields);
+  updateManualDonorFields();
+}

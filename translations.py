@@ -271,6 +271,11 @@ _EXTRA.update({
     'The check is saved in manual check history. Reprinting this check will keep the same check number and will not create another payout.': {'he': 'ההמחאה נשמרה בהיסטוריה. הדפסה חוזרת תשמור על אותו מספר ולא תיצור תשלום נוסף.', 'yi': 'דער טשעק איז אפגעהיט אין דער מעניועל טשעק היסטאריע. נאכאמאל פרינטן וועט האלטן דעם זעלבן טשעק נומער און וועט נישט מאכן נאך א באצאלונג.'},
     'Check download': {'he': 'הורדת המחאה', 'yi': 'טשעק דאונלאוד'},
     'This check is greater than the amount available for this case.': {'he': 'סכום ההמחאה גדול מהיתרה הזמינה לתיק זה.', 'yi': 'דער טשעק איז העכער ווי דער סכום וואס איז נאך דא פאר דעם קעיס.'},
+    'New donor — not in the system': {'he': 'תורם חדש — לא נמצא במערכת', 'yi': 'נייער נדבן — נישט אין סיסטעם'},
+    'New donor details': {'he': 'פרטי תורם חדש', 'yi': 'פרטים פונעם נייעם נדבן'},
+    'Donor name': {'he': 'שם התורם', 'yi': 'נאמען פונעם נדבן'},
+    'Choose a family for the new donor.': {'he': 'יש לבחור משפחה עבור התורם החדש.', 'yi': 'קלויבט אויס א משפחה פארן נייעם נדבן.'},
+    'Choose a supporter or enter a new donor.': {'he': 'יש לבחור תומך או להזין תורם חדש.', 'yi': 'קלויבט אויס א העלפער אדער לייגט אריין א נייעם נדבן.'},
 })
 
 def translate(text):

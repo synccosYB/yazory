@@ -68,3 +68,31 @@ def test_people_access_accepts_staff_account_form_submission(monkeypatch):
         user = db.session.scalar(db.select(StaffUser).where(StaffUser.email == 'new-staff@example.test'))
         assert user is not None
         assert user.role == 'office_employee'
+
+
+def test_manual_receipt_can_create_a_new_donor(monkeypatch):
+    for key in ('APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET'):
+        monkeypatch.delenv(key, raising=False)
+    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'test'})
+    client = app.test_client()
+    with app.app_context():
+        family_id = db.session.scalar(db.select(Family.id))
+    response = client.post('/collections/receipts', data={
+        'csrf': csrf(client), 'contact_id': '__new__',
+        'family_id': family_id, 'donor_name': 'Outside Donor',
+        'donor_phone': '845-555-0101', 'amount': '250.00',
+        'received_on': '2026-09-10', 'reference': 'CASH-1',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        donor = db.session.scalar(db.select(Contact).where(
+            Contact.name == 'Outside Donor'))
+        assert donor is not None
+        assert donor.family_id == family_id
+        assert donor.relationship == 'Other'
+        assert donor.status == 'Contacted'
+        receipt = db.session.scalar(db.select(Receipt).where(
+            Receipt.contact_id == donor.id))
+        assert receipt.amount_cents == 25000
+        assert receipt.family_id == family_id
