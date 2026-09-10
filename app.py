@@ -1336,7 +1336,12 @@ def create_app(test_config=None):
         if user is None or user.role not in (
                 'organization_admin', 'family_admin', 'fundraiser'):
             _app.abort(403)
+        selected_contact_id = (ai_contact.id if ai_contact else
+                               _app.request.args.get('contact_id', type=int))
         contact_statement = select(_app.Contact).order_by(_app.Contact.name)
+        if selected_contact_id is not None:
+            contact_statement = contact_statement.where(
+                _app.Contact.id == selected_contact_id)
         if not task_is_admin(user):
             contact_statement = contact_statement.where(_app.Contact.family_id.in_(select(
                 _app.FamilyAssignment.family_id).where(
@@ -1346,6 +1351,8 @@ def create_app(test_config=None):
             contact_statement = contact_statement.where(_app.Contact.id.in_(select(
                 link_model.contact_id).where(link_model.assigned_to == user.id)))
         contacts = _app.db.session.scalars(contact_statement).all()
+        if selected_contact_id is not None and not contacts:
+            _app.abort(404)
         contact_ids = [row.id for row in contacts]
         history = (_app.db.session.scalars(select(SupporterCommunication).where(
             SupporterCommunication.contact_id.in_(contact_ids)).order_by(
@@ -1415,7 +1422,7 @@ def create_app(test_config=None):
         _app.flash('Initial email sent.' if message.status != 'failed'
                    else 'Initial email delivery failed. Check Communications.',
                    'error' if message.status == 'failed' else 'message')
-        return _app.redirect(_app.url_for('communications'))
+        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     @app.post('/contacts/<int:contact_id>/communications/callback')
     def schedule_supporter_callback(contact_id):
@@ -1443,7 +1450,7 @@ def create_app(test_config=None):
         add_audit(f'Scheduled supporter callback: {contact.name}')
         _app.db.session.commit()
         _app.flash('Callback saved.')
-        return _app.redirect(_app.url_for('communications'))
+        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     @app.post('/contacts/<int:contact_id>/communications/call')
     def complete_supporter_call(contact_id):
@@ -1472,7 +1479,7 @@ def create_app(test_config=None):
         add_audit(f'Completed supporter call: {contact.name}')
         _app.db.session.commit()
         _app.flash('Phone call recorded.')
-        return _app.redirect(_app.url_for('communications'))
+        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     @app.post('/contacts/<int:contact_id>/communications/pledge')
     def send_supporter_pledge(contact_id):
@@ -1512,7 +1519,7 @@ def create_app(test_config=None):
         _app.flash('Pledge email sent.' if message.status != 'failed'
                    else 'Pledge email delivery failed. Check Communications.',
                    'error' if message.status == 'failed' else 'message')
-        return _app.redirect(_app.url_for('communications'))
+        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     def visible_task_or_403(task_id):
         task = _app.db.get_or_404(StaffTask, task_id)

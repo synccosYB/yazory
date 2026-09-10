@@ -79,6 +79,24 @@ def test_full_supporter_communication_workflow(monkeypatch):
             SupporterCommunication)) == 3
 
 
+def test_supporter_communication_link_opens_only_that_supporter(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        other = Contact(family_id=contact.family_id, name='Other Supporter',
+                        relationship='Friend', monthly_cents=0,
+                        pledge_frequency='Monthly', status='To contact')
+        db.session.add(other)
+        db.session.commit()
+
+    profile = client.get(f'/supporters/{contact_id}')
+    assert f'/communications?contact_id={contact_id}' in profile.text
+    page = client.get(f'/communications?contact_id={contact_id}')
+    assert page.status_code == 200
+    assert 'Test Supporter' in page.text
+    assert 'Other Supporter' not in page.text
+
+
 def test_manual_receipt_emails_and_enters_timeline(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     response = post(client, '/collections/receipts', {
