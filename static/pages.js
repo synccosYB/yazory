@@ -20,6 +20,23 @@ main.querySelectorAll('.preserve').forEach(note=>{const text=note.textContent;if
 
 
 const manualDonationSupporter = document.querySelector('#manual-donation-supporter');
+const supporterEmailBody=document.querySelector('#supporter-email-body');
+const supporterEmailSubject=document.querySelector('#supporter-email-subject');
+const supporterEmailPreviewBody=document.querySelector('#supporter-email-preview-body');
+const supporterEmailPreviewSubject=document.querySelector('#supporter-email-preview-subject');
+if(supporterEmailBody&&supporterEmailSubject&&supporterEmailPreviewBody&&supporterEmailPreviewSubject){
+  const updateSupporterEmailPreview=()=>{
+    supporterEmailPreviewSubject.textContent=supporterEmailSubject.value||'—';
+    supporterEmailPreviewBody.replaceChildren(...supporterEmailBody.value.split(/\n\s*\n/).filter(Boolean).map(text=>{
+      const paragraph=document.createElement('p');
+      paragraph.textContent=text;
+      return paragraph;
+    }));
+  };
+  supporterEmailBody.addEventListener('input',updateSupporterEmailPreview);
+  supporterEmailSubject.addEventListener('input',updateSupporterEmailPreview);
+  updateSupporterEmailPreview();
+}
 const manualNewDonor = document.querySelector('#manual-new-donor');
 if (manualDonationSupporter && manualNewDonor) {
   const updateManualDonorFields = () => {

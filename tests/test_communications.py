@@ -93,3 +93,27 @@ def test_manual_receipt_emails_and_enters_timeline(monkeypatch):
         assert message.recipient == 'supporter@example.test'
         assert '09/10/2026' in message.text_body
         assert timeline.email_message_id == message.id
+
+
+def test_no_answer_ai_draft_preview_and_send(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    monkeypatch.setenv('OPENAI_API_KEY', 'test-ai-key')
+    monkeypatch.setattr(
+        'app.draft_initial_email',
+        lambda key, model, language: 'Dear {supporter_name},\n\nWhat time works for a short call?\n\n{staff_name}')
+    draft = post(client, f'/contacts/{contact_id}/communications/initial-email/draft', {})
+    assert draft.status_code == 200
+    assert 'Test Supporter' in draft.text
+    assert 'supporter-email-preview-body' in draft.text
+    assert 'What time works for a short call?' in draft.text
+    sent = post(client, f'/contacts/{contact_id}/communications/initial-email', {
+        'subject': 'A good time to speak',
+        'body': 'Dear Test Supporter,\n\nWhat time works for a short call?'})
+    assert sent.status_code == 302
+    with app.app_context():
+        message = db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'supporter_initial_contact'))
+        timeline = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.kind == 'initial_email'))
+        assert message.recipient == 'supporter@example.test'
+        assert timeline.email_message_id == message.id

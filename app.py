@@ -291,6 +291,7 @@ class SupporterCommunication(_app.db.Model):
 
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
+from ai_email import draft_initial_email  # noqa: E402
 
 
 def _normalize_rabbi_name(name):
@@ -1329,8 +1330,7 @@ def create_app(test_config=None):
         except (TypeError, ValueError):
             _app.abort(400, 'Enter a valid follow-up date and time.')
 
-    @app.get('/communications')
-    def communications():
+    def render_communications(ai_contact=None, ai_subject='', ai_body=''):
         user = task_user()
         if user is None or user.role not in (
                 'organization_admin', 'family_admin', 'fundraiser'):
@@ -1358,7 +1358,60 @@ def create_app(test_config=None):
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             history=history, latest=latest, due=due,
+            ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
             now=_app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+
+    @app.get('/communications')
+    def communications():
+        return render_communications()
+
+    @app.post('/contacts/<int:contact_id>/communications/initial-email/draft')
+    def draft_supporter_initial_email(contact_id):
+        contact = communication_contact(contact_id)
+        if not contact.email:
+            _app.abort(400, 'Enter the supporter email address before writing the email.')
+        try:
+            body = draft_initial_email(
+                os.environ.get('OPENAI_API_KEY', ''),
+                os.environ.get('OPENAI_MODEL', 'gpt-5-mini'),
+                _app.session.get('language', 'en'))
+        except ValueError as exc:
+            _app.flash(str(exc), 'error')
+            return _app.redirect(_app.url_for('communications'))
+        staff = task_user()
+        body = body.replace('{supporter_name}', contact.name).replace(
+            '{staff_name}', staff.name or 'the Yazory team')
+        return render_communications(
+            ai_contact=contact, ai_subject='A good time to speak', ai_body=body)
+
+    @app.post('/contacts/<int:contact_id>/communications/initial-email')
+    def send_supporter_initial_email(contact_id):
+        contact = communication_contact(contact_id)
+        if not contact.email:
+            _app.abort(400, 'Enter the supporter email address before sending the email.')
+        subject = _app.request.form.get('subject', '').strip()[:300]
+        body = _app.request.form.get('body', '').strip()[:5000]
+        if not subject or not body:
+            _app.abort(400, 'Enter an email subject and message.')
+        message = app.extensions['send_email'](
+            'supporter_initial_contact', contact.email, subject, body,
+            family_id=contact.family_id)
+        communication_row(
+            contact, 'initial_email', subject, body,
+            status='failed' if message.status == 'failed' else 'completed',
+            email_message=message)
+        contact.status = 'To contact'
+        task = _app.db.session.scalar(select(StaffTask).where(
+            StaffTask.source_contact_id == contact.id))
+        if task:
+            task.status = 'Waiting'
+            task.description = 'Waiting for supporter to reply to the initial email.'
+        add_audit(f'Sent initial supporter email: {contact.name}')
+        _app.db.session.commit()
+        _app.flash('Initial email sent.' if message.status != 'failed'
+                   else 'Initial email delivery failed. Check Communications.',
+                   'error' if message.status == 'failed' else 'message')
+        return _app.redirect(_app.url_for('communications'))
 
     @app.post('/contacts/<int:contact_id>/communications/callback')
     def schedule_supporter_callback(contact_id):
