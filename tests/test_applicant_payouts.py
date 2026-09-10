@@ -28,6 +28,10 @@ def test_check_create_download_and_status_lifecycle(tmp_path):
         family.status = 'Active'
         family.address, family.city, family.state, family.zip_code = (
             '12 Main Street', 'Monroe', 'NY', '10950')
+        contact = family.contacts[0]
+        db.session.add(core_module.Receipt(
+            contact_id=contact.id, family_id=family.id,
+            amount_cents=123_456, received_on=date.today()))
         db.session.commit()
         family_id = family.id
         bank_account_id = db.session.scalar(db.select(CheckBankAccount.id))
@@ -38,9 +42,17 @@ def test_check_create_download_and_status_lifecycle(tmp_path):
         'check_date': '2026-09-09', 'memo': 'Family support',
         'recipient_message': 'With best wishes from Yazory.'}, follow_redirects=True)
     assert response.status_code == 200
-    assert response.mimetype == 'application/pdf'
+    assert 'Check created' in response.text
+    assert 'Test Applicant' in response.text
+    assert '00125' in response.text
+    assert 'Download / reprint' in response.text
+    with app.app_context():
+        payout_id = db.session.scalar(db.select(ApplicantPayout.id))
+    pdf_response = client.get(f'/payouts/{payout_id}/check.pdf')
+    assert pdf_response.status_code == 200
+    assert pdf_response.mimetype == 'application/pdf'
     pdf_path = tmp_path / 'check.pdf'
-    pdf_path.write_bytes(response.data)
+    pdf_path.write_bytes(pdf_response.data)
     with pdfplumber.open(pdf_path) as pdf:
         text = pdf.pages[0].extract_text()
     assert 'Test Applicant' in text
@@ -53,6 +65,13 @@ def test_check_create_download_and_status_lifecycle(tmp_path):
     assert 'Check sequence for this case: 1' in text
     assert 'With best wishes from Yazory.' in text
     assert 'Family support payout' not in text
+
+    duplicate = client.post('/payouts/checks', data={
+        'csrf': csrf, 'family_id': family_id, 'payee_name': 'Test Applicant',
+        'amount': '1234.56', 'check_bank_account_id': bank_account_id,
+        'check_date': '2026-09-09', 'memo': 'Family support'})
+    assert duplicate.status_code == 400
+    assert b'greater than the amount available' in duplicate.data
 
     with app.app_context():
         payout = db.session.scalar(db.select(ApplicantPayout))
@@ -110,6 +129,10 @@ def test_each_bank_account_has_an_independent_check_sequence(tmp_path):
     with app.app_context():
         family = db.session.scalar(db.select(Family))
         family.status, family.address = 'Active', '1 Main Street'
+        contact = family.contacts[0]
+        db.session.add(core_module.Receipt(
+            contact_id=contact.id, family_id=family.id,
+            amount_cents=2_000, received_on=date.today()))
         accounts = db.session.scalars(db.select(CheckBankAccount).order_by(CheckBankAccount.id)).all()
         db.session.commit()
         family_id, account_ids = family.id, [row.id for row in accounts]

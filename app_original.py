@@ -3000,11 +3000,19 @@ def create_app(test_config=None):
         bank_accounts = db.session.scalars(select(CheckBankAccount).where(
             CheckBankAccount.active.is_(True)).order_by(CheckBankAccount.name)).all()
         family_funds = {family.id: case_fund_totals(family.id) for family in families}
+        download_id = request.args.get('download', type=int)
+        newly_created_check = (db.session.get(ApplicantPayout, download_id)
+                               if download_id else None)
+        if (newly_created_check is not None and
+                (newly_created_check.method != 'check' or
+                 newly_created_check.status == 'voided')):
+            newly_created_check = None
         return render_template('payouts.html', title='Payouts', recipients=recipients,
                                transfers=transfers, families=families,
                                approved_expenses=approved_expenses,
                                applicant_payouts=applicant_payouts, today=date.today(),
-                               bank_accounts=bank_accounts, family_funds=family_funds)
+                               bank_accounts=bank_accounts, family_funds=family_funds,
+                               newly_created_check=newly_created_check)
 
     @app.post('/payouts/check-accounts')
     def save_check_account():
@@ -3073,8 +3081,12 @@ def create_app(test_config=None):
         payee_name = field('payee_name', True)
         if not re.search(r'[A-Za-z]', payee_name) or re.search(r'[^A-Za-z0-9 .,&\'()-]', payee_name):
             abort(400, 'Enter the check payee name in English.')
+        payout_amount = amount('amount')
+        available = case_fund_totals(family.id)['available']
+        if payout_amount > available:
+            abort(400, 'This check is greater than the amount available for this case.')
         payout = ApplicantPayout(
-            family_id=family.id, method='check', amount_cents=amount('amount'),
+            family_id=family.id, method='check', amount_cents=payout_amount,
             payee_name=payee_name, mailing_address=mailing_address,
             memo=field('memo', limit=160), check_number=check_number,
             recipient_message=field('recipient_message', limit=500),
@@ -3093,8 +3105,8 @@ def create_app(test_config=None):
         bank_account.updated_at = utcnow()
         audit(f'Created applicant payout check #{check_number} for ${payout.amount_cents / 100:,.2f}', family.id)
         db.session.commit()
-        flash('Check created. Download the PDF to print it.')
-        return redirect(url_for('download_payout_check', payout_id=payout.id))
+        flash('Check created and added to manual check history.')
+        return redirect(url_for('payouts', panel=3, download=payout.id))
 
     @app.post('/payouts/stripe')
     def create_stripe_payout():

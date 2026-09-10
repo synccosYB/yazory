@@ -266,6 +266,11 @@ _EXTRA.update({
     'Task created and assigned.': {'he': 'המשימה נוצרה והוקצתה.', 'yi': 'די אויפגאבע איז געמאכט און איינגעטיילט.'},
     'Task status updated.': {'he': 'סטטוס המשימה עודכן.', 'yi': 'דער אויפגאבע מצב איז אפדעיטעד.'},
     'Subtask added.': {'he': 'משימת המשנה נוספה.', 'yi': 'די אונטער אויפגאבע איז צוגעלייגט.'},
+    'Check created': {'he': 'המחאה נוצרה', 'yi': 'דער טשעק איז געמאכט געווארן'},
+    'Check created and added to manual check history.': {'he': 'ההמחאה נוצרה ונוספה להיסטוריית ההמחאות הידניות.', 'yi': 'דער טשעק איז געמאכט און צוגעלייגט געווארן צו דער מעניועל טשעק היסטאריע.'},
+    'The check is saved in manual check history. Reprinting this check will keep the same check number and will not create another payout.': {'he': 'ההמחאה נשמרה בהיסטוריה. הדפסה חוזרת תשמור על אותו מספר ולא תיצור תשלום נוסף.', 'yi': 'דער טשעק איז אפגעהיט אין דער מעניועל טשעק היסטאריע. נאכאמאל פרינטן וועט האלטן דעם זעלבן טשעק נומער און וועט נישט מאכן נאך א באצאלונג.'},
+    'Check download': {'he': 'הורדת המחאה', 'yi': 'טשעק דאונלאוד'},
+    'This check is greater than the amount available for this case.': {'he': 'סכום ההמחאה גדול מהיתרה הזמינה לתיק זה.', 'yi': 'דער טשעק איז העכער ווי דער סכום וואס איז נאך דא פאר דעם קעיס.'},
 })
 
 def translate(text):
