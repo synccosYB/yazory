@@ -1444,13 +1444,28 @@ def create_app(test_config=None):
                     # compatibility projections are synchronized. That
                     # secondary conflict must not turn a successful profile
                     # save into a 409 page or discard the selected shul.
-                    try:
-                        _save_shul_connections(int(family_id))
-                    except (IntegrityError, StaleDataError):
-                        _app.db.session.rollback()
-                        app.logger.exception(
-                            'Family %s saved, but its legacy shul directory sync failed',
-                            family_id)
+                    sync_error = None
+                    # A concurrent edit can invalidate the compatibility
+                    # projection after the family itself has committed.  A
+                    # rollback clears that failed projection transaction, so
+                    # retry it once from the newly committed family record
+                    # instead of reporting success while silently dropping
+                    # the rabbi/gabbai details.
+                    for attempt in range(2):
+                        try:
+                            _save_shul_connections(int(family_id))
+                            sync_error = None
+                            break
+                        except (IntegrityError, StaleDataError) as exc:
+                            sync_error = exc
+                            _app.db.session.rollback()
+                            if attempt == 0:
+                                continue
+                    if sync_error is not None:
+                        app.logger.error(
+                            'Family %s saved, but its shul directory sync failed twice',
+                            family_id, exc_info=(type(sync_error), sync_error,
+                                                 sync_error.__traceback__))
                     _replace_family_phones(
                         int(family_id), _app.request.form.getlist('phone'))
                     _app.db.session.commit()
