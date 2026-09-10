@@ -457,26 +457,6 @@ def _family_profile_shuls(family):
     return [row for row in rows if row.name.strip().casefold() in selected_names]
 
 
-def _connect_shul_gabbaim_to_linked_families(institution):
-    gabbais = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
-        ShulGabbaiDirectory.institution_id == institution.id
-    ).order_by(ShulGabbaiDirectory.id)).all()
-    family_ids = _app.db.session.scalars(select(
-        _app.PersonAffiliation.person_id
-    ).where(
-        _app.PersonAffiliation.institution_id == institution.id,
-        _app.PersonAffiliation.person_type == 'family',
-    )).all()
-    for family_id in set(family_ids):
-        family = _app.db.session.get(_app.Family, family_id)
-        if family is None:
-            continue
-        for role, name in (('weekday_shul', family.weekday_shul),
-                           ('shabbos_shul', family.shabbos_shul)):
-            if (name or '').strip().casefold() == institution.name.strip().casefold():
-                _sync_family_gabbais(family.id, role, institution, gabbais)
-
-
 def _migrate_family_gabbaim_to_shared_shuls():
     """Move unambiguous legacy family gabbaim onto their one shared shul."""
     marker_key = 'shared_shul_gabbaim_v2'
@@ -505,7 +485,9 @@ def _migrate_family_gabbaim_to_shared_shuls():
             if person is not None:
                 _attach_helper(institution, person, 'shul_gabbai')
             _app.db.session.delete(legacy)
-        _connect_shul_gabbaim_to_linked_families(institution)
+    # These copied rows represented a second connection path. Family profiles
+    # now derive gabbaim only through Family -> shared Institution.
+    _app.db.session.execute(_app.db.delete(FamilyGabbaiConnection))
     _app.db.session.add(_app.OrganizationSetting(key=marker_key, value={'completed': True}))
     _app.db.session.commit()
 
@@ -1068,7 +1050,6 @@ def create_app(test_config=None):
         person = _canonical_helper(name, [phone])
         if person is not None:
             _attach_helper(institution, person, 'shul_gabbai')
-        _connect_shul_gabbaim_to_linked_families(institution)
         audit('Added shared shul gabbai', family.id)
         _app.db.session.commit()
         _app.flash('Shul gabbai added.')
@@ -1203,9 +1184,6 @@ def create_app(test_config=None):
             if not family_id:
                 return []
             family = _app.db.session.get(_app.Family, family_id)
-            connections = _app.db.session.scalars(select(FamilyGabbaiConnection).where(
-                FamilyGabbaiConnection.family_id == family_id
-            ).order_by(FamilyGabbaiConnection.role, FamilyGabbaiConnection.id)).all()
             result = []
             seen = set()
 
@@ -1234,19 +1212,6 @@ def create_app(test_config=None):
                     seen.add(identity)
                     result.append(gabbai)
 
-            # Preserve old applicant-specific connections for legacy records
-            # whose shul directory entry may no longer exist.
-            for connection in connections:
-                gabbai = connection.gabbai
-                payload = {
-                    'name': gabbai.name,
-                    'phones': _gabbai_phones(gabbai),
-                }
-                identity = (payload['name'].casefold(), tuple(payload['phones']))
-                if identity in seen:
-                    continue
-                seen.add(identity)
-                result.append(payload)
             return result
         def family_rabbi_assistant_contacts(family):
             if family is None:
