@@ -933,6 +933,11 @@ def _assistant_payload(institution):
             select(ShulRabbiAssistantPhone).where(
                 ShulRabbiAssistantPhone.assistant_id == assistant.id
             ).order_by(ShulRabbiAssistantPhone.id)).all()]
+        if not phones:
+            helper = _app.db.session.scalar(select(HelperPerson).where(
+                HelperPerson.normalized_name == _normalize_rabbi_name(assistant.name)))
+            if helper is not None:
+                phones = _helper_phones(helper)
         result.append({
             'name': assistant.name,
             'phone': phones[0] if phones else '',

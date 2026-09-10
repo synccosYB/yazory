@@ -310,6 +310,31 @@ def test_delayed_directory_load_does_not_overwrite_entered_contact_phones():
     assert "if(!item.contactsEdited())item.update()" in script
 
 
+def test_profile_deduplicates_same_shul_and_falls_back_to_shared_assistant_phone(app, client):
+    add_shuls(app)
+    assert post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'shabbos_shul': 'Weekday Test Shul',
+        'weekday_shul_rabbi': 'Rabbi Shared',
+        'weekday_shul_rabbi_phone': ['845-555-7001'],
+        'weekday_shul_rabbi_assistant_name': ['Rabbi Assistant'],
+        'weekday_shul_rabbi_assistant_phones': ['["845-555-7002"]'],
+    }).status_code == 302
+
+    with app.app_context():
+        assistant = db.session.scalar(db.select(ShulRabbiAssistant).where(
+            ShulRabbiAssistant.name == 'Rabbi Assistant'))
+        db.session.query(ShulRabbiAssistantPhone).filter_by(
+            assistant_id=assistant.id).delete()
+        db.session.commit()
+
+    profile = client.get('/families/1').text
+    assert profile.count('class="profile-linked-contacts"') == 1
+    assert 'Rabbi Assistant' in profile
+    assert '845-555-7002' in profile
+
+
 def test_automatic_rabbi_phone_entered_on_family_form_updates_shared_directory(app, client):
     add_shuls(app)
     assert post(client, '/families/1/edit', {
