@@ -1218,17 +1218,22 @@ def create_app(test_config=None):
 
     def case_fund_totals(family_id):
         """Cash received, committed/disbursed, and the remaining case balance."""
-        manual_collected = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
-            Receipt.family_id == family_id)) or 0
-        abcharity_collected = db.session.scalar(select(
-            func.coalesce(func.sum(CharityDonation.net_cents), 0)
-        ).join(CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
-            CharityCampaign.family_id == family_id)) or 0
-        paid_expenses = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
-            Expense.family_id == family_id, Expense.status == 'Paid')) or 0
-        direct_payouts = db.session.scalar(select(func.coalesce(func.sum(ApplicantPayout.amount_cents), 0)).where(
+        # Fetch all four independent totals in one database round trip. On the
+        # hosted Postgres connection, network latency made the former four
+        # sequential scalar queries noticeably slow on every profile visit.
+        manual_receipts = select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+            Receipt.family_id == family_id).scalar_subquery()
+        charity_receipts = select(func.coalesce(func.sum(CharityDonation.net_cents), 0)).join(
+            CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
+            CharityCampaign.family_id == family_id).scalar_subquery()
+        paid = select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
+            Expense.family_id == family_id, Expense.status == 'Paid').scalar_subquery()
+        payouts = select(func.coalesce(func.sum(ApplicantPayout.amount_cents), 0)).where(
             ApplicantPayout.family_id == family_id,
-            ApplicantPayout.status != 'voided')) or 0
+            ApplicantPayout.status != 'voided').scalar_subquery()
+        manual_collected, abcharity_collected, paid_expenses, direct_payouts = \
+            db.session.execute(select(
+                manual_receipts, charity_receipts, paid, payouts)).one()
         collected = manual_collected + abcharity_collected
         given_out = paid_expenses + direct_payouts
         return {'collected': collected, 'given_out': given_out,
@@ -1834,7 +1839,8 @@ def create_app(test_config=None):
             abort(403, 'You are not assigned to this family.')
         family = db.session.scalar(select(Family).options(
             selectinload(Family.children), selectinload(Family.contacts).selectinload(Contact.nested_supporters),
-            selectinload(Family.expenses), selectinload(Family.documents),
+            selectinload(Family.expenses),
+            selectinload(Family.documents).defer(Document.data),
             selectinload(Family.gabbais), selectinload(Family.intake_record)
         ).where(Family.id == family_id))
         if family is None:

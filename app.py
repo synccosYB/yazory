@@ -1028,10 +1028,12 @@ def create_app(test_config=None):
         institution_filter = [_app.Institution.kind == 'Shul']
         if _app.request.endpoint == 'family_detail':
             family_id = (_app.request.view_args or {}).get('family_id')
-            shul_names = _app.db.session.execute(select(
-                _app.Family.weekday_shul, _app.Family.shabbos_shul
-            ).where(_app.Family.id == family_id)).one_or_none()
-            relevant_names = {name for name in (shul_names or ()) if name}
+            # family_detail already loaded this object into the request's
+            # identity map, so this does not require another database query.
+            context_family = _app.db.session.get(_app.Family, family_id)
+            relevant_names = {name for name in (
+                context_family.weekday_shul if context_family else '',
+                context_family.shabbos_shul if context_family else '') if name}
             if not relevant_names:
                 rows = []
             else:
@@ -1060,7 +1062,9 @@ def create_app(test_config=None):
                     for row in gabbais
                 ],
             }
-        people = _app.db.session.scalars(select(RabbiPerson).order_by(RabbiPerson.name)).all()
+        people = (_app.db.session.scalars(select(RabbiPerson).order_by(RabbiPerson.name)).all()
+                  if _app.request.endpoint in {'new_family', 'edit_family', 'directories'}
+                  else [])
         def family_rabbi_preference(family_id):
             return _app.db.session.get(FamilyRabbiPreference, family_id) if family_id else None
         def family_gabbai_contacts(family_id):
@@ -1087,14 +1091,11 @@ def create_app(test_config=None):
             result = []
             seen = set()
             for shul_name in (family.weekday_shul, family.shabbos_shul):
-                institution = _find_shul(shul_name)
-                if institution is None:
-                    continue
-                primary = _primary_association(institution.id)
-                if (primary is None or _normalize_rabbi_name(primary.rabbi_person.name) !=
+                contacts = mapping.get(shul_name, {})
+                if (_normalize_rabbi_name(contacts.get('name')) !=
                         _normalize_rabbi_name(family.rabbi)):
                     continue
-                for assistant in _assistant_payload(institution):
+                for assistant in contacts.get('assistants', []):
                     identity = assistant['name'].casefold()
                     if identity in seen:
                         continue
