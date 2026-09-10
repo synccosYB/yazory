@@ -283,6 +283,7 @@ def test_legacy_family_gabbai_moves_to_shul_and_appears_for_every_linked_family(
         first.shabbos_shul = shul.name
         db.session.add_all([shul, second])
         db.session.flush()
+        shul_id = shul.id
         second_id = second.id
         db.session.add_all([
             PersonAffiliation(institution_id=shul.id, person_type='family',
@@ -298,7 +299,7 @@ def test_legacy_family_gabbai_moves_to_shul_and_appears_for_every_linked_family(
         _migrate_family_gabbaim_to_shared_shuls()
 
         shared = db.session.scalar(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shul.id,
+            ShulGabbaiDirectory.institution_id == shul_id,
             ShulGabbaiDirectory.name == 'Migrated Shared Gabbai'))
         assert shared is not None
         assert db.session.scalar(db.select(FamilyGabbaiConnection).where(
@@ -309,6 +310,35 @@ def test_legacy_family_gabbai_moves_to_shul_and_appears_for_every_linked_family(
     assert 'Migrated Shared Gabbai' in client.get('/families/1').get_data(as_text=True)
     assert 'Migrated Shared Gabbai' in client.get(
         f'/families/{second_id}').get_data(as_text=True)
+
+
+def test_adding_phone_collapses_old_duplicate_gabbai_rows(app, client):
+    add_shuls(app)
+    with app.app_context():
+        shul = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Shul', Institution.name == 'Weekday Test Shul'))
+        shul_id = shul.id
+        db.session.add_all([
+            ShulGabbaiDirectory(institution_id=shul.id, name='Duplicate Gabbai', phone=''),
+            ShulGabbaiDirectory(institution_id=shul.id, name='Duplicate Gabbai',
+                                phone='845-555-4444'),
+        ])
+        db.session.commit()
+
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'weekday_shul_gabbai_name': ['Duplicate Gabbai'],
+        'weekday_shul_gabbai_phone': ['845-555-4444'],
+    })
+
+    assert response.status_code == 302
+    with app.app_context():
+        rows = db.session.scalars(db.select(ShulGabbaiDirectory).where(
+            ShulGabbaiDirectory.institution_id == shul_id,
+            ShulGabbaiDirectory.name == 'Duplicate Gabbai')).all()
+        assert len(rows) == 1
+        assert rows[0].phone == '845-555-4444'
 
 
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
