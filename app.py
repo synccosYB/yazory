@@ -5,6 +5,8 @@ import re
 import app_original as _app
 from flask import current_app, has_request_context, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
@@ -1403,7 +1405,19 @@ def create_app(test_config=None):
             if _app.request.method == 'POST' and response.status_code < 400:
                 family_id = kwargs.get('family_id') if __endpoint == 'edit_family' else _family_id_from_response(response)
                 if family_id:
-                    _save_shul_connections(int(family_id))
+                    # The original handler has already committed the family
+                    # record and its selected institution affiliations. Old
+                    # production directory rows can still conflict while the
+                    # compatibility projections are synchronized. That
+                    # secondary conflict must not turn a successful profile
+                    # save into a 409 page or discard the selected shul.
+                    try:
+                        _save_shul_connections(int(family_id))
+                    except (IntegrityError, StaleDataError):
+                        _app.db.session.rollback()
+                        app.logger.exception(
+                            'Family %s saved, but its legacy shul directory sync failed',
+                            family_id)
                     _replace_family_phones(
                         int(family_id), _app.request.form.getlist('phone'))
                     _app.db.session.commit()
