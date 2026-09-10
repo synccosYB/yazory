@@ -1829,7 +1829,10 @@ def create_app(test_config=None):
             audit('Updated family profile', family.id)
             db.session.commit()
             flash('Profile updated.')
-            return redirect(url_for('family_detail', family_id=family.id))
+            intake_step = request.form.get('intake_step', type=int)
+            if intake_step is None or not 0 <= intake_step <= 4:
+                intake_step = 0
+            return redirect(url_for('edit_family', family_id=family.id, step=intake_step))
         return intake_form(family, 'Edit family profile')
 
     @app.get('/families/<int:family_id>')

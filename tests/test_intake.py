@@ -20,7 +20,7 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
         assert 'class="sheet-field circumstances-field"' in page.text
         assert 'id="intake-review"' not in page.text
         assert 'style.css?v=20260910-tasks-grouped-sidebar-v1' in page.text
-        assert 'intake.js?v=20260909-intake-optional-v2' in page.text
+        assert 'intake.js?v=20260910-preserve-step-v1' in page.text
         label = {'en':'Monthly bill ($)', 'he':'סכום החשבון החודשי ($)', 'yi':'וויפיל איז דער ביל א חודש ($)'}[lang]
         assert label in page.text and 'data-entry="monthly_bill"' in page.text
     with client.session_transaction() as session: csrf=session['csrf']
@@ -40,8 +40,11 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
     bad=client.post(path+'/edit',data={**values,'rent':'-3'})
     assert bad.status_code==400 and 'Wizard household' in bad.text
     with app.app_context(): assert db.session.get(HouseholdIntake,f.id).data['rent']==170025
-    cleared=client.post(path+'/edit',data={**values,'foodstamps':'no','accounts_json':'[]','assistance_json':'[]'})
+    cleared=client.post(path+'/edit',data={**values,'foodstamps':'no','accounts_json':'[]','assistance_json':'[]','intake_step':'3'})
     assert cleared.status_code==302
+    assert cleared.location.endswith(path+'/edit?step=3')
+    reopened=client.get(cleared.location)
+    assert 'name="intake_step" value="3"' in reopened.text
     with app.app_context():
         stored=db.session.get(HouseholdIntake,f.id).data
         assert stored['foodstamps_amount'] is None and stored['accounts']==[]
