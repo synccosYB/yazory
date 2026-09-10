@@ -2,6 +2,7 @@ from datetime import datetime
 
 from werkzeug.security import generate_password_hash
 
+import app_original as core_module
 from app import (CharityCampaign, Contact, EmailMessage, Family, Receipt, StaffTask,
                  SupporterCommunication, create_app, db)
 
@@ -139,6 +140,27 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
             SupporterCommunication.kind == 'initial_email'))
         assert message.recipient == 'supporter@example.test'
         assert timeline.email_message_id == message.id
+
+
+def test_yiddish_supporter_email_is_delivered_rtl(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    delivered = {}
+
+    def capture_delivery(api_key, sender, recipient, subject, html, text):
+        delivered.update(html=html, text=text)
+        return 'email_rtl', None
+
+    monkeypatch.setattr(core_module, 'deliver', capture_delivery)
+    app.config.update(TESTING=False, DEMO=False, RESEND_API_KEY='test-key',
+                      EMAIL_FROM='notifications@example.test')
+    response = post(client, f'/contacts/{contact_id}/communications/initial-email', {
+        'recipient_email': 'supporter@example.test',
+        'subject': 'ווען איז א גוטע צייט צו רעדן?',
+        'body': 'לכבוד דעם חשובן העלפער,\n\nווען איז א גוטע צייט פאר א קורצן שמועס?'})
+    assert response.status_code == 302
+    assert '<html dir="rtl">' in delivered['html']
+    assert 'dir="rtl" align="right"' in delivered['html']
+    assert 'direction:rtl;text-align:right' in delivered['html']
 
 
 def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):

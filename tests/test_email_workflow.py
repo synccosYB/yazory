@@ -140,6 +140,7 @@ def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch):
     assert 'src="https://yazory.example/static/yazory-logo.png"' in delivered['html']
     assert 'Yazory · יעזורי' in delivered['html']
     assert '<a href="https://yazory.example/accept-invitation/' in delivered['html']
+    assert '<html dir="ltr">' in delivered['html']
 
 
 def test_staff_details_status_and_delete(monkeypatch):
