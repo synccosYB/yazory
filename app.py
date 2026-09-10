@@ -882,6 +882,28 @@ def _submitted_gabbais(key):
 def _replace_shul_gabbais(institution, submitted_rows):
     current = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
         ShulGabbaiDirectory.institution_id == institution.id).order_by(ShulGabbaiDirectory.id)).all()
+    # Older family-specific imports could leave two shared rows for the same
+    # person (commonly one with a blank phone and one with the phone). Updating
+    # the blank row to that phone would collide with the other row. Collapse
+    # those duplicates before applying the submitted edit.
+    canonical_by_name = {}
+    duplicates = []
+    for row in current:
+        identity = row.name.strip().casefold()
+        if identity in canonical_by_name:
+            duplicates.append(row)
+        else:
+            canonical_by_name[identity] = row
+    if duplicates:
+        duplicate_ids = [row.id for row in duplicates]
+        _app.db.session.execute(_app.db.delete(FamilyGabbaiConnection).where(
+            FamilyGabbaiConnection.gabbai_id.in_(duplicate_ids)))
+        _app.db.session.execute(_app.db.delete(ShulGabbaiPhone).where(
+            ShulGabbaiPhone.gabbai_id.in_(duplicate_ids)))
+        for row in duplicates:
+            _app.db.session.delete(row)
+        _app.db.session.flush()
+        current = list(canonical_by_name.values())
     existing_by_name = {row.name.casefold(): row for row in current}
     keep_ids = set()
     result = []
