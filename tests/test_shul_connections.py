@@ -9,9 +9,11 @@ from app import (
     HelperPerson,
     HelperPhone,
     Institution,
+    OrganizationSetting,
     PersonAffiliation,
     RabbiPerson,
     ShulGabbaiDirectory,
+    ShulGabbai,
     ShulGabbaiPhone,
     ShulHelperAssociation,
     ShulRabbi,
@@ -20,6 +22,7 @@ from app import (
     ShulRabbiPhone,
     create_app,
     db,
+    _migrate_family_gabbaim_to_shared_shuls,
 )
 
 
@@ -268,6 +271,40 @@ def test_profile_does_not_classify_rabbi_assistant_as_shul_gabbai(app, client):
     assert 'Shared Assistant Gabbai' not in shul_gabbai_block
     assert 'Shared Assistant Gabbai' in page
     assert '845-555-4666' in page
+
+
+def test_legacy_family_gabbai_moves_to_shul_and_connects_every_linked_family(app):
+    with app.app_context():
+        shul = Institution(kind='Shul', name='Shared Migration Shul')
+        second = Family(name='Second linked family', weekday_shul=shul.name)
+        first = db.session.get(Family, 1)
+        first.weekday_shul = shul.name
+        first.shabbos_shul = shul.name
+        db.session.add_all([shul, second])
+        db.session.flush()
+        db.session.add_all([
+            PersonAffiliation(institution_id=shul.id, person_type='family',
+                              person_id=first.id, note='Weekday shul · Family profile'),
+            PersonAffiliation(institution_id=shul.id, person_type='family',
+                              person_id=second.id, note='Weekday shul · Family profile'),
+            ShulGabbai(family_id=first.id, name='Migrated Shared Gabbai',
+                       phone='845-555-4555'),
+        ])
+        db.session.delete(db.session.get(OrganizationSetting, 'shared_shul_gabbaim_v2'))
+        db.session.commit()
+
+        _migrate_family_gabbaim_to_shared_shuls()
+
+        shared = db.session.scalar(db.select(ShulGabbaiDirectory).where(
+            ShulGabbaiDirectory.institution_id == shul.id,
+            ShulGabbaiDirectory.name == 'Migrated Shared Gabbai'))
+        assert shared is not None
+        connected_family_ids = set(db.session.scalars(db.select(
+            FamilyGabbaiConnection.family_id
+        ).where(FamilyGabbaiConnection.gabbai_id == shared.id)).all())
+        assert connected_family_ids == {first.id, second.id}
+        assert db.session.scalar(db.select(ShulGabbai).where(
+            ShulGabbai.name == 'Migrated Shared Gabbai')) is None
 
 
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
