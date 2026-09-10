@@ -16,6 +16,7 @@
       <div><small>{{ _('Remaining monthly need') }}</small><strong>{{ budget.shortfall|money }}</strong></div>
       <div><small>{{ _('Already collected') }}</small><strong>{{ collected|money }}</strong></div>
       <div><small>{{ _('Already sent') }}</small><strong>{{ sent|money }}</strong></div>
+      <div><small>{{ _('Available to give out') }}</small><strong>{{ available_to_give|money }}</strong></div>
     </div>
     <div class="profile-record-actions">
       <a class="button" href="/families/{{ family.id }}/edit">{{ _("Edit profile") }}</a>
