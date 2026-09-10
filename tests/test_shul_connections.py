@@ -252,7 +252,7 @@ def test_profile_does_not_repeat_gabbai_when_weekday_and_shabbos_shul_match(app,
     assert page.count('<strong>One Shared Gabbai</strong>') == 1
 
 
-def test_profile_gabbai_block_includes_shared_shul_rabbi_assistant(app, client):
+def test_profile_does_not_classify_rabbi_assistant_as_shul_gabbai(app, client):
     add_shuls(app)
     post(client, '/families/1/edit', {
         'name': 'Sample family',
@@ -264,7 +264,9 @@ def test_profile_gabbai_block_includes_shared_shul_rabbi_assistant(app, client):
 
     page = client.get('/families/1').get_data(as_text=True)
 
-    assert '<strong>Shared Assistant Gabbai</strong>' in page
+    shul_gabbai_block = page.split('<dt>Shul gabbais</dt><dd>', 1)[1].split('</dd>', 1)[0]
+    assert 'Shared Assistant Gabbai' not in shul_gabbai_block
+    assert 'Shared Assistant Gabbai' in page
     assert '845-555-4666' in page
 
 
