@@ -145,3 +145,12 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 .supporter-inline-edit > summary{width:max-content;cursor:pointer;list-style:none}
 .supporter-inline-edit > summary::-webkit-details-marker{display:none}
 .supporter-inline-edit[open] > summary{margin-bottom:1.25rem}
+
+
+/* Keep currency symbols, minus signs, and digits in financial order inside RTL pages. */
+.money-value {
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
+  white-space: nowrap;
+}
