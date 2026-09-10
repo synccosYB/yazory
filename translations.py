@@ -2,6 +2,12 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Workflow': {'he': 'תהליך עבודה', 'yi': 'ארבעטס פראצעס'},
+    'Families': {'he': 'משפחות', 'yi': 'משפחות'},
+    'Support and collections': {'he': 'תומכים וגבייה', 'yi': 'העלפער און געלטער'},
+    'Money and approvals': {'he': 'כספים ואישורים', 'yi': 'געלט און באשטעטיגונגען'},
+    'Community directories': {'he': 'רשימות קהילה', 'yi': 'קהילה ליסטעס'},
+    'Administration': {'he': 'ניהול', 'yi': 'אדמיניסטראציע'},
     '+ Add a new person': {'he': '+ הוספת אדם חדש', 'yi': '+ לייג צו א נייעם מענטש'},
     'Relationship *': {'he': 'קשר משפחתי *', 'yi': 'משפחה / שייכות *'},
     'Add and connect person': {'he': 'הוסף וחבר את האדם', 'yi': 'לייג צו און פארבינד דעם מענטש'},
