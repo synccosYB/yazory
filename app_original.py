@@ -2670,6 +2670,7 @@ def create_app(test_config=None):
             abort(400, 'Choose a valid directory.')
         query = request.args.get('q', '').strip()[:160]
         family_id = request.args.get('family_id', type=int)
+        network_id = request.args.get('network_id', type=int)
         families = db.session.scalars(select(Family).order_by(Family.name)).all()
         if family_id and not any(family.id == family_id for family in families):
             abort(404)
@@ -2751,10 +2752,17 @@ def create_app(test_config=None):
                 institution.directory_groups = [('', rows)]
             institution.directory_count = len(rows)
             visible_institutions.append(institution)
+        selected_institution = next((institution for institution in visible_institutions
+                                     if institution.id == network_id), None)
+        if network_id is not None and selected_institution is None:
+            abort(404)
+        if selected_institution is None and visible_institutions:
+            selected_institution = visible_institutions[0]
         return render_template('directories.html', title=f'{kind} list', kind=kind,
                                institutions=visible_institutions, families=families,
                                selected_family_id=family_id, people=people,
-                               people_by_key=people_by_key, query=query)
+                               people_by_key=people_by_key, query=query,
+                               selected_institution=selected_institution)
 
     @app.post('/community-directories/institutions')
     def add_institution():
@@ -2840,7 +2848,8 @@ def create_app(test_config=None):
         audit(f'Connected person to {institution.kind.lower()}: {institution.name}')
         db.session.commit()
         flash('Person connected.')
-        return redirect(url_for('community_directories', kind=institution.kind))
+        return redirect(url_for('community_directories', kind=institution.kind,
+                                network_id=institution.id))
 
     @app.post('/community-directories/people')
     def add_directory_person():
@@ -2885,17 +2894,19 @@ def create_app(test_config=None):
         db.session.commit()
         flash('New person added and connected.')
         return redirect(url_for('community_directories', kind=institution.kind,
-                                family_id=family.id))
+                                family_id=family.id, network_id=institution.id))
 
     @app.post('/community-directories/affiliations/<int:affiliation_id>/delete')
     def delete_person_affiliation(affiliation_id):
         require_organization_admin()
         affiliation = db.get_or_404(PersonAffiliation, affiliation_id)
         kind = affiliation.institution.kind
+        institution_id = affiliation.institution_id
         db.session.delete(affiliation)
         db.session.commit()
         flash('Connection removed.')
-        return redirect(url_for('community_directories', kind=kind))
+        return redirect(url_for('community_directories', kind=kind,
+                                network_id=institution_id))
 
     @app.post('/community-directories/institutions/<int:institution_id>/delete')
     def delete_institution(institution_id):

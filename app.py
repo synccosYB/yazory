@@ -1117,7 +1117,8 @@ def create_app(test_config=None):
         add_audit(f'Connected rabbi to shul: {person.name} / {institution.name}')
         _app.db.session.commit()
         _app.flash('Rabbi connected.')
-        return _app.redirect(_app.url_for('community_directories', kind='Shul'))
+        return _app.redirect(_app.url_for('community_directories', kind='Shul',
+                                          network_id=institution.id))
 
     @app.post('/community-directories/shul-rabbis/<int:association_id>/primary')
     def make_shul_rabbi_primary(association_id):
@@ -1127,7 +1128,8 @@ def create_app(test_config=None):
         _sync_automatic_family_rabbis()
         add_audit(f'Changed primary rabbi: {association.institution.name}')
         _app.db.session.commit()
-        return _app.redirect(_app.url_for('community_directories', kind='Shul'))
+        return _app.redirect(_app.url_for('community_directories', kind='Shul',
+                                          network_id=association.institution_id))
 
     @app.post('/community-directories/shul-rabbis/<int:association_id>/delete')
     def delete_shul_rabbi(association_id):
@@ -1149,7 +1151,8 @@ def create_app(test_config=None):
         _sync_automatic_family_rabbis()
         add_audit(f'Removed rabbi from shul: {name} / {institution.name}')
         _app.db.session.commit()
-        return _app.redirect(_app.url_for('community_directories', kind='Shul'))
+        return _app.redirect(_app.url_for('community_directories', kind='Shul',
+                                          network_id=institution.id))
 
     for endpoint in ('new_family', 'edit_family'):
         original = app.view_functions.get(endpoint)

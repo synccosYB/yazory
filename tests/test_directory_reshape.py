@@ -57,3 +57,42 @@ def test_directory_uses_one_shared_network_for_multiple_applicants(app, client):
     # The old embedded create-supporter-per-applicant flow is gone.
     assert 'Add and connect person' not in page
     assert 'name="family_id"' not in page
+
+
+def test_directory_only_renders_one_network_workspace(app, client):
+    with app.app_context():
+        first = Institution(kind='Shul', name='First shul')
+        second = Institution(kind='Shul', name='Second shul')
+        db.session.add_all([first, second])
+        db.session.commit()
+        first_id = first.id
+
+    index = client.get('/community-directories?kind=Shul').get_data(as_text=True)
+    assert index.count('Connect an existing person') == 1
+    assert index.count('name="institution_id"') == 1
+
+    selected = client.get(
+        f'/community-directories?kind=Shul&network_id={first_id}'
+    ).get_data(as_text=True)
+    assert selected.count('Connect an existing person') == 1
+    assert selected.count('name="institution_id"') == 1
+
+
+def test_directory_new_copy_is_translated_to_yiddish(app, client):
+    with app.app_context():
+        shul = Institution(kind='Shul', name='אידישע שול')
+        db.session.add(shul)
+        db.session.commit()
+        shul_id = shul.id
+
+    client.get('/language/yi')
+    page = client.get(
+        f'/community-directories?kind=Shul&network_id={shul_id}'
+    ).get_data(as_text=True)
+    for english in (
+        'One shared network.', 'Find a network', 'Master directory',
+        'Applicants connected here', 'People in this network',
+        'Connect an existing person', 'Create new supporters in Supporters',
+        '>Open<', '>Remove<', '>Add<', '>Clear<',
+    ):
+        assert english not in page

@@ -18,11 +18,6 @@
   </div>
 </div>
 
-<div class="shared-network-note">
-  <strong>{{ _('How this list works now') }}</strong>
-  {{ _('Each shul or yeshivah exists once. Every applicant and every supporter connects to that shared network. If two applicants use the same shul, a person connected to that shul is visible as a shul-network connection for both applicants without creating the person twice.') }}
-</div>
-
 <section class="card directory-add-card no-print">
   <details>
     <summary>{{ _('+ Add shul') if kind == 'Shul' else _('+ Add yeshivah') }}</summary>
@@ -66,23 +61,24 @@
         <td class="directory-name-cell"><strong>{{ institution.name }}</strong>{% if institution.phone %}<small><bdi dir="ltr">{{ institution.phone }}</bdi></small>{% endif %}</td>
         <td>{{ institution.city or '—' }}{% if institution.city and institution.state %}, {% endif %}{{ institution.state }}</td>
         {% if kind == 'Shul' %}<td>{{ ns.primary_rabbi or '—' }}</td>{% endif %}
-        <td><a class="directory-count-link" href="#network-{{ institution.id }}" onclick="document.getElementById('network-{{ institution.id }}').open=true">{{ ns.applicants }}</a></td>
-        <td><a class="directory-count-link" href="#network-{{ institution.id }}" onclick="document.getElementById('network-{{ institution.id }}').open=true">{{ ns.people }}</a></td>
-        <td><a class="button small secondary" href="#network-{{ institution.id }}" onclick="document.getElementById('network-{{ institution.id }}').open=true">{{ _('Open') }}</a></td>
+        <td><a class="directory-count-link" href="{{ url_for('community_directories', kind=kind, q=query or None, family_id=selected_family_id or None, network_id=institution.id) }}#network-workspace">{{ ns.applicants }}</a></td>
+        <td><a class="directory-count-link" href="{{ url_for('community_directories', kind=kind, q=query or None, family_id=selected_family_id or None, network_id=institution.id) }}#network-workspace">{{ ns.people }}</a></td>
+        <td><a class="button small secondary" href="{{ url_for('community_directories', kind=kind, q=query or None, family_id=selected_family_id or None, network_id=institution.id) }}#network-workspace">{{ _('Open') }}</a></td>
       </tr>
     {% endfor %}
     </tbody>
   </table></div>
 </section>
 
-<div class="directory-list-heading"><div><h2>{{ _('Networks') }}</h2><p>{{ _('Only open the shul or yeshivah you are working on.') }}</p></div></div>
-{% for institution in institutions %}
+{% if selected_institution %}
+<div class="directory-list-heading" id="network-workspace"><div><h2>{{ _('Selected network') }}</h2><p>{{ _('Manage one shul or yeshivah at a time.') }}</p></div></div>
+{% set institution = selected_institution %}
   {% set ns = namespace(applicants=[], applicant_count=0, people_count=0) %}
   {% for grade, connections in institution.directory_groups %}{% for connection in connections %}
     {% set person = people_by_key.get((connection.person_type, connection.person_id)) %}
     {% if connection.person_type == 'family' and person %}{% set ns.applicants = ns.applicants + [person.name] %}{% set ns.applicant_count = ns.applicant_count + 1 %}{% elif connection.person_type != 'family' %}{% set ns.people_count = ns.people_count + 1 %}{% endif %}
   {% endfor %}{% endfor %}
-  <details class="card directory-network-card" id="network-{{ institution.id }}">
+  <details class="card directory-network-card" id="network-{{ institution.id }}" open>
     <summary>
       <div class="directory-network-title"><div><h2>{{ institution.name }}</h2><p>{{ institution.address }}{% if institution.address and institution.city %}, {% endif %}{{ institution.city }}{% if institution.city and institution.state %}, {% endif %}{{ institution.state }}</p></div></div>
       <div class="directory-network-stats"><span class="network-pill"><strong>{{ ns.applicant_count }}</strong> {{ _('applicants') }}</span><span class="network-pill"><strong>{{ ns.people_count }}</strong> {{ _('people') }}</span></div>
@@ -121,13 +117,15 @@
             <div class="form-grid"><label>{{ _('Person *') }}<select name="person" required><option value="">{{ _('Choose') }}</option>{% for person_type, person_id, name, role, context in people %}<option value="{{ person_type }}:{{ person_id }}">{{ name }} — {{ _(role) }} — {{ context }}</option>{% endfor %}</select></label>{% if kind == 'Yeshivah' %}<label>{{ _('Class entered *') }}<input name="grade" maxlength="80" required></label><label>{{ _('Year in *') }}<input name="year_from" type="number" min="1900" max="2100" required></label><label>{{ _('Year out *') }}<input name="year_to" type="number" min="1900" max="2100" required></label>{% endif %}<label>{{ _('Notes') }}<input name="note" maxlength="300"></label></div>
             <button>{{ _('Connect person') }}</button>
           </form>
-          <p class="directory-help">{{ _('New supporters are created once in Supporters and then connected here. The old directory flow that created a separate supporter under an applicant has been removed.') }}</p>
+          <p class="directory-help">{{ _('Create new supporters in Supporters, then connect them here.') }}</p>
         </details>
       </div>
       {% if not institution.affiliations %}<form method="post" action="{{ url_for('delete_institution', institution_id=institution.id) }}" class="institution-delete no-print">{{ token(csrf) }}<button class="small danger">{{ _('Delete') }}</button></form>{% endif %}
     </div>
   </details>
-{% endfor %}
+{% else %}
+<section class="card padded empty">{{ _('Choose a row above to manage that network.') }}</section>
+{% endif %}
 {% else %}
 <section class="card padded empty">{{ _('No institutions found.') }}</section>
 {% endif %}
