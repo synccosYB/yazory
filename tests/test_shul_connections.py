@@ -9,6 +9,7 @@ from app import (
     HelperPerson,
     HelperPhone,
     Institution,
+    PersonAffiliation,
     RabbiPerson,
     ShulGabbaiDirectory,
     ShulGabbaiPhone,
@@ -213,7 +214,42 @@ def test_profile_shows_gabbai_connected_to_shared_shul_without_family_copy(app, 
 
     page = client.get('/families/1').text
     assert 'Shared Shul Gabbai' in page
-    assert '845-555-4999' in page
+
+
+def test_profile_uses_the_applicants_linked_shul_record_for_gabbaim(app, client):
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        family.weekday_shul = 'Weekday Test Shul'
+        linked_shul = Institution(
+            kind='Shul', name='Weekday Test Shul', city='Monroe')
+        db.session.add(linked_shul)
+        db.session.flush()
+        db.session.add(ShulGabbaiDirectory(
+            institution_id=linked_shul.id, name='Linked Shul Gabbai', phone='845-555-4888'))
+        db.session.add(PersonAffiliation(
+            institution_id=linked_shul.id, person_type='family', person_id=family.id,
+            note='Weekday shul · Family profile'))
+        db.session.commit()
+
+    page = client.get('/families/1').get_data(as_text=True)
+
+    assert 'Linked Shul Gabbai' in page
+    assert '845-555-4888' in page
+
+
+def test_profile_does_not_repeat_gabbai_when_weekday_and_shabbos_shul_match(app, client):
+    add_shuls(app)
+    post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'shabbos_shul': 'Weekday Test Shul',
+        'weekday_shul_gabbai_name': ['One Shared Gabbai'],
+        'weekday_shul_gabbai_phone': ['845-555-4777'],
+    })
+
+    page = client.get('/families/1').get_data(as_text=True)
+
+    assert page.count('<strong>One Shared Gabbai</strong>') == 1
 
 
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
