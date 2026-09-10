@@ -24,6 +24,7 @@ from app import (
     ShulRabbiPhone,
     create_app,
     db,
+    _migrate_canonical_helpers,
     _migrate_family_gabbaim_to_shared_shuls,
 )
 
@@ -134,26 +135,13 @@ def test_applicant_can_inherit_different_rabbis_and_multiple_gabbais_from_two_sh
             'shabbos_shul': 'Rabbi Shabbos',
         }
 
-        weekday_gabbais = db.session.scalars(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shuls['Weekday Test Shul'].id
-        ).order_by(ShulGabbaiDirectory.id)).all()
-        shabbos_gabbais = db.session.scalars(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shuls['Shabbos Test Shul'].id
-        ).order_by(ShulGabbaiDirectory.id)).all()
-        assert [(row.name, row.phone) for row in weekday_gabbais] == [
-            ('Gabbai One', '845-555-2001'),
-            ('Gabbai Two', '845-555-2002'),
-        ]
-        assert [(row.name, row.phone) for row in shabbos_gabbais] == [
-            ('Gabbai Three', '845-555-2003'),
-        ]
-
-        connections = db.session.scalars(db.select(FamilyGabbaiConnection).where(
-            FamilyGabbaiConnection.family_id == 1
-        )).all()
-        assert sorted(row.role for row in connections) == [
-            'shabbos_shul', 'weekday_shul', 'weekday_shul'
-        ]
+        links = db.session.scalars(db.select(ShulHelperAssociation).where(
+            ShulHelperAssociation.role == 'shul_gabbai')).all()
+        assert {(row.institution.name, row.helper_person.name) for row in links} == {
+            ('Weekday Test Shul', 'Gabbai One'),
+            ('Weekday Test Shul', 'Gabbai Two'),
+            ('Shabbos Test Shul', 'Gabbai Three'),
+        }
 
 
 def test_reselecting_existing_shul_reuses_its_rabbi_and_all_gabbais(app, client):
@@ -189,18 +177,12 @@ def test_reselecting_existing_shul_reuses_its_rabbi_and_all_gabbais(app, client)
             ('weekday_shul', 'Rabbi Existing')
         ]
 
-        gabbais = db.session.scalars(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shul.id
-        ).order_by(ShulGabbaiDirectory.id)).all()
-        assert [row.name for row in gabbais] == ['First Gabbai', 'Second Gabbai']
-
-        connections = db.session.scalars(db.select(FamilyGabbaiConnection).where(
-            FamilyGabbaiConnection.family_id == 1,
-            FamilyGabbaiConnection.role == 'weekday_shul'
-        )).all()
-        assert sorted(row.gabbai.name for row in connections) == [
-            'First Gabbai', 'Second Gabbai'
-        ]
+        gabbais = db.session.scalars(db.select(ShulHelperAssociation).where(
+            ShulHelperAssociation.institution_id == shul.id,
+            ShulHelperAssociation.role == 'shul_gabbai'
+        ).order_by(ShulHelperAssociation.id)).all()
+        assert [row.helper_person.name for row in gabbais] == [
+            'First Gabbai', 'Second Gabbai']
 
 
 def test_profile_shows_gabbai_connected_to_shared_shul_without_family_copy(app, client):
@@ -213,6 +195,7 @@ def test_profile_shows_gabbai_connected_to_shared_shul_without_family_copy(app, 
         db.session.add(ShulGabbaiDirectory(
             institution_id=shul.id, name='Shared Shul Gabbai', phone='845-555-4999'))
         db.session.commit()
+        _migrate_canonical_helpers()
 
         assert db.session.scalar(db.select(FamilyGabbaiConnection).where(
             FamilyGabbaiConnection.family_id == family.id)) is None
@@ -235,6 +218,7 @@ def test_profile_uses_the_applicants_linked_shul_record_for_gabbaim(app, client)
             institution_id=linked_shul.id, person_type='family', person_id=family.id,
             note='Weekday shul · Family profile'))
         db.session.commit()
+        _migrate_canonical_helpers()
 
     page = client.get('/families/1').get_data(as_text=True)
 
@@ -314,7 +298,7 @@ def test_legacy_family_gabbai_moves_to_shul_and_appears_for_every_linked_family(
         f'/families/{second_id}').get_data(as_text=True)
 
 
-def test_adding_phone_collapses_old_duplicate_gabbai_rows(app, client):
+def test_adding_phone_uses_one_canonical_person_despite_old_duplicate_rows(app, client):
     add_shuls(app)
     with app.app_context():
         shul = db.session.scalar(db.select(Institution).where(
@@ -336,15 +320,16 @@ def test_adding_phone_collapses_old_duplicate_gabbai_rows(app, client):
 
     assert response.status_code == 302
     with app.app_context():
-        rows = db.session.scalars(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shul_id,
-            ShulGabbaiDirectory.name == 'Duplicate Gabbai')).all()
-        assert len(rows) == 1
-        assert rows[0].phone == '845-555-4444'
+        people = db.session.scalars(db.select(HelperPerson).where(
+            HelperPerson.normalized_name == 'duplicate gabbai')).all()
+        assert len(people) == 1
+        phones = db.session.scalars(db.select(HelperPhone).where(
+            HelperPhone.helper_person_id == people[0].id)).all()
+        assert [row.phone for row in phones] == ['845-555-4444']
 
 
-def test_editing_helper_collapses_duplicates_at_another_shul(app, client):
-    """Global phone sync must tolerate duplicate legacy rows anywhere."""
+def test_editing_helper_ignores_duplicate_archived_rows_at_another_shul(app, client):
+    """Archived directory duplicates cannot block the canonical save."""
     add_shuls(app)
     with app.app_context():
         shabbos = db.session.scalar(db.select(Institution).where(
@@ -368,11 +353,12 @@ def test_editing_helper_collapses_duplicates_at_another_shul(app, client):
 
     assert response.status_code == 302
     with app.app_context():
-        rows = db.session.scalars(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shabbos_id,
-            ShulGabbaiDirectory.name == 'Shared Legacy Helper')).all()
-        assert len(rows) == 1
-        assert rows[0].phone == '845-555-4999'
+        people = db.session.scalars(db.select(HelperPerson).where(
+            HelperPerson.normalized_name == 'shared legacy helper')).all()
+        assert len(people) == 1
+        phones = db.session.scalars(db.select(HelperPhone).where(
+            HelperPhone.helper_person_id == people[0].id)).all()
+        assert [row.phone for row in phones] == ['845-555-4999']
 
 
 def test_legacy_directory_conflict_does_not_reject_saved_family(monkeypatch, app, client):
@@ -472,6 +458,36 @@ def test_shul_directory_apis_return_saved_rabbi_and_gabbais(app, client):
     assert gabbais['Weekday Test Shul'][0]['phones'] == ['845-555-5002']
 
 
+def test_adding_second_gabbai_phone_updates_the_one_canonical_person(app, client):
+    add_shuls(app)
+    for phones in (
+            '["845-555-5101"]',
+            '["845-555-5101", "845-555-5102"]'):
+        assert post(client, '/families/1/edit?field=weekday_shul', {
+            'name': 'Sample family',
+            'weekday_shul': 'Weekday Test Shul',
+            'weekday_shul_gabbai_name': ['Canonical Gabbai'],
+            'weekday_shul_gabbai_phones': [phones],
+        }).status_code == 302
+
+    with app.app_context():
+        people = db.session.scalars(db.select(HelperPerson).where(
+            HelperPerson.normalized_name == 'canonical gabbai')).all()
+        assert len(people) == 1
+        phones = db.session.scalars(db.select(HelperPhone).where(
+            HelperPhone.helper_person_id == people[0].id
+        ).order_by(HelperPhone.id)).all()
+        assert [row.phone for row in phones] == [
+            '845-555-5101', '845-555-5102']
+
+    payload = client.get('/api/shul-gabbais').get_json()['Weekday Test Shul']
+    assert payload == [{
+        'name': 'Canonical Gabbai',
+        'phone': '845-555-5101',
+        'phones': ['845-555-5101', '845-555-5102'],
+    }]
+
+
 def test_rabbi_and_shul_gabbai_can_have_multiple_phones_and_rabbi_has_own_assistant(app, client):
     add_shuls(app)
     response = post(client, '/families/1/edit', {
@@ -493,21 +509,24 @@ def test_rabbi_and_shul_gabbai_can_have_multiple_phones_and_rabbi_has_own_assist
             ShulRabbiPhone.institution_id == shul.id).order_by(ShulRabbiPhone.id)).all()
         assert [row.phone for row in rabbi_phones] == ['845-555-6101', '845-555-6102']
 
-        assistant = db.session.scalar(db.select(ShulRabbiAssistant).where(
-            ShulRabbiAssistant.institution_id == shul.id))
-        assert assistant.name == 'Rabbi Gabbai'
-        assistant_phones = db.session.scalars(db.select(ShulRabbiAssistantPhone).where(
-            ShulRabbiAssistantPhone.assistant_id == assistant.id
-        ).order_by(ShulRabbiAssistantPhone.id)).all()
-        assert [row.phone for row in assistant_phones] == ['845-555-6201', '845-555-6202']
-
-        gabbai = db.session.scalar(db.select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == shul.id,
-            ShulGabbaiDirectory.name == 'Shul Gabbai'))
-        assert gabbai.name != assistant.name
-        gabbai_phones = db.session.scalars(db.select(ShulGabbaiPhone).where(
-            ShulGabbaiPhone.gabbai_id == gabbai.id).order_by(ShulGabbaiPhone.id)).all()
-        assert [row.phone for row in gabbai_phones] == ['845-555-6301', '845-555-6302']
+        helper_links = db.session.scalars(db.select(ShulHelperAssociation).where(
+            ShulHelperAssociation.institution_id == shul.id
+        ).order_by(ShulHelperAssociation.id)).all()
+        assert {(row.helper_person.name, row.role) for row in helper_links} == {
+            ('Rabbi Gabbai', 'rabbi_assistant'),
+            ('Shul Gabbai', 'shul_gabbai'),
+        }
+        phones_by_name = {
+            row.helper_person.name: [phone.phone for phone in db.session.scalars(
+                db.select(HelperPhone).where(
+                    HelperPhone.helper_person_id == row.helper_person_id
+                ).order_by(HelperPhone.id)).all()]
+            for row in helper_links
+        }
+        assert phones_by_name['Rabbi Gabbai'] == [
+            '845-555-6201', '845-555-6202']
+        assert phones_by_name['Shul Gabbai'] == [
+            '845-555-6301', '845-555-6302']
 
     rabbis = client.get('/api/shul-rabbis').get_json()['Weekday Test Shul']
     gabbais = client.get('/api/shul-gabbais').get_json()['Weekday Test Shul']
@@ -537,7 +556,7 @@ def test_delayed_directory_load_does_not_overwrite_entered_contact_phones():
     assert "if(!item.contactsEdited())item.update()" in script
 
 
-def test_profile_deduplicates_same_shul_and_falls_back_to_shared_assistant_phone(app, client):
+def test_profile_deduplicates_same_shul_and_uses_canonical_assistant_phone(app, client):
     add_shuls(app)
     assert post(client, '/families/1/edit', {
         'name': 'Sample family',
@@ -548,13 +567,6 @@ def test_profile_deduplicates_same_shul_and_falls_back_to_shared_assistant_phone
         'weekday_shul_rabbi_assistant_name': ['Rabbi Assistant'],
         'weekday_shul_rabbi_assistant_phones': ['["845-555-7002"]'],
     }).status_code == 302
-
-    with app.app_context():
-        assistant = db.session.scalar(db.select(ShulRabbiAssistant).where(
-            ShulRabbiAssistant.name == 'Rabbi Assistant'))
-        db.session.query(ShulRabbiAssistantPhone).filter_by(
-            assistant_id=assistant.id).delete()
-        db.session.commit()
 
     profile = client.get('/families/1').text
     assert profile.count('class="profile-linked-contacts"') == 1
