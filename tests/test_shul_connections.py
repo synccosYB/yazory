@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 
 from app import (
     Family,
@@ -390,6 +391,37 @@ def test_legacy_directory_conflict_does_not_reject_saved_family(monkeypatch, app
     with app.app_context():
         family = db.session.get(Family, 1)
         assert family.weekday_shul == 'Saved despite legacy conflict'
+
+
+def test_transient_directory_conflict_retries_and_saves_details(monkeypatch, app, client):
+    """A one-off concurrent conflict must not silently lose directory input."""
+    from app import _save_shul_connections as real_save
+
+    calls = 0
+
+    def conflict_once(family_id):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise StaleDataError('concurrent directory edit')
+        return real_save(family_id)
+
+    monkeypatch.setattr('app._save_shul_connections', conflict_once)
+    response = post(client, '/families/1/edit?field=weekday_shul', {
+        'name': 'Sample family',
+        'weekday_shul': 'Retried Shul',
+        'weekday_shul_rabbi': 'Rabbi Retried',
+        'weekday_shul_rabbi_phone': '845-555-4222',
+    })
+
+    assert response.status_code == 302
+    assert calls == 2
+    with app.app_context():
+        shul = db.session.scalar(db.select(Institution).where(
+            Institution.kind == 'Shul', Institution.name == 'Retried Shul'))
+        rabbi = db.session.get(ShulRabbi, shul.id)
+        assert (rabbi.rabbi_name, rabbi.rabbi_phone) == (
+            'Rabbi Retried', '845-555-4222')
 
 
 def test_one_helper_can_be_associated_with_multiple_shuls(app, client):
