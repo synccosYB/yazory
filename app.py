@@ -365,6 +365,25 @@ def _helper_phones(person):
         HelperPhone.helper_person_id == person.id).order_by(HelperPhone.id)).all()]
 
 
+def _helper_payloads(institution, role):
+    """Read helper directory data only from the canonical person links."""
+    if institution is None:
+        return []
+    associations = _app.db.session.scalars(select(ShulHelperAssociation).where(
+        ShulHelperAssociation.institution_id == institution.id,
+        ShulHelperAssociation.role == role
+    ).order_by(ShulHelperAssociation.id)).all()
+    result = []
+    for association in associations:
+        phones = _helper_phones(association.helper_person)
+        result.append({
+            'name': association.helper_person.name,
+            'phone': phones[0] if phones else '',
+            'phones': phones,
+        })
+    return result
+
+
 def _sync_legacy_helper_phones(person):
     """Keep compatibility rows aligned while helper phones are globally owned."""
     phones = _helper_phones(person)
@@ -476,8 +495,7 @@ def _migrate_canonical_rabbis():
 
 def _migrate_canonical_helpers():
     marker_key = 'canonical_helpers_v1'
-    if _app.db.session.get(_app.OrganizationSetting, marker_key) is not None:
-        return
+    marker = _app.db.session.get(_app.OrganizationSetting, marker_key)
     for row in _app.db.session.scalars(select(ShulGabbaiDirectory).order_by(
             ShulGabbaiDirectory.id)).all():
         person = _canonical_helper(row.name, _gabbai_phones(row))
@@ -492,10 +510,9 @@ def _migrate_canonical_helpers():
         person = _canonical_helper(row.name, phones)
         if person is not None:
             _attach_helper(row.institution, person, 'rabbi_assistant')
-    for person in _app.db.session.scalars(select(HelperPerson).order_by(
-            HelperPerson.id)).all():
-        _sync_legacy_helper_phones(person)
-    _app.db.session.add(_app.OrganizationSetting(key=marker_key, value={'completed': True}))
+    if marker is None:
+        _app.db.session.add(_app.OrganizationSetting(
+            key=marker_key, value={'completed': True}))
     _app.db.session.commit()
 
 
@@ -693,42 +710,15 @@ def _upsert_family_rabbi(family_id, role, institution, rabbi_name, rabbi_phone):
 
 
 def _replace_rabbi_assistants(institution, names, phone_lists):
-    current = _app.db.session.scalars(select(ShulRabbiAssistant).where(
-        ShulRabbiAssistant.institution_id == institution.id).order_by(ShulRabbiAssistant.id)).all()
-    existing = {row.name.casefold(): row for row in current}
-    keep_ids = set()
     helper_people = []
     for index, raw_name in enumerate(names):
         name = (raw_name or '').strip()[:160]
         if not name:
             continue
-        assistant = existing.get(name.casefold())
-        if assistant is None:
-            assistant = ShulRabbiAssistant(institution_id=institution.id, name=name)
-            _app.db.session.add(assistant)
-            _app.db.session.flush()
-        else:
-            assistant.name = name
-        keep_ids.add(assistant.id)
         phones = phone_lists[index] if index < len(phone_lists) else []
         helper = _canonical_helper(name, phones)
         if helper is not None:
             helper_people.append(helper)
-        old_phones = _app.db.session.scalars(select(ShulRabbiAssistantPhone).where(
-            ShulRabbiAssistantPhone.assistant_id == assistant.id)).all()
-        for row in old_phones:
-            _app.db.session.delete(row)
-        for phone in phones:
-            _app.db.session.add(ShulRabbiAssistantPhone(
-                assistant_id=assistant.id, phone=phone))
-        if helper is not None:
-            _sync_legacy_helper_phones(helper)
-    for assistant in current:
-        if assistant.id not in keep_ids:
-            for phone in _app.db.session.scalars(select(ShulRabbiAssistantPhone).where(
-                    ShulRabbiAssistantPhone.assistant_id == assistant.id)).all():
-                _app.db.session.delete(phone)
-            _app.db.session.delete(assistant)
     _sync_helper_associations(institution, 'rabbi_assistant', helper_people)
 
 
@@ -1023,32 +1013,23 @@ def _sync_family_gabbais(family_id, role, institution, gabbais):
 
 def _save_shul_gabbai_connections(family_id):
     submitted_by_institution = {}
-    role_rows = []
     for role, key in (('weekday_shul', 'weekday_shul'), ('shabbos_shul', 'shabbos_shul')):
         shul_name = _submitted_institution_name(key)
         institution = _find_shul(shul_name)
         submitted = _submitted_gabbais(key)
-        if institution is not None and institution.id not in submitted_by_institution:
-            if submitted:
-                submitted_by_institution[institution.id] = submitted
-            else:
-                submitted_by_institution[institution.id] = [
-                    (row.name, _gabbai_phones(row))
-                    for row in _app.db.session.scalars(
-                        select(ShulGabbaiDirectory).where(
-                            ShulGabbaiDirectory.institution_id == institution.id
-                        ).order_by(ShulGabbaiDirectory.id)).all()
-                ]
-        role_rows.append((role, institution))
+        if (institution is not None and
+                institution.id not in submitted_by_institution and
+                key + '_gabbai_name' in _app.request.form):
+            submitted_by_institution[institution.id] = submitted
 
-    saved_by_institution = {}
     for institution_id, rows in submitted_by_institution.items():
         institution = _app.db.session.get(_app.Institution, institution_id)
-        saved_by_institution[institution_id] = _replace_shul_gabbais(institution, rows)
-
-    for role, institution in role_rows:
-        gabbais = saved_by_institution.get(institution.id, []) if institution else []
-        _sync_family_gabbais(family_id, role, institution, gabbais)
+        people = []
+        for name, phones in rows:
+            person = _canonical_helper(name, phones)
+            if person is not None:
+                people.append(person)
+        _sync_helper_associations(institution, 'shul_gabbai', people)
 
 
 def _save_shul_connections(family_id):
@@ -1060,25 +1041,7 @@ def _save_shul_connections(family_id):
 
 
 def _assistant_payload(institution):
-    assistants = _app.db.session.scalars(select(ShulRabbiAssistant).where(
-        ShulRabbiAssistant.institution_id == institution.id).order_by(ShulRabbiAssistant.id)).all()
-    result = []
-    for assistant in assistants:
-        phones = [row.phone for row in _app.db.session.scalars(
-            select(ShulRabbiAssistantPhone).where(
-                ShulRabbiAssistantPhone.assistant_id == assistant.id
-            ).order_by(ShulRabbiAssistantPhone.id)).all()]
-        if not phones:
-            helper = _app.db.session.scalar(select(HelperPerson).where(
-                HelperPerson.normalized_name == _normalize_rabbi_name(assistant.name)))
-            if helper is not None:
-                phones = _helper_phones(helper)
-        result.append({
-            'name': assistant.name,
-            'phone': phones[0] if phones else '',
-            'phones': phones,
-        })
-    return result
+    return _helper_payloads(institution, 'rabbi_assistant')
 
 
 def create_app(test_config=None):
@@ -1113,8 +1076,20 @@ def create_app(test_config=None):
             ensure_extension_schema()
 
     def add_shared_gabbai(family_id):
-        require_capability(('family_admin', 'office_employee'))
-        family = accessible_family_or_404(family_id)
+        user = (_app.db.session.get(_app.StaffUser, _app.session.get('user_id'))
+                if _app.session.get('user_id') else None)
+        if not app.config['DEMO']:
+            if user is None or user.role not in (
+                    'organization_admin', 'family_admin', 'office_employee'):
+                _app.abort(403)
+            if user.role != 'organization_admin':
+                assigned = _app.db.session.scalar(select(
+                    _app.FamilyAssignment.id).where(
+                        _app.FamilyAssignment.staff_user_id == user.id,
+                        _app.FamilyAssignment.family_id == family_id))
+                if assigned is None:
+                    _app.abort(403)
+        family = _app.db.get_or_404(_app.Family, family_id)
         shuls = _family_profile_shuls(family)
         institution_id = _app.request.form.get('institution_id', type=int)
         institution = next((row for row in shuls if row.id == institution_id), None)
@@ -1128,16 +1103,6 @@ def create_app(test_config=None):
             _app.abort(400, 'Gabbai name is required.')
         if len(name) > 160 or len(phone) > 80:
             _app.abort(400, 'Value is too long.')
-        shared = _app.db.session.scalar(select(ShulGabbaiDirectory).where(
-            ShulGabbaiDirectory.institution_id == institution.id,
-            ShulGabbaiDirectory.name == name,
-        ))
-        if shared is None:
-            shared = ShulGabbaiDirectory(
-                institution_id=institution.id, name=name, phone=phone)
-            _app.db.session.add(shared)
-            _app.db.session.flush()
-        _replace_gabbai_phones(shared, [phone])
         person = _canonical_helper(name, [phone])
         if person is not None:
             _attach_helper(institution, person, 'shul_gabbai')
@@ -1170,17 +1135,7 @@ def create_app(test_config=None):
             _app.Institution.kind == 'Shul').order_by(_app.Institution.name)).all()
         result = {}
         for shul in shuls:
-            rows = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
-                ShulGabbaiDirectory.institution_id == shul.id
-            ).order_by(ShulGabbaiDirectory.id)).all()
-            result[shul.name] = [
-                {
-                    'name': row.name,
-                    'phone': (_gabbai_phones(row) or [''])[0],
-                    'phones': _gabbai_phones(row),
-                }
-                for row in rows
-            ]
+            result[shul.name] = _helper_payloads(shul, 'shul_gabbai')
         return result
 
     @app.context_processor
@@ -1251,9 +1206,7 @@ def create_app(test_config=None):
         institution_contacts = {}
         for institution, assignment in rows:
             phones = _rabbi_phones(institution) if assignment else []
-            gabbais = _app.db.session.scalars(select(ShulGabbaiDirectory).where(
-                ShulGabbaiDirectory.institution_id == institution.id
-            ).order_by(ShulGabbaiDirectory.id)).all()
+            gabbais = _helper_payloads(institution, 'shul_gabbai')
             assistants = _assistant_payload(institution)
             if _app.request.endpoint == 'family_detail':
                 assistant_role = {
@@ -1269,10 +1222,7 @@ def create_app(test_config=None):
                 'phone': phones[0] if phones else '',
                 'phones': phones,
                 'assistants': assistants,
-                'gabbais': [
-                        {'name': row.name, 'phones': _gabbai_phones(row)}
-                        for row in gabbais
-                ],
+                'gabbais': gabbais,
             }
             institution_contacts[institution.id] = payload
             mapping[institution.name] = payload
