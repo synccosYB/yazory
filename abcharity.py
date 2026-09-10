@@ -5,7 +5,7 @@ import base64
 import hashlib
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import requests
 from cryptography.fernet import Fernet, InvalidToken
@@ -18,6 +18,20 @@ ERROR = 'ABCharity could not be synced. Check the campaign ID and API response.'
 INVALID_KEY = 'Enter the ABCharity API key for this campaign.'
 UNREADABLE_KEY = 'The saved ABCharity API key could not be read. Enter and save the key again.'
 BIDI_CONTROLS = dict.fromkeys(map(ord, '\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069'))
+
+
+def normalize_public_url(value):
+    """Accept only a public HTTPS page hosted by ABCharity."""
+    value = (value or '').translate(BIDI_CONTROLS).strip()
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return ''
+    host = (parsed.hostname or '').lower()
+    if (parsed.scheme != 'https' or parsed.username or parsed.password or parsed.port
+            or not (host == 'abcharity.org' or host.endswith('.abcharity.org'))):
+        return ''
+    return value[:1000]
 
 
 def fetch_donations(key):
@@ -198,9 +212,13 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         external_id = request.form.get('campaign_id', '').strip()
         api_key = request.form.get('api_key', '').translate(BIDI_CONTROLS).strip()
         label = request.form.get('label', '').strip()
+        public_url = normalize_public_url(request.form.get('public_url', ''))
         currency = request.form.get('currency', '').strip().upper()
-        if not re.fullmatch(r'[0-9]{1,100}', external_id) or not 1 <= len(label) <= 160 or currency not in ('USD', 'ILS', 'GBP', 'EUR', 'CAD'):
-            abort(400, 'Enter a valid campaign ID, name and currency.')
+        if (not re.fullmatch(r'[0-9]{1,100}', external_id)
+                or not 1 <= len(label) <= 160
+                or currency not in ('USD', 'ILS', 'GBP', 'EUR', 'CAD')
+                or not public_url):
+            abort(400, 'Enter a valid campaign ID, name, public ABCharity link and currency.')
         campaign = db.session.scalar(select(Campaign).where(Campaign.family_id == family_id))
         if campaign and (campaign.external_id != external_id or campaign.currency != currency):
             abort(400, 'The linked campaign ID and currency cannot be changed.')
@@ -211,6 +229,7 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
                                 key_env=f'DATABASE_KEY_FAMILY_{family_id}')
             db.session.add(campaign)
         campaign.label = label
+        campaign.public_url = public_url
         if api_key:
             if len(api_key) > 2000:
                 abort(400, INVALID_KEY)

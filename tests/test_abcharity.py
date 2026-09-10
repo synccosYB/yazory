@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 from app import create_app, db, Family, StaffUser, FamilyAssignment, CharityCampaign, CharityDonation, CharityDonor, Contact
-from abcharity import normalize, fetch_donations, decrypt_api_key, ERROR
+from abcharity import normalize, fetch_donations, decrypt_api_key, normalize_public_url, ERROR
 from translations import CATALOG
 
 ROW = dict(id=10, campaign_id=55, amount='18.50', net='17.95', donation_time=1788710400, name='Donor', email='one@example.test', phone='123', address='Road', notes='note', team='Cousins', anonymous_donation='0', is_subscription='1')
@@ -26,7 +26,7 @@ def post(client,path,data=None):
     return client.post(path,data={'csrf':'token',**(data or {})})
 
 def connect(client):
-    return post(client,'/families/1/campaign',dict(campaign_id='55',label='Family campaign',currency='USD',api_key='secret-test-value'))
+    return post(client,'/families/1/campaign',dict(campaign_id='55',label='Family campaign',currency='USD',api_key='secret-test-value',public_url='https://abcharity.org/campaign/family'))
 
 def test_import_repeat_update_and_locales(setup,monkeypatch):
     app,client=setup
@@ -73,6 +73,17 @@ def test_profile_accepts_and_masks_campaign_key(setup):
     assert 'name="api_key" type="password"' in body
     assert 'name="key_env"' not in body
     assert 'secret-test-value' not in body
+
+def test_public_campaign_link_is_saved_displayed_and_restricted(setup):
+    app,client=setup
+    assert connect(client).status_code == 302
+    body=client.get('/families/1/donations').text
+    assert 'https://abcharity.org/campaign/family' in body
+    with app.app_context():
+        assert CharityCampaign.query.one().public_url == 'https://abcharity.org/campaign/family'
+    assert normalize_public_url('https://give.abcharity.org/family')
+    assert not normalize_public_url('http://abcharity.org/family')
+    assert not normalize_public_url('https://abcharity.org.evil.test/family')
 
 def test_profile_collected_total_uses_abcharity_net(setup):
     _,client=setup

@@ -256,6 +256,39 @@ class StaffTask(_app.db.Model):
     creator = _app.db.relationship('StaffUser', foreign_keys=[created_by])
 
 
+class SupporterCommunication(_app.db.Model):
+    """One chronological outreach, pledge, or receipt event for a supporter."""
+    __tablename__ = 'supporter_communication'
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    contact_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('contact.id', ondelete='CASCADE'),
+        nullable=False, index=True)
+    family_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('family.id'), nullable=False, index=True)
+    staff_user_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=True, index=True)
+    email_message_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('email_message.id'), nullable=True, index=True)
+    receipt_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('receipt.id'), nullable=True,
+        unique=True, index=True)
+    kind = _app.db.Column(_app.db.String(30), nullable=False, index=True)
+    direction = _app.db.Column(_app.db.String(20), nullable=False, default='outbound')
+    subject = _app.db.Column(_app.db.String(300), nullable=False, default='')
+    body = _app.db.Column(_app.db.Text, nullable=False, default='')
+    status = _app.db.Column(_app.db.String(20), nullable=False, default='completed', index=True)
+    scheduled_for = _app.db.Column(_app.db.DateTime, nullable=True, index=True)
+    created_at = _app.db.Column(
+        _app.db.DateTime, nullable=False,
+        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+    completed_at = _app.db.Column(_app.db.DateTime, nullable=True)
+    contact = _app.db.relationship('Contact')
+    family = _app.db.relationship('Family')
+    staff_user = _app.db.relationship('StaffUser')
+    email_message = _app.db.relationship('EmailMessage')
+    receipt = _app.db.relationship('Receipt')
+
+
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
 
@@ -1435,6 +1468,170 @@ def create_app(test_config=None):
     def task_is_admin(user):
         return bool(user and user.role == 'organization_admin')
 
+    def communication_contact(contact_id):
+        contact = _app.db.get_or_404(_app.Contact, contact_id)
+        user = task_user()
+        if task_is_admin(user):
+            return contact
+        assigned = user and _app.db.session.scalar(select(_app.FamilyAssignment.id).where(
+            _app.FamilyAssignment.staff_user_id == user.id,
+            _app.FamilyAssignment.family_id == contact.family_id))
+        if not assigned:
+            _app.abort(403, 'You are not assigned to this family.')
+        if user.role == 'fundraiser' and app.extensions['workflows']['enforced']():
+            link_model = app.extensions['workflows']['models']['SupporterLink']
+            link = _app.db.session.get(link_model, contact.id)
+            if not link or link.assigned_to != user.id:
+                _app.abort(403, 'You are not assigned to this supporter.')
+        return contact
+
+    def communication_row(contact, kind, subject='', body='', status='completed',
+                          scheduled_for=None, email_message=None):
+        now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+        row = SupporterCommunication(
+            contact_id=contact.id, family_id=contact.family_id,
+            staff_user_id=task_user().id if task_user() else None,
+            email_message_id=email_message.id if email_message else None,
+            kind=kind, subject=subject, body=body, status=status,
+            scheduled_for=scheduled_for,
+            completed_at=now if status == 'completed' else None)
+        _app.db.session.add(row)
+        return row
+
+    def parse_communication_time(value):
+        try:
+            return _app.datetime.strptime(value, '%Y-%m-%dT%H:%M')
+        except (TypeError, ValueError):
+            _app.abort(400, 'Enter a valid follow-up date and time.')
+
+    @app.get('/communications')
+    def communications():
+        user = task_user()
+        if user is None or user.role not in (
+                'organization_admin', 'family_admin', 'fundraiser'):
+            _app.abort(403)
+        contact_statement = select(_app.Contact).order_by(_app.Contact.name)
+        if not task_is_admin(user):
+            contact_statement = contact_statement.where(_app.Contact.family_id.in_(select(
+                _app.FamilyAssignment.family_id).where(
+                    _app.FamilyAssignment.staff_user_id == user.id)))
+        if user.role == 'fundraiser' and app.extensions['workflows']['enforced']():
+            link_model = app.extensions['workflows']['models']['SupporterLink']
+            contact_statement = contact_statement.where(_app.Contact.id.in_(select(
+                link_model.contact_id).where(link_model.assigned_to == user.id)))
+        contacts = _app.db.session.scalars(contact_statement).all()
+        contact_ids = [row.id for row in contacts]
+        history = (_app.db.session.scalars(select(SupporterCommunication).where(
+            SupporterCommunication.contact_id.in_(contact_ids)).order_by(
+                SupporterCommunication.created_at.desc(),
+                SupporterCommunication.id.desc()).limit(300)).all()
+            if contact_ids else [])
+        latest = {}
+        for row in history:
+            latest.setdefault(row.contact_id, row)
+        due = [row for row in history if row.status == 'scheduled']
+        return _app.render_template(
+            'communications.html', title='Communications', contacts=contacts,
+            history=history, latest=latest, due=due,
+            now=_app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+
+    @app.post('/contacts/<int:contact_id>/communications/callback')
+    def schedule_supporter_callback(contact_id):
+        contact = communication_contact(contact_id)
+        scheduled_for = parse_communication_time(
+            _app.request.form.get('scheduled_for', ''))
+        note = _app.request.form.get('note', '').strip()[:5000]
+        communication_row(contact, 'callback', 'Good time to call', note,
+                          status='scheduled', scheduled_for=scheduled_for)
+        task = _app.db.session.scalar(select(StaffTask).where(
+            StaffTask.source_contact_id == contact.id))
+        if task is None:
+            assignee = automatic_task_assignee(contact)
+            if assignee:
+                task = StaffTask(
+                    family_id=contact.family_id, source_contact_id=contact.id,
+                    assigned_to=assignee.id, created_by=task_user().id,
+                    title=f'Contact supporter: {contact.name}')
+                _app.db.session.add(task)
+        if task:
+            task.status = 'Waiting'
+            task.due_date = scheduled_for.date()
+            task.description = note
+        contact.status = 'To contact'
+        add_audit(f'Scheduled supporter callback: {contact.name}')
+        _app.db.session.commit()
+        _app.flash('Callback saved.')
+        return _app.redirect(_app.url_for('communications'))
+
+    @app.post('/contacts/<int:contact_id>/communications/call')
+    def complete_supporter_call(contact_id):
+        contact = communication_contact(contact_id)
+        note = _app.request.form.get('note', '').strip()[:5000]
+        communication_row(contact, 'phone_call', 'Phone call completed', note)
+        now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+        pending_callbacks = _app.db.session.scalars(select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact.id,
+            SupporterCommunication.kind == 'callback',
+            SupporterCommunication.status == 'scheduled')).all()
+        for callback in pending_callbacks:
+            callback.status = 'completed'
+            callback.completed_at = now
+        linked = _app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.supporter_key == contact.supporter_key)).all() \
+            if contact.supporter_key else [contact]
+        for row in linked:
+            if row.status == 'To contact':
+                row.status = 'Contacted'
+        task = _app.db.session.scalar(select(StaffTask).where(
+            StaffTask.source_contact_id == contact.id))
+        if task:
+            task.status = 'Completed'
+            task.completed_at = now
+        add_audit(f'Completed supporter call: {contact.name}')
+        _app.db.session.commit()
+        _app.flash('Phone call recorded.')
+        return _app.redirect(_app.url_for('communications'))
+
+    @app.post('/contacts/<int:contact_id>/communications/pledge')
+    def send_supporter_pledge(contact_id):
+        contact = communication_contact(contact_id)
+        if not contact.email:
+            _app.abort(400, 'Enter the supporter email address before sending the pledge.')
+        if contact.monthly_cents <= 0:
+            _app.abort(400, 'Enter the pledge amount before sending it.')
+        subject = 'Your Yazory pledge confirmation'
+        frequency = {'Weekly': 'each week', 'Monthly': 'each month',
+                     'One time': 'one time'}.get(
+                         contact.pledge_frequency, contact.pledge_frequency)
+        campaign = _app.db.session.scalar(select(_app.CharityCampaign).where(
+            _app.CharityCampaign.family_id == contact.family_id))
+        if campaign is None or not campaign.public_url:
+            _app.abort(400, 'Enter the public ABCharity campaign link for this family before sending the pledge.')
+        body = (f'Dear {contact.name},\n\nThank you for pledging '
+                f'${contact.monthly_cents / 100:,.2f} {frequency} through Yazory.\n\n'
+                f'This pledge is connected to the {contact.family.name} family case. '
+                'Please use this secure ABCharity campaign link to make your donation:\n'
+                f'{campaign.public_url}\n\n'
+                'A separate receipt will be emailed every time a payment is successfully received.\n\n'
+                'If any detail is incorrect, please reply to this email before the next payment.')
+        message = app.extensions['send_email'](
+            'pledge_confirmation', contact.email, subject, body,
+            family_id=contact.family_id)
+        communication_row(contact, 'pledge_email', subject, body,
+                          status='failed' if message.status == 'failed' else 'completed',
+                          email_message=message)
+        linked = _app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.supporter_key == contact.supporter_key)).all() \
+            if contact.supporter_key else [contact]
+        for row in linked:
+            row.status = 'Pledged'
+        add_audit(f'Sent supporter pledge: {contact.name}')
+        _app.db.session.commit()
+        _app.flash('Pledge email sent.' if message.status != 'failed'
+                   else 'Pledge email delivery failed. Check Communications.',
+                   'error' if message.status == 'failed' else 'message')
+        return _app.redirect(_app.url_for('communications'))
+
     def visible_task_or_403(task_id):
         task = _app.db.get_or_404(StaffTask, task_id)
         user = task_user()
@@ -1711,6 +1908,49 @@ def create_app(test_config=None):
         _app.db.session.commit()
         _app.flash('Subtask added.')
         return _app.redirect(_app.url_for('task_detail', task_id=parent.id))
+
+    def wrap_receipt_source(endpoint, send_manual_email=False):
+        original = app.view_functions.get(endpoint)
+        if original is None:
+            return
+
+        def wrapped(*args, **kwargs):
+            before_id = _app.db.session.scalar(select(
+                _app.func.coalesce(_app.func.max(_app.Receipt.id), 0))) or 0
+            response = original(*args, **kwargs)
+            new_receipts = _app.db.session.scalars(select(_app.Receipt).where(
+                _app.Receipt.id > before_id).order_by(_app.Receipt.id)).all()
+            for receipt in new_receipts:
+                if _app.db.session.scalar(select(SupporterCommunication.id).where(
+                        SupporterCommunication.receipt_id == receipt.id)):
+                    continue
+                message = None
+                if send_manual_email and receipt.contact.email:
+                    subject = 'Your Yazory donation receipt'
+                    body = (f'Thank you for your donation of '
+                            f'${receipt.amount_cents / 100:,.2f}.\n\n'
+                            f'Date received: {receipt.received_on.strftime("%m/%d/%Y")}\n'
+                            f'Receipt reference: {receipt.reference or f"YZ-{receipt.id:06d}"}\n\n'
+                            'Yazory is developed and operated by Synccos Inc.')
+                    message = app.extensions['send_email'](
+                        'donation_receipt', receipt.contact.email, subject, body,
+                        family_id=receipt.family_id)
+                row = communication_row(
+                    receipt.contact, 'receipt_email', 'Donation receipt',
+                    f'${receipt.amount_cents / 100:,.2f} · '
+                    f'{receipt.reference or f"YZ-{receipt.id:06d}"}',
+                    status=('failed' if message and message.status == 'failed'
+                            else 'completed'), email_message=message)
+                row.receipt_id = receipt.id
+            if new_receipts:
+                _app.db.session.commit()
+            return response
+
+        wrapped.__name__ = original.__name__
+        app.view_functions[endpoint] = wrapped
+
+    wrap_receipt_source('record_receipt', send_manual_email=True)
+    wrap_receipt_source('stripe_webhook')
 
     return register_native_payments(app)
 
