@@ -1117,12 +1117,7 @@ def create_app(test_config=None):
                 contact_groups = [mapping.get(name, {}) for name in (
                     (family.weekday_shul, family.shabbos_shul) if family is not None else ())]
             for contacts in contact_groups:
-                # Both shared-shul contact lists are labelled as gabbaim in
-                # the intake UI.  Keep the storage distinction (a rabbi's
-                # assistant versus a shul gabbai), but present both in the
-                # profile's consolidated shul-gabbaim block.
-                for gabbai in (
-                        contacts.get('gabbais', []) + contacts.get('assistants', [])):
+                for gabbai in contacts.get('gabbais', []):
                     identity = (gabbai['name'].casefold(), tuple(gabbai['phones']))
                     if identity in seen:
                         continue
