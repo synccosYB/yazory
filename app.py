@@ -1075,20 +1075,38 @@ def create_app(test_config=None):
         def family_gabbai_contacts(family_id):
             if not family_id:
                 return []
+            family = _app.db.session.get(_app.Family, family_id)
             connections = _app.db.session.scalars(select(FamilyGabbaiConnection).where(
                 FamilyGabbaiConnection.family_id == family_id
             ).order_by(FamilyGabbaiConnection.role, FamilyGabbaiConnection.id)).all()
             result = []
             seen = set()
+
+            # Gabbaim belong to the shared shul, not to an individual family.
+            # Read the current shul directory first so applicants who selected
+            # the same shul also see gabbaim added after their profile was saved.
+            for shul_name in ((family.weekday_shul, family.shabbos_shul)
+                              if family is not None else ()):
+                for gabbai in mapping.get(shul_name, {}).get('gabbais', []):
+                    identity = (gabbai['name'].casefold(), tuple(gabbai['phones']))
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    result.append(gabbai)
+
+            # Preserve old applicant-specific connections for legacy records
+            # whose shul directory entry may no longer exist.
             for connection in connections:
                 gabbai = connection.gabbai
-                if gabbai.id in seen:
-                    continue
-                seen.add(gabbai.id)
-                result.append({
+                payload = {
                     'name': gabbai.name,
                     'phones': _gabbai_phones(gabbai),
-                })
+                }
+                identity = (payload['name'].casefold(), tuple(payload['phones']))
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                result.append(payload)
             return result
         def family_rabbi_assistant_contacts(family):
             if family is None:
