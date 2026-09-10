@@ -1,0 +1,434 @@
+From 9818eec96b5f42544074a40d00ea507ed5bc0d03 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Wed, 9 Sep 2026 15:56:14 -0400
+Subject: [PATCH] Add assignable staff tasks and subtasks
+
+---
+ app.py                     | 162 +++++++++++++++++++++++++++++++++++++
+ static/style.css           |   1 +
+ templates/base.html        |   3 +-
+ templates/task_detail.html |   7 ++
+ templates/tasks.html       |   6 ++
+ tests/test_intake.py       |   2 +-
+ tests/test_tasks.py        | 100 +++++++++++++++++++++++
+ translations.py            |  52 ++++++++++++
+ 8 files changed, 331 insertions(+), 2 deletions(-)
+ create mode 100644 templates/task_detail.html
+ create mode 100644 templates/tasks.html
+ create mode 100644 tests/test_tasks.py
+
+diff --git a/app.py b/app.py
+index 36f844d..207fffe 100644
+--- a/app.py
++++ b/app.py
+@@ -219,6 +219,35 @@ class FamilyGabbaiConnection(_app.db.Model):
+     institution = _app.db.relationship('Institution')
+ 
+ 
++class StaffTask(_app.db.Model):
++    """Assignable staff work; a parent task may contain any number of subtasks."""
++    __tablename__ = 'staff_task'
++    id = _app.db.Column(_app.db.Integer, primary_key=True)
++    parent_id = _app.db.Column(
++        _app.db.Integer, _app.db.ForeignKey('staff_task.id'), nullable=True, index=True)
++    family_id = _app.db.Column(
++        _app.db.Integer, _app.db.ForeignKey('family.id'), nullable=True, index=True)
++    assigned_to = _app.db.Column(
++        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=False, index=True)
++    created_by = _app.db.Column(
++        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=False, index=True)
++    title = _app.db.Column(_app.db.String(240), nullable=False)
++    description = _app.db.Column(_app.db.Text, nullable=False, default='')
++    status = _app.db.Column(_app.db.String(20), nullable=False, default='To do', index=True)
++    priority = _app.db.Column(_app.db.String(20), nullable=False, default='Normal', index=True)
++    due_date = _app.db.Column(_app.db.Date, nullable=True, index=True)
++    created_at = _app.db.Column(
++        _app.db.DateTime, nullable=False,
++        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
++    completed_at = _app.db.Column(_app.db.DateTime, nullable=True)
++    parent = _app.db.relationship(
++        'StaffTask', remote_side=[id], backref=_app.db.backref(
++            'subtasks', cascade='all, delete-orphan', order_by='StaffTask.id'))
++    family = _app.db.relationship('Family')
++    assignee = _app.db.relationship('StaffUser', foreign_keys=[assigned_to])
++    creator = _app.db.relationship('StaffUser', foreign_keys=[created_by])
++
++
+ from app_original import *  # noqa: F401,F403,E402
+ from native_payments import register_native_payments  # noqa: E402
+ 
+@@ -1145,6 +1174,139 @@ def create_app(test_config=None):
+ 
+         app.view_functions[endpoint] = wrapped
+ 
++    TASK_STATUSES = ('To do', 'In progress', 'Waiting', 'Completed', 'Cancelled')
++    TASK_PRIORITIES = ('Low', 'Normal', 'High', 'Urgent')
++
++    def task_user():
++        user_id = _app.session.get('user_id')
++        return _app.db.session.get(_app.StaffUser, user_id) if user_id else None
++
++    def task_is_admin(user):
++        return bool(user and user.role == 'organization_admin')
++
++    def visible_task_or_403(task_id):
++        task = _app.db.get_or_404(StaffTask, task_id)
++        user = task_user()
++        if not task_is_admin(user) and (user is None or task.assigned_to != user.id):
++            _app.abort(403, 'You do not have permission to view this task.')
++        return task
++
++    def parsed_due_date():
++        raw = _app.request.form.get('due_date', '').strip()
++        if not raw:
++            return None
++        try:
++            return _app.date.fromisoformat(raw)
++        except ValueError:
++            _app.abort(400, 'Enter a valid due date.')
++
++    def active_assignee():
++        assignee = _app.db.session.get(
++            _app.StaffUser, _app.request.form.get('assigned_to', type=int))
++        if assignee is None or assignee.status != 'active':
++            _app.abort(400, 'Choose an active staff member or collector.')
++        return assignee
++
++    @app.route('/tasks', methods=['GET', 'POST'])
++    def tasks():
++        user = task_user()
++        if user is None and not app.config['DEMO']:
++            _app.abort(403)
++        if _app.request.method == 'POST':
++            if not task_is_admin(user):
++                _app.abort(403, 'Only an organization administrator can assign a task.')
++            title = _app.request.form.get('title', '').strip()[:240]
++            if not title:
++                _app.abort(400, 'Task title is required.')
++            assignee = active_assignee()
++            family_id = _app.request.form.get('family_id', type=int)
++            if family_id and _app.db.session.get(_app.Family, family_id) is None:
++                _app.abort(400, 'Choose a valid family case.')
++            priority = _app.request.form.get('priority', 'Normal')
++            if priority not in TASK_PRIORITIES:
++                _app.abort(400, 'Choose a valid priority.')
++            task = StaffTask(
++                title=title,
++                description=_app.request.form.get('description', '').strip()[:5000],
++                assigned_to=assignee.id,
++                created_by=user.id,
++                family_id=family_id,
++                priority=priority,
++                due_date=parsed_due_date())
++            _app.db.session.add(task)
++            add_audit(f'Created task: {title} / assigned to {assignee.email}')
++            _app.db.session.commit()
++            _app.flash('Task created and assigned.')
++            return _app.redirect(_app.url_for('task_detail', task_id=task.id))
++
++        statement = select(StaffTask).where(StaffTask.parent_id.is_(None))
++        if not task_is_admin(user):
++            statement = statement.where(StaffTask.assigned_to == (user.id if user else -1))
++        selected_status = _app.request.args.get('status', '')
++        if selected_status:
++            if selected_status not in TASK_STATUSES:
++                _app.abort(400)
++            statement = statement.where(StaffTask.status == selected_status)
++        rows = _app.db.session.scalars(statement.order_by(
++            StaffTask.due_date.is_(None), StaffTask.due_date, StaffTask.id.desc())).all()
++        staff = _app.db.session.scalars(select(_app.StaffUser).where(
++            _app.StaffUser.status == 'active').order_by(_app.StaffUser.name, _app.StaffUser.email)).all()
++        families = (_app.db.session.scalars(select(_app.Family).order_by(_app.Family.name)).all()
++                    if task_is_admin(user) else [])
++        return _app.render_template(
++            'tasks.html', title='Tasks', tasks=rows, staff=staff, families=families,
++            task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
++            selected_status=selected_status, may_assign=task_is_admin(user), today=_app.date.today())
++
++    @app.get('/tasks/<int:task_id>')
++    def task_detail(task_id):
++        task = visible_task_or_403(task_id)
++        staff = _app.db.session.scalars(select(_app.StaffUser).where(
++            _app.StaffUser.status == 'active').order_by(
++                _app.StaffUser.name, _app.StaffUser.email)).all()
++        return _app.render_template(
++            'task_detail.html', title='Task details', task=task,
++            task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
++            staff=staff, may_assign=task_is_admin(task_user()), today=_app.date.today())
++
++    @app.post('/tasks/<int:task_id>/status')
++    def update_task_status(task_id):
++        task = visible_task_or_403(task_id)
++        status = _app.request.form.get('status', '')
++        if status not in TASK_STATUSES:
++            _app.abort(400, 'Choose a valid task status.')
++        task.status = status
++        task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
++                             if status == 'Completed' else None)
++        add_audit(f'Changed task #{task.id} status to {status}')
++        _app.db.session.commit()
++        _app.flash('Task status updated.')
++        return _app.redirect(_app.url_for('task_detail', task_id=task.id))
++
++    @app.post('/tasks/<int:task_id>/subtasks')
++    def add_subtask(task_id):
++        parent = visible_task_or_403(task_id)
++        if parent.parent_id is not None:
++            _app.abort(400, 'Subtasks cannot contain another level of subtasks.')
++        user = task_user()
++        title = _app.request.form.get('title', '').strip()[:240]
++        if not title:
++            _app.abort(400, 'Subtask title is required.')
++        assignee = active_assignee() if task_is_admin(user) else user
++        priority = _app.request.form.get('priority', parent.priority)
++        if priority not in TASK_PRIORITIES:
++            _app.abort(400, 'Choose a valid priority.')
++        subtask = StaffTask(
++            parent_id=parent.id, family_id=parent.family_id,
++            assigned_to=assignee.id, created_by=user.id, title=title,
++            description=_app.request.form.get('description', '').strip()[:5000],
++            priority=priority, due_date=parsed_due_date())
++        _app.db.session.add(subtask)
++        add_audit(f'Added subtask to task #{parent.id}: {title}')
++        _app.db.session.commit()
++        _app.flash('Subtask added.')
++        return _app.redirect(_app.url_for('task_detail', task_id=parent.id))
++
+     return register_native_payments(app)
+ 
+ 
+diff --git a/static/style.css b/static/style.css
+index e3ae893..2ee9f4d 100644
+--- a/static/style.css
++++ b/static/style.css
+@@ -70,6 +70,7 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
+ .supporter-hierarchy{display:grid;gap:12px}.hierarchy-group{border:1px solid var(--line);border-radius:12px;padding:12px}.hierarchy-person{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px}.hierarchy-person span{color:var(--muted);font-size:12px}.hierarchy-root{margin-top:4px;background:var(--soft);border-radius:9px}.hierarchy-child{position:relative;margin-inline-start:28px;border-inline-start:3px solid var(--gold);padding-inline-start:14px}.hierarchy-child::before{content:"";position:absolute;inset-inline-start:-3px;top:50%;width:12px;border-top:3px solid var(--gold)}.hierarchy-empty{margin:8px 0 0 28px}@media(max-width:600px){.hierarchy-person{align-items:flex-start;flex-direction:column;gap:2px}.hierarchy-child{margin-inline-start:14px}}
+ .danger{background:#fff;color:var(--danger);border-color:#d9aaa6}.danger:hover{background:#f5e7e5;color:#843e39}.metric-status{font-size:18px!important;letter-spacing:0!important}.row-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.row-actions form{margin:0}.supporter-summary-heading{padding:0;margin-bottom:14px}.supporter-summary-heading>div:last-child{white-space:nowrap}.add-supporter-panel summary{margin-bottom:12px}
+ .staff-entry{padding:4px 0 18px;border-bottom:1px solid var(--line)}.staff-entry:last-child{border-bottom:0}.staff-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:12px 0}.staff-details>div{background:var(--paper);padding:10px 12px;border-radius:5px}.staff-edit-panel{border-top:0;margin-top:12px;padding-top:0}.staff-edit-button{list-style:none}.staff-edit-button::-webkit-details-marker{display:none}.staff-edit-panel[open] .staff-edit-button{margin-bottom:10px}.staff-delete{margin-top:12px}@media(max-width:750px){.staff-details{grid-template-columns:1fr}}
++.task-detail-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr);gap:14px}.task-subtasks article{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:13px 18px;border-top:1px solid var(--line)}.task-overdue{color:var(--danger);font-weight:700}.badge.task-priority-urgent{background:#f5e7e5;color:var(--danger)}.badge.task-priority-high{background:#f7efd9;color:#806528}.badge.task-priority-low{background:#edf0f3;color:var(--muted)}.badge.task-status-completed{background:#e4f0eb;color:var(--success)}.badge.task-status-in-progress{background:#e7eff8;color:var(--navy)}.badge.task-status-waiting{background:#f7efd9;color:#806528}.badge.task-status-cancelled{background:#edf0f3;color:var(--muted)}@media(max-width:900px){.task-detail-grid{grid-template-columns:1fr}}
+ .institution-card .supporter-summary-heading{align-items:flex-start;gap:16px;margin-bottom:8px}.institution-card .supporter-summary-heading h2{margin-bottom:2px}.institution-card .supporter-summary-heading p{margin:0}.institution-card .table-wrap{margin-inline:-16px}.institution-card>details{margin-top:12px}.institution-delete{margin-top:12px}
+ .shul-rabbi-directory{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;margin-top:6px}.shul-rabbi-directory>strong{margin-inline-end:2px}.shul-rabbi-directory>form{margin:0}.shul-rabbi-directory>details{flex-basis:100%;margin:2px 0 0;padding-top:6px}.shul-rabbi-directory>details>form{display:flex;align-items:end;gap:8px;flex-wrap:wrap}.shul-rabbi-directory>details label{margin:0;min-width:170px}.shul-rabbi-directory>details button{margin-bottom:0}
+ .directory-grade-row th{background:var(--cream);color:var(--navy);font-size:13px;border-top:2px solid var(--gold)}.directory-grade-row small{font-weight:400;color:var(--muted);margin-inline-start:8px}.directory-person{display:flex;flex-direction:column}.directory-person small{color:var(--muted);font-size:10px}.directory-person.depth-1{margin-inline-start:22px;padding-inline-start:10px;border-inline-start:3px solid var(--gold)}.directory-person.depth-2{margin-inline-start:44px;padding-inline-start:10px;border-inline-start:3px solid var(--gold)}
+diff --git a/templates/base.html b/templates/base.html
+index a2b499d..40a233a 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -1,6 +1,7 @@
+-<!doctype html><html lang="{{ language }}" dir="{{ direction }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ _(title) }} {{ _("· Yazory") }}</title><link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}"><link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}"><link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}"><link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260909-grouped-sidebar-v1') }}"></head><body data-sections="{{ _('Profile sections') }}" data-previous="{{ _('Back') }}" data-next="{{ _('Next') }}">
++<!doctype html><html lang="{{ language }}" dir="{{ direction }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ _(title) }} {{ _("· Yazory") }}</title><link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}"><link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}"><link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}"><link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260910-tasks-grouped-sidebar-v1') }}"></head><body data-sections="{{ _('Profile sections') }}" data-previous="{{ _('Back') }}" data-next="{{ _('Next') }}">
+ <aside class="sidebar"><a class="brand" href="/"><img src="{{ url_for('static', filename='yazory-logo.png') }}" alt="Yazory · יעזורי"></a><p class="brand-caption">{{ _("A circle of support.") }}</p><div class="nav-label">{{ _("WORKSPACE") }}</div><nav class="grouped-nav">
+ {% if workflow_active %}<details class="nav-group" {{ 'open' if request.endpoint in ('operations','operating_reports') }}><summary>{{ _('Workflow') }}</summary><div><a class="{{ 'selected' if request.endpoint=='operations' }}" href="{{ url_for('operations') }}">{{ _('Operations') }}</a>{% if not is_fundraiser and current_staff.role != 'office_employee' %}<a class="{{ 'selected' if request.endpoint=='operating_reports' }}" href="{{ url_for('operating_reports') }}">{{ _('Organization reports') }}</a>{% endif %}</div></details>{% endif %}
++<details class="nav-group" {{ 'open' if request.endpoint in ('tasks','task_detail') }}><summary>{{ _('Team work') }}</summary><div><a class="{{ 'selected' if request.endpoint in ('tasks','task_detail') }}" href="/tasks">{{ _("Tasks") }}</a></div></details>
+ {% if not is_fundraiser %}<details class="nav-group" {{ 'open' if request.endpoint in ('dashboard','families','cases','family_detail','edit_family','new_family') }}><summary>{{ _('Families') }}</summary><div><a class="{{ 'selected' if request.endpoint=='dashboard' }}" href="/">{{ _("Overview") }}</a><a class="{{ 'selected' if request.endpoint in ('families','cases','family_detail','edit_family','new_family') }}" href="/cases">{{ _("Cases") }}</a></div></details>{% endif %}
+ {% if can_manage_supporters %}<details class="nav-group" {{ 'open' if request.endpoint in ('supporters','supporter_detail','edit_contact','collections','record_receipt') or 'fundraising' in (request.endpoint or '') }}><summary>{{ _('Support and collections') }}</summary><div><a class="{{ 'selected' if request.endpoint in ('supporters','supporter_detail','edit_contact') }}" href="/supporters">{{ _("Supporters") }}</a><a class="{{ 'selected' if 'fundraising' in (request.endpoint or '') }}" href="/fundraising">{{ _("Fundraising") }}</a><a class="{{ 'selected' if request.endpoint in ('collections','record_receipt') }}" href="/collections">{{ _("Collections") }}</a></div></details>{% endif %}
+ {% if not is_fundraiser %}<details class="nav-group" {{ 'open' if request.endpoint in ('expenses','approvals','payouts','download_payout_check','reports') }}><summary>{{ _('Money and approvals') }}</summary><div><a class="{{ 'selected' if request.endpoint=='expenses' }}" href="/expenses">{{ _("Expenses") }}</a>{% if is_org_admin %}<a class="{{ 'selected' if request.endpoint=='approvals' }}" href="/approvals">{{ _("Approvals") }}</a><a class="{{ 'selected' if request.endpoint in ('payouts','download_payout_check') }}" href="/payouts">{{ _("Payouts") }}</a><a class="{{ 'selected' if request.endpoint=='reports' }}" href="/reports">{{ _("Reports") }}</a>{% endif %}</div></details>{% endif %}
+diff --git a/templates/task_detail.html b/templates/task_detail.html
+new file mode 100644
+index 0000000..99dd15e
+--- /dev/null
++++ b/templates/task_detail.html
+@@ -0,0 +1,7 @@
++{% extends 'base.html' %}{% from 'macros.html' import token with context %}
++{% block content %}
++<div class="page-heading"><div><div class="eyebrow">{{ _('TASK') }} #{{ task.id }}</div><h1>{{ task.title }}</h1><p>{% if task.family %}{{ _('Case') }}: <a href="{{ url_for('family_detail',family_id=task.family.id) }}">{{ task.family.name }}</a> · {% endif %}{{ _('Assigned to') }}: {{ task.assignee.name or task.assignee.email }}</p></div><a class="button secondary" href="{{ url_for('tasks') }}">{{ _('Back to tasks') }}</a></div>
++<div class="task-detail-grid"><section class="card padded"><div class="status-row"><div><h2>{{ _('Task details') }}</h2><p>{{ task.description or _('No instructions entered.') }}</p></div><span class="badge task-priority-{{ task.priority|lower }}">{{ _(task.priority) }}</span></div><dl class="details"><div><dt>{{ _('Created by') }}</dt><dd>{{ task.creator.name or task.creator.email }}</dd></div><div><dt>{{ _('Due date') }}</dt><dd class="numeric {% if task.due_date and task.due_date < today and task.status not in ['Completed','Cancelled'] %}task-overdue{% endif %}">{{ task.due_date|american_date if task.due_date else _('No due date') }}</dd></div><div><dt>{{ _('Status') }}</dt><dd>{{ _(task.status) }}</dd></div></dl><form method="post" action="{{ url_for('update_task_status',task_id=task.id) }}" class="compact-form">{{ token(csrf) }}<label>{{ _('Update status') }}<select name="status">{% for value in task_statuses %}<option value="{{ value }}" {{ 'selected' if task.status==value }}>{{ _(value) }}</option>{% endfor %}</select></label><button>{{ _('Save status') }}</button></form></section>
++{% if not task.parent_id %}<section class="card padded"><h2>{{ _('Add a subtask') }}</h2><form method="post" action="{{ url_for('add_subtask',task_id=task.id) }}">{{ token(csrf) }}<div class="form-grid"><label>{{ _('Subtask title') }}<input name="title" required maxlength="240"></label>{% if may_assign %}<label>{{ _('Assign to') }}<select name="assigned_to" required>{% for user in staff %}<option value="{{ user.id }}" {{ 'selected' if user.id==task.assigned_to }}>{{ user.name or user.email }}</option>{% endfor %}</select></label>{% endif %}<label>{{ _('Priority') }}<select name="priority">{% for value in task_priorities %}<option value="{{ value }}" {{ 'selected' if value==task.priority }}>{{ _(value) }}</option>{% endfor %}</select></label><label>{{ _('Due date') }}<input type="date" name="due_date" value="{{ task.due_date.isoformat() if task.due_date else '' }}"></label><label>{{ _('Instructions') }}<textarea name="description" rows="2" maxlength="5000"></textarea></label></div><div class="form-actions"><button>{{ _('Add subtask') }}</button></div></form></section>{% endif %}</div>
++{% if not task.parent_id %}<section class="card"><div class="section-heading"><div><h2>{{ _('Subtasks') }}</h2><p>{{ _('Break the assignment into clear steps, with a separate owner and due date for each.') }}</p></div><span class="count">{{ task.subtasks|selectattr('status','equalto','Completed')|list|length }}/{{ task.subtasks|length }}</span></div><div class="task-subtasks">{% for item in task.subtasks %}<article><div><a class="strong" href="{{ url_for('task_detail',task_id=item.id) }}">{{ item.title }}</a><small>{{ item.assignee.name or item.assignee.email }}{% if item.due_date %} · {{ item.due_date|american_date }}{% endif %}</small></div><span class="badge task-status-{{ item.status|lower|replace(' ','-') }}">{{ _(item.status) }}</span></article>{% else %}<p class="empty">{{ _('No subtasks yet.') }}</p>{% endfor %}</div></section>{% endif %}
++{% endblock %}
+diff --git a/templates/tasks.html b/templates/tasks.html
+new file mode 100644
+index 0000000..132abb3
+--- /dev/null
++++ b/templates/tasks.html
+@@ -0,0 +1,6 @@
++{% extends 'base.html' %}{% from 'macros.html' import token with context %}
++{% block content %}
++<div class="page-heading"><div><div class="eyebrow">{{ _('TEAM WORK') }}</div><h1>{{ _('Tasks') }}</h1><p>{{ _('Assign work to staff members and collectors, then track every subtask through completion.') }}</p></div></div>
++{% if may_assign %}<section class="card padded"><h2>{{ _('Create and assign a task') }}</h2><form method="post">{{ token(csrf) }}<div class="form-grid"><label>{{ _('Task title') }}<input name="title" required maxlength="240"></label><label>{{ _('Assign to') }}<select name="assigned_to" required><option value="">{{ _('Choose staff or collector') }}</option>{% for user in staff %}<option value="{{ user.id }}">{{ user.name or user.email }} · {{ _({'organization_admin':'Organization administrator','family_admin':'Family administrator','office_employee':'Office employee','fundraiser':'Collector / fundraiser'}[user.role]) }}</option>{% endfor %}</select></label><label>{{ _('Family case (optional)') }}<select name="family_id"><option value="">{{ _('No case') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select></label><label>{{ _('Priority') }}<select name="priority">{% for value in task_priorities %}<option value="{{ value }}" {{ 'selected' if value=='Normal' }}>{{ _(value) }}</option>{% endfor %}</select></label><label>{{ _('Due date') }}<input type="date" name="due_date"></label><label>{{ _('Instructions') }}<textarea name="description" rows="3" maxlength="5000"></textarea></label></div><div class="form-actions"><button>{{ _('Create task') }}</button></div></form></section>{% endif %}
++<section class="card"><div class="section-heading"><div><h2>{{ _('Task list') }}</h2><p>{{ _('Open a task to update it or add subtasks.') }}</p></div><form method="get" class="inline-form"><label class="sr-only" for="task-status">{{ _('Status') }}</label><select id="task-status" name="status" onchange="this.form.submit()"><option value="">{{ _('All statuses') }}</option>{% for value in task_statuses %}<option value="{{ value }}" {{ 'selected' if selected_status==value }}>{{ _(value) }}</option>{% endfor %}</select></form></div><div class="table-wrap"><table><thead><tr>{% for label in ['Task','Assigned to','Case','Priority','Due date','Status','Progress'] %}<th>{{ _(label) }}</th>{% endfor %}</tr></thead><tbody>{% for task in tasks %}<tr><td><a class="strong" href="{{ url_for('task_detail',task_id=task.id) }}">{{ task.title }}</a>{% if task.description %}<small>{{ task.description|truncate(90) }}</small>{% endif %}</td><td>{{ task.assignee.name or task.assignee.email }}<small>{{ task.assignee.email if task.assignee.name else _({'organization_admin':'Organization administrator','family_admin':'Family administrator','office_employee':'Office employee','fundraiser':'Collector / fundraiser'}[task.assignee.role]) }}</small></td><td>{% if task.family %}<a href="{{ url_for('family_detail',family_id=task.family.id) }}">{{ task.family.name }}</a>{% else %}—{% endif %}</td><td><span class="badge task-priority-{{ task.priority|lower }}">{{ _(task.priority) }}</span></td><td class="numeric {% if task.due_date and task.due_date < today and task.status not in ['Completed','Cancelled'] %}task-overdue{% endif %}">{{ task.due_date|american_date if task.due_date else '—' }}</td><td><span class="badge task-status-{{ task.status|lower|replace(' ','-') }}">{{ _(task.status) }}</span></td><td>{{ task.subtasks|selectattr('status','equalto','Completed')|list|length }}/{{ task.subtasks|length }}</td></tr>{% else %}<tr><td colspan="7" class="empty">{{ _('No tasks found.') }}</td></tr>{% endfor %}</tbody></table></div></section>
++{% endblock %}
+diff --git a/tests/test_intake.py b/tests/test_intake.py
+index 8c489c3..cc67f8b 100644
+--- a/tests/test_intake.py
++++ b/tests/test_intake.py
+@@ -19,7 +19,7 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
+         assert 'class="card intake-applicant"' in page.text
+         assert 'class="sheet-field circumstances-field"' in page.text
+         assert 'id="intake-review"' not in page.text
+-        assert 'style.css?v=20260909-grouped-sidebar-v1' in page.text
++        assert 'style.css?v=20260910-tasks-grouped-sidebar-v1' in page.text
+         assert 'intake.js?v=20260909-intake-optional-v2' in page.text
+         label = {'en':'Monthly bill ($)', 'he':'סכום החשבון החודשי ($)', 'yi':'וויפיל איז דער ביל א חודש ($)'}[lang]
+         assert label in page.text and 'data-entry="monthly_bill"' in page.text
+diff --git a/tests/test_tasks.py b/tests/test_tasks.py
+new file mode 100644
+index 0000000..11408fc
+--- /dev/null
++++ b/tests/test_tasks.py
+@@ -0,0 +1,100 @@
++from werkzeug.security import generate_password_hash
++
++from app import StaffTask, create_app
++from app_original import StaffUser, db
++
++
++def make_app():
++    app = create_app({
++        'TESTING': True,
++        'DEMO': False,
++        'SQLALCHEMY_DATABASE_URI': 'sqlite://',
++        'SECRET_KEY': 'task-test-secret',
++    })
++    with app.app_context():
++        admin = StaffUser(email='admin@example.test', name='Admin',
++                          password_hash=generate_password_hash('password'),
++                          role='organization_admin')
++        collector = StaffUser(email='collector@example.test', name='Collector',
++                              password_hash=generate_password_hash('password'),
++                              role='fundraiser')
++        outsider = StaffUser(email='outside@example.test', name='Outside',
++                             password_hash=generate_password_hash('password'),
++                             role='office_employee')
++        db.session.add_all([admin, collector, outsider])
++        db.session.commit()
++    return app
++
++
++def login(client, email):
++    with client.session_transaction() as session:
++        session['user_id'] = db.session.scalar(
++            db.select(StaffUser.id).where(StaffUser.email == email))
++        session['csrf'] = 'test-csrf'
++
++
++def test_admin_assigns_task_and_subtask_and_assignee_updates_status():
++    app = make_app()
++    admin_client = app.test_client()
++    with app.app_context():
++        login(admin_client, 'admin@example.test')
++        collector_id = db.session.scalar(
++            db.select(StaffUser.id).where(StaffUser.email == 'collector@example.test'))
++    response = admin_client.post('/tasks', data={
++        'csrf': 'test-csrf', 'title': 'Call five supporters',
++        'assigned_to': collector_id, 'priority': 'High', 'due_date': '2026-09-12',
++    })
++    assert response.status_code == 302
++    with app.app_context():
++        task = db.session.scalar(db.select(StaffTask).where(
++            StaffTask.title == 'Call five supporters'))
++        task_id = task.id
++        assert task.assignee.email == 'collector@example.test'
++    page = admin_client.get(f'/tasks/{task_id}')
++    assert page.status_code == 200
++    assert b'Add a subtask' in page.data
++
++    response = admin_client.post(f'/tasks/{task_id}/subtasks', data={
++        'csrf': 'test-csrf', 'title': 'Prepare call list',
++        'assigned_to': collector_id, 'priority': 'Normal', 'due_date': '2026-09-11',
++    })
++    assert response.status_code == 302
++    with app.app_context():
++        subtask = db.session.scalar(db.select(StaffTask).where(
++            StaffTask.parent_id == task_id))
++        subtask_id = subtask.id
++
++    collector_client = app.test_client()
++    with app.app_context():
++        login(collector_client, 'collector@example.test')
++    assert collector_client.get('/tasks').status_code == 200
++    assert collector_client.get(f'/tasks/{subtask_id}').status_code == 200
++    assert collector_client.post(f'/tasks/{subtask_id}/status', data={
++        'csrf': 'test-csrf', 'status': 'Completed'}).status_code == 302
++    with app.app_context():
++        assert db.session.get(StaffTask, subtask_id).status == 'Completed'
++
++
++def test_staff_cannot_view_someone_elses_task_or_assign_work():
++    app = make_app()
++    admin_client = app.test_client()
++    with app.app_context():
++        login(admin_client, 'admin@example.test')
++        collector_id = db.session.scalar(
++            db.select(StaffUser.id).where(StaffUser.email == 'collector@example.test'))
++    admin_client.post('/tasks', data={
++        'csrf': 'test-csrf', 'title': 'Private assignment',
++        'assigned_to': collector_id, 'priority': 'Normal',
++    })
++    with app.app_context():
++        task_id = db.session.scalar(db.select(StaffTask.id).where(
++            StaffTask.title == 'Private assignment'))
++        outsider_id = db.session.scalar(db.select(StaffUser.id).where(
++            StaffUser.email == 'outside@example.test'))
++    outsider = app.test_client()
++    with app.app_context():
++        login(outsider, 'outside@example.test')
++    assert outsider.get(f'/tasks/{task_id}').status_code == 403
++    assert outsider.post('/tasks', data={
++        'csrf': 'test-csrf', 'title': 'Unauthorized',
++        'assigned_to': outsider_id, 'priority': 'Normal'}).status_code == 403
+diff --git a/translations.py b/translations.py
+index 665e07d..1c14684 100644
+--- a/translations.py
++++ b/translations.py
+@@ -154,6 +154,58 @@ _EXTRA = {
+     'The saved ABCharity API key could not be read. Enter and save the key again.': {'he': 'לא ניתן לקרוא את מפתח ה־API השמור. הזינו ושמרו את המפתח מחדש.', 'yi': 'מען קען נישט ליינען דעם אפגעהיטענעם ABCharity API שליסל. לייגט אריין און היט אפ דעם שליסל נאכאמאל.'},
+ }
+ 
++_EXTRA.update({
++    'Tasks': {'he': 'משימות', 'yi': 'אויפגאבעס'},
++    'Team work': {'he': 'עבודת צוות', 'yi': 'מאנשאפט ארבעט'},
++    'TEAM WORK': {'he': 'עבודת הצוות', 'yi': 'מאנשאפט ארבעט'},
++    'TASK': {'he': 'משימה', 'yi': 'אויפגאבע'},
++    'Task details': {'he': 'פרטי המשימה', 'yi': 'אויפגאבע פרטים'},
++    'Assign work to staff members and collectors, then track every subtask through completion.': {'he': 'הקצו עבודה לאנשי צוות ולמתרימים, ועקבו אחר כל משימת משנה עד להשלמתה.', 'yi': 'טיילט איין ארבעט פאר שטאב מיטגלידער און קאלעקטארס, און האלט מיט יעדע אונטער אויפגאבע ביז זי איז פארטיג.'},
++    'Create and assign a task': {'he': 'יצירה והקצאת משימה', 'yi': 'מאך און טייל איין אן אויפגאבע'},
++    'Task title': {'he': 'כותרת המשימה', 'yi': 'אויפגאבע נאמען'},
++    'Assign to': {'he': 'הקצאה אל', 'yi': 'טייל איין פאר'},
++    'Assigned to': {'he': 'מוקצה אל', 'yi': 'איינגעטיילט פאר'},
++    'Choose staff or collector': {'he': 'בחרו איש צוות או מתרים', 'yi': 'קלייבט א שטאב מיטגליד אדער קאלעקטאר'},
++    'Collector / fundraiser': {'he': 'מתרים / גובה', 'yi': 'קאלעקטאר / פאנדרעיזער'},
++    'Family case (optional)': {'he': 'תיק משפחה (לא חובה)', 'yi': 'משפחה קעיס (אויב מען וויל)'},
++    'No case': {'he': 'ללא תיק', 'yi': 'אן א קעיס'},
++    'Priority': {'he': 'עדיפות', 'yi': 'וויכטיגקייט'},
++    'Due date': {'he': 'תאריך יעד', 'yi': 'דעדליין'},
++    'Instructions': {'he': 'הוראות', 'yi': 'אנווייזונגען'},
++    'Create task': {'he': 'יצירת משימה', 'yi': 'מאך די אויפגאבע'},
++    'Task list': {'he': 'רשימת משימות', 'yi': 'אויפגאבע ליסטע'},
++    'Open a task to update it or add subtasks.': {'he': 'פתחו משימה כדי לעדכן אותה או להוסיף משימות משנה.', 'yi': 'עפנט אן אויפגאבע זי צו אפדעיטן אדער צולייגן אונטער אויפגאבעס.'},
++    'All statuses': {'he': 'כל הסטטוסים', 'yi': 'אלע מצבים'},
++    'Task': {'he': 'משימה', 'yi': 'אויפגאבע'},
++    'Case': {'he': 'תיק', 'yi': 'קעיס'},
++    'Progress': {'he': 'התקדמות', 'yi': 'פארשריט'},
++    'To do': {'he': 'לביצוע', 'yi': 'צו טוהן'},
++    'In progress': {'he': 'בביצוע', 'yi': 'אין ארבעט'},
++    'Waiting': {'he': 'ממתין', 'yi': 'ווארטנדיג'},
++    'Completed': {'he': 'הושלם', 'yi': 'פארטיג'},
++    'Cancelled': {'he': 'בוטל', 'yi': 'אפגעזאגט'},
++    'Low': {'he': 'נמוכה', 'yi': 'נידריג'},
++    'Normal': {'he': 'רגילה', 'yi': 'נארמאל'},
++    'High': {'he': 'גבוהה', 'yi': 'הויך'},
++    'Urgent': {'he': 'דחופה', 'yi': 'דרינגענד'},
++    'No tasks found.': {'he': 'לא נמצאו משימות.', 'yi': 'קיין אויפגאבעס זענען נישט געפונען.'},
++    'Back to tasks': {'he': 'חזרה למשימות', 'yi': 'צוריק צו אויפגאבעס'},
++    'No instructions entered.': {'he': 'לא הוזנו הוראות.', 'yi': 'קיין אנווייזונגען זענען נישט אריינגעלייגט.'},
++    'Created by': {'he': 'נוצר על ידי', 'yi': 'געמאכט דורך'},
++    'No due date': {'he': 'ללא תאריך יעד', 'yi': 'אן א דעדליין'},
++    'Update status': {'he': 'עדכון סטטוס', 'yi': 'אפדעיט דעם מצב'},
++    'Save status': {'he': 'שמירת סטטוס', 'yi': 'היט אפ דעם מצב'},
++    'Add a subtask': {'he': 'הוספת משימת משנה', 'yi': 'לייג צו אן אונטער אויפגאבע'},
++    'Subtask title': {'he': 'כותרת משימת המשנה', 'yi': 'אונטער אויפגאבע נאמען'},
++    'Add subtask': {'he': 'הוספת משימת משנה', 'yi': 'לייג צו די אונטער אויפגאבע'},
++    'Subtasks': {'he': 'משימות משנה', 'yi': 'אונטער אויפגאבעס'},
++    'Break the assignment into clear steps, with a separate owner and due date for each.': {'he': 'חלקו את המשימה לשלבים ברורים, עם אחראי ותאריך יעד נפרדים לכל שלב.', 'yi': 'צוטיילט די אויפגאבע אין קלארע שטאפלען, מיט אן אייגענעם אחראי און דעדליין פאר יעדן איינעם.'},
++    'No subtasks yet.': {'he': 'עדיין אין משימות משנה.', 'yi': 'נאכנישטא קיין אונטער אויפגאבעס.'},
++    'Task created and assigned.': {'he': 'המשימה נוצרה והוקצתה.', 'yi': 'די אויפגאבע איז געמאכט און איינגעטיילט.'},
++    'Task status updated.': {'he': 'סטטוס המשימה עודכן.', 'yi': 'דער אויפגאבע מצב איז אפדעיטעד.'},
++    'Subtask added.': {'he': 'משימת המשנה נוספה.', 'yi': 'די אונטער אויפגאבע איז צוגעלייגט.'},
++})
++
+ def translate(text):
+     extra = _EXTRA.get(text)
+     if extra:
+-- 
+2.51.1
+
