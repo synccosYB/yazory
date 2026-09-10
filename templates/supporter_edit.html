@@ -6,7 +6,7 @@
 {{ token(csrf) }}
 <div class="form-grid">
 <label>{{ _('Name *') }}<input name="name" value="{{ contact.name }}" required maxlength="160"></label>
-<label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ contact.cell_phone or contact.phone }}" maxlength="80" autocomplete="tel"></label>
+<label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ contact.cell_phone or (contact.phone if not contact.home_phone else '') }}" maxlength="80" autocomplete="tel"></label>
 <label>{{ _('Home phone') }}<input name="home_phone" value="{{ contact.home_phone }}" maxlength="80" autocomplete="tel"></label>
 <label>{{ _('Email address') }}<input name="email" type="email" value="{{ contact.email }}" maxlength="254" autocomplete="email"></label>
 <label>{{ _('Home address') }}<input name="home_address" value="{{ contact.home_address }}" maxlength="240" autocomplete="street-address"></label>
