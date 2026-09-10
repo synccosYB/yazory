@@ -421,7 +421,9 @@ def test_new_supporter_can_be_created_and_connected_from_shul(app, client):
         assert affiliation.note == 'Met after davening'
     page = client.get(f'/community-directories?kind=Shul&family_id=1').text
     assert 'New shul helper' in page
-    assert '+ Add a new person' in page
+    assert f'href="/supporters/{contact.id}"' in page
+    assert 'Connect an existing person' in page
+    assert '+ Add a new person' not in page
 
 def test_each_supporter_list_can_add_a_person_to_the_selected_family(app, client):
     siblings = client.get('/supporters?relationship_group=siblings&family_id=1').text
