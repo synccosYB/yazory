@@ -569,6 +569,11 @@ def test_parent_picker_contains_nested_names_and_is_searchable(app, client):
     assert 'Nested Parent' in page
     assert 'action="/contacts/' in page and 'Add another child' in page
 
+    family_page = client.get('/families/1').text
+    assert 'data-select-filter="family-parent-contact"' in family_page
+    assert 'aria-label="Search supporters"' in family_page
+    assert 'Nested Parent' in family_page
+
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
