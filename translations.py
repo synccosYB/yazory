@@ -21,6 +21,7 @@ _EXTRA = {
     'Send pledge': {'he': 'שליחת התחייבות', 'yi': 'שיק דעם פלעדזש'},
     'Email and pledge amount required': {'he': 'נדרשים אימייל וסכום התחייבות', 'yi': 'מען דארף אן אימעיל און א פלעדזש סכום'},
     'Communication history': {'he': 'היסטוריית תקשורת', 'yi': 'קאמיוניקאציע היסטאריע'},
+    'View message': {'he': 'הצגת ההודעה', 'yi': 'ווייז דעם מעסעדזש'},
     'Phone calls, scheduled callbacks, pledge emails, and receipts in one timeline.': {'he': 'שיחות, שיחות חוזרות, הודעות התחייבות וקבלות בציר זמן אחד.', 'yi': 'קאלס, צוריקצורופן, פלעדזש אימעילס און רעסיטס אין איין טיימליין.'},
     'No communication history yet.': {'he': 'עדיין אין היסטוריית תקשורת.', 'yi': 'נאכנישטא קיין קאמיוניקאציע היסטאריע.'},
     'Email not entered': {'he': 'לא הוזן אימייל', 'yi': 'אימעיל נישט אריינגעלייגט'},

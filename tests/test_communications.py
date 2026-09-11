@@ -145,6 +145,8 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
         assert timeline.status == 'preview'
     result_page = client.get(sent.location)
     assert 'Email was prepared but not sent because delivery is in preview mode.' in result_page.text
+    assert '<details class="communication-message-details"><summary>View message</summary>' in result_page.text
+    assert '<small class="preserve">Dear Test Supporter' not in result_page.text
 
 
 def test_yiddish_supporter_email_is_delivered_rtl(monkeypatch):
