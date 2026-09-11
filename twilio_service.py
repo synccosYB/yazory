@@ -41,7 +41,7 @@ def account_overview(account_sid, auth_token):
         params={"PageSize": 50})
     senders, senders_error = _request(
         "GET", TWILIO_WHATSAPP_SENDERS_API, account_sid, auth_token,
-        params={"PageSize": 50})
+        params={"Channel": "whatsapp", "PageSize": 50})
     return {
         "account": {key: account.get(key) for key in ("friendly_name", "status", "type")},
         "numbers": [
@@ -74,6 +74,24 @@ def create_messaging_service(account_sid, auth_token, phone_number_sid):
     if error:
         return None, error
     return service_sid, None
+
+
+def find_messaging_service_for_number(account_sid, auth_token, services,
+                                      phone_number_sid):
+    """Return the Messaging Service that already owns a Twilio number."""
+    for service in services:
+        service_sid = service.get("sid")
+        if not service_sid:
+            continue
+        numbers, error = _request(
+            "GET", f"{TWILIO_SERVICES_API}/{service_sid}/PhoneNumbers",
+            account_sid, auth_token, params={"PageSize": 100})
+        if error:
+            continue
+        for number in (numbers or {}).get("phone_numbers", []):
+            if number.get("sid") == phone_number_sid:
+                return service_sid
+    return None
 
 
 def normalize_phone(value):

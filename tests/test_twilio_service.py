@@ -1,5 +1,6 @@
 from twilio_service import (account_overview, create_messaging_service,
-                            deliver_message, normalize_phone)
+                            deliver_message, find_messaging_service_for_number,
+                            normalize_phone)
 
 
 def test_normalize_us_phone_numbers():
@@ -64,13 +65,20 @@ def test_account_overview_returns_only_safe_metadata(monkeypatch):
         ({'senders': [{'sid': 'XE1', 'sender_id': '+12513063232',
           'status': 'ONLINE'}]}, None),
     ])
-    monkeypatch.setattr('twilio_service._request', lambda *args, **kwargs: next(responses))
+    calls = []
+
+    def request(*args, **kwargs):
+        calls.append((args, kwargs))
+        return next(responses)
+
+    monkeypatch.setattr('twilio_service._request', request)
     overview, error = account_overview('AC1', 'secret')
     assert error is None
     assert overview['account']['status'] == 'active'
     assert overview['numbers'][0]['phone_number'] == '+12513063232'
     assert overview['services'][0]['sid'] == 'MG1'
     assert overview['whatsapp_senders'][0]['status'] == 'ONLINE'
+    assert calls[-1][1]['params']['Channel'] == 'whatsapp'
 
 
 def test_create_messaging_service_attaches_number(monkeypatch):
@@ -83,3 +91,15 @@ def test_create_messaging_service_attaches_number(monkeypatch):
     monkeypatch.setattr('twilio_service._request', request)
     assert create_messaging_service('AC1', 'token', 'PN1') == ('MG123', None)
     assert calls[1][2] == {'PhoneNumberSid': 'PN1'}
+
+
+def test_finds_service_that_already_owns_number(monkeypatch):
+    def request(method, url, *args, **kwargs):
+        rows = ([{'sid': 'PNwanted'}] if url.endswith('MGexisting/PhoneNumbers')
+                else [])
+        return {'phone_numbers': rows}, None
+
+    monkeypatch.setattr('twilio_service._request', request)
+    result = find_messaging_service_for_number(
+        'AC1', 'token', [{'sid': 'MGempty'}, {'sid': 'MGexisting'}], 'PNwanted')
+    assert result == 'MGexisting'

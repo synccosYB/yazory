@@ -8,7 +8,8 @@ from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from twilio_service import (account_overview, create_messaging_service,
-                            deliver_message, normalize_phone)
+                            deliver_message, find_messaging_service_for_number,
+                            normalize_phone)
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
@@ -1480,10 +1481,11 @@ def create_app(test_config=None):
         owned = {row['sid'] for row in (overview or {}).get('numbers', [])}
         if error or phone_number_sid not in owned:
             _app.abort(400, error or 'That phone number does not belong to this Twilio account.')
-        existing = next((row for row in overview.get('services', [])
-                         if row.get('friendly_name') == 'Yazory Messaging'), None)
-        if existing:
-            service_sid, error = existing['sid'], None
+        service_sid = find_messaging_service_for_number(
+            app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+            overview.get('services', []), phone_number_sid)
+        if service_sid:
+            error = None
         else:
             service_sid, error = create_messaging_service(
                 app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],

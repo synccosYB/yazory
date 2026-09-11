@@ -284,6 +284,7 @@ def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
                      'friendly_name': 'Yazory', 'capabilities': {'sms': True}}],
         'services': [], 'whatsapp_senders': [], 'warnings': []}
     monkeypatch.setattr('app.account_overview', lambda *args: (overview, None))
+    monkeypatch.setattr('app.find_messaging_service_for_number', lambda *args: None)
     monkeypatch.setattr('app.create_messaging_service', lambda *args: ('MG123', None))
     page = client.get('/twilio-setup')
     assert page.status_code == 200
