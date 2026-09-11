@@ -573,6 +573,7 @@ def create_app(test_config=None):
 </body></html>'''
         if app.config['TESTING'] or app.config['DEMO']:
             message.status = 'preview'
+            message.error = 'Email delivery is disabled in preview mode.'
             return message
         provider_id, error = deliver(app.config['RESEND_API_KEY'], app.config['EMAIL_FROM'],
                                      recipient, subject, html, body)

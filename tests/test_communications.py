@@ -139,7 +139,12 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
         timeline = db.session.scalar(db.select(SupporterCommunication).where(
             SupporterCommunication.kind == 'initial_email'))
         assert message.recipient == 'supporter@example.test'
+        assert message.status == 'preview'
+        assert message.error == 'Email delivery is disabled in preview mode.'
         assert timeline.email_message_id == message.id
+        assert timeline.status == 'preview'
+    result_page = client.get(sent.location)
+    assert 'Email was prepared but not sent because delivery is in preview mode.' in result_page.text
 
 
 def test_yiddish_supporter_email_is_delivered_rtl(monkeypatch):

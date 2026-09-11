@@ -19,7 +19,10 @@ def deliver(api_key, sender, recipient, subject, html, text, timeout=10):
     try:
         with urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read().decode())
-            return body.get('id'), None
+            provider_id = body.get('id')
+            if not provider_id:
+                return None, 'Email provider accepted the request without returning a delivery ID.'
+            return provider_id, None
     except HTTPError as exc:
         try:
             detail = json.loads(exc.read().decode()).get('message')

@@ -1408,7 +1408,7 @@ def create_app(test_config=None):
             family_id=contact.family_id)
         communication_row(
             contact, 'initial_email', subject, body,
-            status='failed' if message.status == 'failed' else 'completed',
+            status='completed' if message.status == 'sent' else message.status,
             email_message=message)
         contact.email = recipient_email
         contact.status = 'To contact'
@@ -1417,11 +1417,15 @@ def create_app(test_config=None):
         if task:
             task.status = 'Waiting'
             task.description = 'Waiting for supporter to reply to the initial email.'
-        add_audit(f'Sent initial supporter email: {contact.name}')
+        add_audit(f'{"Sent" if message.status == "sent" else "Prepared"} initial supporter email: {contact.name}')
         _app.db.session.commit()
-        _app.flash('Initial email sent.' if message.status != 'failed'
-                   else 'Initial email delivery failed. Check Communications.',
-                   'error' if message.status == 'failed' else 'message')
+        if message.status == 'sent':
+            _app.flash('Initial email sent.')
+        elif message.status == 'preview':
+            _app.flash('Email was prepared but not sent because delivery is in preview mode.',
+                       'error')
+        else:
+            _app.flash('Initial email delivery failed. Check Communications.', 'error')
         return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     @app.post('/contacts/<int:contact_id>/communications/callback')
@@ -1507,18 +1511,22 @@ def create_app(test_config=None):
             'pledge_confirmation', contact.email, subject, body,
             family_id=contact.family_id)
         communication_row(contact, 'pledge_email', subject, body,
-                          status='failed' if message.status == 'failed' else 'completed',
+                          status='completed' if message.status == 'sent' else message.status,
                           email_message=message)
         linked = _app.db.session.scalars(select(_app.Contact).where(
             _app.Contact.supporter_key == contact.supporter_key)).all() \
             if contact.supporter_key else [contact]
         for row in linked:
             row.status = 'Pledged'
-        add_audit(f'Sent supporter pledge: {contact.name}')
+        add_audit(f'{"Sent" if message.status == "sent" else "Prepared"} supporter pledge: {contact.name}')
         _app.db.session.commit()
-        _app.flash('Pledge email sent.' if message.status != 'failed'
-                   else 'Pledge email delivery failed. Check Communications.',
-                   'error' if message.status == 'failed' else 'message')
+        if message.status == 'sent':
+            _app.flash('Pledge email sent.')
+        elif message.status == 'preview':
+            _app.flash('Email was prepared but not sent because delivery is in preview mode.',
+                       'error')
+        else:
+            _app.flash('Pledge email delivery failed. Check Communications.', 'error')
         return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     def visible_task_or_403(task_id):
