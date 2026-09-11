@@ -49,3 +49,7 @@ def test_sms_pages_include_carrier_disclosures(public_app):
     assert 'STOP to opt out' in consent and 'HELP' in consent
     assert 'do not share mobile numbers or SMS consent' in privacy
     assert 'Message and data rates may apply' in terms
+    for page in (consent, privacy, terms):
+        assert 'Yoel Bochner' in page
+        assert 'sole proprietor' in page
+        assert 'Yazory software platform' in page
