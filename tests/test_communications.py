@@ -232,6 +232,50 @@ def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):
         assert db.session.get(Contact, contact_id).email == 'new-address@example.test'
 
 
+def test_sms_and_whatsapp_are_saved_in_communication_history(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    sent = []
+
+    def capture(*args, **kwargs):
+        sent.append((args, kwargs))
+        return f'SM{len(sent)}', None
+
+    monkeypatch.setattr('app.deliver_message', capture)
+    app.config.update(
+        TESTING=False, DEMO=False, TWILIO_ACCOUNT_SID='ACtest',
+        TWILIO_AUTH_TOKEN='secret', TWILIO_SMS_FROM='+18455550000',
+        TWILIO_WHATSAPP_FROM='+14155238886')
+    sms = post(client, f'/contacts/{contact_id}/communications/message/sms', {
+        'recipient_phone': '(845) 555-1212', 'body': 'Can we speak today?'})
+    whatsapp = post(client, f'/contacts/{contact_id}/communications/message/whatsapp', {
+        'recipient_phone': '845-555-1212', 'body': 'א גוטן, ווען קען מען רעדן?'})
+    assert sms.status_code == 302 and whatsapp.status_code == 302
+    assert sent[0][0][2] == '+18455551212'
+    assert sent[0][1]['channel'] == 'sms'
+    assert sent[1][1]['channel'] == 'whatsapp'
+    with app.app_context():
+        rows = db.session.scalars(db.select(SupporterCommunication).order_by(
+            SupporterCommunication.id)).all()
+        assert [row.kind for row in rows] == ['sms', 'whatsapp']
+        assert [row.provider_message_id for row in rows] == ['SM1', 'SM2']
+        assert all(row.status == 'completed' for row in rows)
+        assert db.session.get(Contact, contact_id).cell_phone == '+18455551212'
+
+
+def test_failed_twilio_message_keeps_error_in_history(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    monkeypatch.setattr('app.deliver_message', lambda *args, **kwargs: (
+        None, 'Twilio rejected this destination.'))
+    app.config.update(TESTING=False, DEMO=False)
+    response = post(client, f'/contacts/{contact_id}/communications/message/sms', {
+        'recipient_phone': '8455551212', 'body': 'Test'})
+    assert response.status_code == 302
+    with app.app_context():
+        row = db.session.scalar(db.select(SupporterCommunication))
+        assert row.status == 'failed'
+        assert row.delivery_error == 'Twilio rejected this destination.'
+
+
 def test_no_answer_button_opens_fallback_when_ai_fails(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     monkeypatch.setattr(

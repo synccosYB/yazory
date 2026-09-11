@@ -7,6 +7,7 @@ from flask import current_app, has_request_context, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
+from twilio_service import deliver_message, normalize_phone
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
@@ -272,6 +273,8 @@ class SupporterCommunication(_app.db.Model):
     receipt_id = _app.db.Column(
         _app.db.Integer, _app.db.ForeignKey('receipt.id'), nullable=True,
         unique=True, index=True)
+    provider_message_id = _app.db.Column(_app.db.String(100), nullable=False, default='')
+    delivery_error = _app.db.Column(_app.db.Text, nullable=False, default='')
     kind = _app.db.Column(_app.db.String(30), nullable=False, index=True)
     direction = _app.db.Column(_app.db.String(20), nullable=False, default='outbound')
     subject = _app.db.Column(_app.db.String(300), nullable=False, default='')
@@ -908,6 +911,16 @@ def _assistant_payload(institution):
 
 def create_app(test_config=None):
     app = _app.create_app(test_config)
+    twilio_config = {
+        'TWILIO_ACCOUNT_SID': os.getenv('TWILIO_ACCOUNT_SID', ''),
+        'TWILIO_AUTH_TOKEN': os.getenv('TWILIO_AUTH_TOKEN', ''),
+        'TWILIO_SMS_FROM': os.getenv('TWILIO_SMS_FROM', ''),
+        'TWILIO_MESSAGING_SERVICE_SID': os.getenv('TWILIO_MESSAGING_SERVICE_SID', ''),
+        'TWILIO_WHATSAPP_FROM': os.getenv('TWILIO_WHATSAPP_FROM', ''),
+    }
+    if test_config:
+        twilio_config.update({key: test_config[key] for key in twilio_config if key in test_config})
+    app.config.update(twilio_config)
 
     def ensure_extension_schema():
         """Create and migrate models supplied by this compatibility layer."""
@@ -919,6 +932,18 @@ def create_app(test_config=None):
             _app.db.session.execute(text(
                 'ALTER TABLE staff_task ADD COLUMN source_contact_id INTEGER REFERENCES contact(id)'
             ))
+        communication_columns = {
+            column['name'] for column in
+            _app.inspect(_app.db.engine).get_columns('supporter_communication')
+        }
+        if 'provider_message_id' not in communication_columns:
+            _app.db.session.execute(text(
+                "ALTER TABLE supporter_communication ADD COLUMN provider_message_id "
+                "VARCHAR(100) NOT NULL DEFAULT ''"))
+        if 'delivery_error' not in communication_columns:
+            _app.db.session.execute(text(
+                "ALTER TABLE supporter_communication ADD COLUMN delivery_error "
+                "TEXT NOT NULL DEFAULT ''"))
         _app.db.session.execute(text(
             'CREATE UNIQUE INDEX IF NOT EXISTS uq_staff_task_source_contact '
             'ON staff_task (source_contact_id)'
@@ -1313,13 +1338,16 @@ def create_app(test_config=None):
         return contact
 
     def communication_row(contact, kind, subject='', body='', status='completed',
-                          scheduled_for=None, email_message=None):
+                          scheduled_for=None, email_message=None,
+                          provider_message_id='', delivery_error=''):
         now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
         row = SupporterCommunication(
             contact_id=contact.id, family_id=contact.family_id,
             staff_user_id=task_user().id if task_user() else None,
             email_message_id=email_message.id if email_message else None,
             kind=kind, subject=subject, body=body, status=status,
+            provider_message_id=provider_message_id or '',
+            delivery_error=delivery_error or '',
             scheduled_for=scheduled_for,
             completed_at=now if status == 'completed' else None)
         _app.db.session.add(row)
@@ -1412,6 +1440,9 @@ def create_app(test_config=None):
             pledge_delivery=pledge_delivery,
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
             now=_app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+
+    def contact_mobile(contact):
+        return contact.cell_phone or contact.phone or contact.home_phone or ''
 
     @app.get('/communications')
     def communications():
@@ -1527,6 +1558,49 @@ def create_app(test_config=None):
         add_audit(f'Completed supporter call: {contact.name}')
         _app.db.session.commit()
         _app.flash('Phone call recorded.')
+        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+
+    @app.post('/contacts/<int:contact_id>/communications/message/<channel>')
+    def send_supporter_message(contact_id, channel):
+        if channel not in ('sms', 'whatsapp'):
+            _app.abort(404)
+        contact = communication_contact(contact_id)
+        recipient = _app.request.form.get('recipient_phone', '').strip()[:80]
+        body = _app.request.form.get('body', '').strip()[:1600]
+        if not body:
+            _app.abort(400, 'Enter a message.')
+        try:
+            normalized = normalize_phone(recipient)
+        except ValueError as exc:
+            _app.abort(400, str(exc))
+
+        if app.config['TESTING'] or app.config['DEMO']:
+            provider_id, error, status = None, '', 'preview'
+        else:
+            provider_id, error = deliver_message(
+                app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                normalized, body, channel=channel,
+                sms_from=app.config['TWILIO_SMS_FROM'],
+                whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'],
+                messaging_service_sid=app.config['TWILIO_MESSAGING_SERVICE_SID'])
+            status = 'failed' if error else 'completed'
+        communication_row(
+            contact, channel, 'WhatsApp message' if channel == 'whatsapp' else 'Text message',
+            body, status=status, provider_message_id=provider_id,
+            delivery_error=error)
+        contact.cell_phone = normalized
+        if not contact.phone:
+            contact.phone = normalized
+        add_audit(
+            f'{"Sent" if status == "completed" else "Prepared" if status == "preview" else "Failed"} '
+            f'{channel} message: {contact.name}')
+        _app.db.session.commit()
+        if status == 'completed':
+            _app.flash('Message sent.')
+        elif status == 'preview':
+            _app.flash('Message was prepared but not sent because delivery is in preview mode.', 'error')
+        else:
+            _app.flash('Message delivery failed. Open Communication history for the error.', 'error')
         return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     @app.post('/contacts/<int:contact_id>/communications/pledge')
