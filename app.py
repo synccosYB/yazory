@@ -1441,6 +1441,7 @@ def create_app(test_config=None):
             'communications.html', title='Communications', contacts=contacts,
             history=history, latest=latest, due=due,
             pledge_delivery=pledge_delivery,
+            pledge_frequencies=_app.PLEDGE_FREQUENCIES,
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
             now=_app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
 
@@ -1737,6 +1738,33 @@ def create_app(test_config=None):
                        'error')
         else:
             _app.flash('Pledge email delivery failed. Check Communications.', 'error')
+        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+
+    @app.post('/contacts/<int:contact_id>/communications/pledge-details')
+    def save_supporter_pledge_details(contact_id):
+        contact = communication_contact(contact_id)
+        email = (_app.request.form.get('email') or '').strip()
+        if email and (len(email) > 254 or not re.fullmatch(r'[^\\s@]+@[^\\s@]+\\.[^\\s@]+', email)):
+            _app.abort(400, 'Enter a valid supporter email address.')
+        try:
+            pledge_cents = int(round(float(_app.request.form.get('monthly', '0')) * 100))
+        except (TypeError, ValueError):
+            _app.abort(400, 'Enter a valid pledge amount.')
+        if pledge_cents < 0 or pledge_cents > 100000000:
+            _app.abort(400, 'Enter a valid pledge amount.')
+        frequency = (_app.request.form.get('pledge_frequency') or 'Monthly').strip()
+        if frequency not in _app.PLEDGE_FREQUENCIES:
+            _app.abort(400, 'Choose a valid donation frequency.')
+        linked = _app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.supporter_key == contact.supporter_key)).all() \
+            if contact.supporter_key else [contact]
+        for row in linked:
+            row.email = email
+            row.monthly_cents = pledge_cents
+            row.pledge_frequency = frequency
+        add_audit(f'Updated pledge details from communications: {contact.name}')
+        _app.db.session.commit()
+        _app.flash('Pledge details saved.')
         return _app.redirect(_app.url_for('communications', contact_id=contact.id))
 
     def visible_task_or_403(task_id):
