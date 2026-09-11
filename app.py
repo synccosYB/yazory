@@ -1744,7 +1744,7 @@ def create_app(test_config=None):
     def save_supporter_pledge_details(contact_id):
         contact = communication_contact(contact_id)
         email = (_app.request.form.get('email') or '').strip()
-        if email and (len(email) > 254 or not re.fullmatch(r'[^\\s@]+@[^\\s@]+\\.[^\\s@]+', email)):
+        if email and (len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email)):
             _app.abort(400, 'Enter a valid supporter email address.')
         try:
             pledge_cents = int(round(float(_app.request.form.get('monthly', '0')) * 100))
