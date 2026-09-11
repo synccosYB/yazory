@@ -17,7 +17,7 @@ def test_public_business_pages_are_available_without_login(public_app):
     for path in ('/about', '/privacy', '/terms', '/sms-consent', '/donation-policy'):
         response = client.get(path)
         assert response.status_code == 200
-        assert b'Synccos Inc.' in response.data
+        assert b'Yazory' in response.data
 
 
 def test_public_pages_support_all_locales(public_app):
@@ -50,6 +50,7 @@ def test_sms_pages_include_carrier_disclosures(public_app):
     assert 'do not share mobile numbers or SMS consent' in privacy
     assert 'Message and data rates may apply' in terms
     for page in (consent, privacy, terms):
-        assert 'Yoel Bochner' in page
+        assert 'YOEL BOCHNER' in page
         assert 'sole proprietor' in page
         assert 'Yazory software platform' in page
+        assert 'Synccos Inc.' not in page
