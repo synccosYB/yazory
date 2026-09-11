@@ -40,17 +40,11 @@ def create_app(test_config=None):
         return user
 
     def case_monthly_pledged(fid=None, user=None, family_ids=None):
-        """Return commitments by case, never by shared supporter identity.
+        """Return monthly commitments owned by the selected family case(s).
 
-        One real person may be connected to several families, but a promise to one
-        family is not a promise to every family. Completed pledge workflows are
-        authoritative when present; older case-level Contact pledges remain visible
-        as a fallback so existing commitments do not disappear from the profile.
+        A supporter identity may be shared across cases for contact/billing purposes,
+        but pledge amount, frequency, and status are always case-specific.
         """
-        if Work is None:
-            return original_monthly_pledged(fid=fid, user=user, family_ids=family_ids) \
-                if original_monthly_pledged else 0
-
         if fid is not None:
             target_ids = [fid]
         elif family_ids is not None:
@@ -63,65 +57,49 @@ def create_app(test_config=None):
         contacts = list(_app.db.session.scalars(select(_app.Contact).where(
             _app.Contact.family_id.in_(target_ids))))
         contact_by_id = {contact.id: contact for contact in contacts}
-        shared_keys = {contact.supporter_key for contact in contacts if contact.supporter_key}
-        aliases = list(_app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.supporter_key.in_(shared_keys)))) if shared_keys else []
-        # Always include the target case contacts themselves. A legacy contact may
-        # have no supporter_key yet and its valid case pledge must still count.
-        alias_by_id = dict(contact_by_id)
-        alias_by_id.update({contact.id: contact for contact in aliases})
         today = date.today().isoformat()
         workflow_amounts = {}
-        supporter_keys_with_workflow = set()
 
-        # Look at all completed pledges for these shared people, not only the
-        # requested family. This lets us distinguish a real case pledge from an
-        # old copied Contact status left behind by the former shared-pledge bug.
-        query = select(Work).where(
-            Work.kind == 'pledge',
-            Work.disposition == 'Complete',
-        ).order_by(Work.id)
-        for item in _app.db.session.scalars(query):
-            frequency = item.data.get('frequency')
-            if frequency not in ('Monthly', 'Weekly'):
-                continue
-            # A completed pledge remains valid when no explicit date bound was
-            # entered. Apply start/end only when that bound actually exists.
-            start = item.data.get('start') or ''
-            end = item.data.get('end') or ''
-            if start and today < start:
-                continue
-            if end and today > end:
-                continue
-            contact_id = item.data.get('contact_id')
-            alias = alias_by_id.get(contact_id)
-            if alias is None:
-                continue
-            if alias.supporter_key:
-                supporter_keys_with_workflow.add(alias.supporter_key)
-            if alias.family_id not in target_ids or item.family_id != alias.family_id:
-                continue
-            if user and user.role == 'fundraiser':
-                Link = models.get('SupporterLink')
-                link = _app.db.session.get(Link, alias.id) if Link else None
-                if not link or link.assigned_to != user.id:
+        # Completed pledge workflows are authoritative for the exact contact row
+        # and family they belong to. Never dedupe or merge them by supporter_key.
+        if Work is not None:
+            query = select(Work).where(
+                Work.kind == 'pledge',
+                Work.disposition == 'Complete',
+                Work.family_id.in_(target_ids),
+            ).order_by(Work.id)
+            for item in _app.db.session.scalars(query):
+                frequency = item.data.get('frequency')
+                if frequency not in ('Monthly', 'Weekly'):
                     continue
-            amount = item.data.get('amount', 0)
-            if frequency == 'Weekly':
-                amount = round(amount * 52 / 12)
-            # Latest active completed pledge for this contact/case wins.
-            workflow_amounts[(item.family_id, alias.id)] = amount
+                start = item.data.get('start') or ''
+                end = item.data.get('end') or ''
+                if start and today < start:
+                    continue
+                if end and today > end:
+                    continue
+                contact_id = item.data.get('contact_id')
+                contact = contact_by_id.get(contact_id)
+                if contact is None or contact.family_id != item.family_id:
+                    continue
+                if user and user.role == 'fundraiser':
+                    Link = models.get('SupporterLink')
+                    link = _app.db.session.get(Link, contact.id) if Link else None
+                    if not link or link.assigned_to != user.id:
+                        continue
+                amount = item.data.get('amount', 0)
+                if frequency == 'Weekly':
+                    amount = round(amount * 52 / 12)
+                workflow_amounts[(item.family_id, contact.id)] = amount
 
         total = sum(workflow_amounts.values())
         covered = set(workflow_amounts)
+
+        # Legacy/manual pledges live directly on the case-specific Contact row.
+        # Count them when that same case/contact has no completed workflow pledge.
         for contact in contacts:
             key = (contact.family_id, contact.id)
             if key in covered or contact.status != 'Pledged':
-                continue
-            # If this shared person has a real workflow pledge somewhere, do not
-            # trust a legacy copied Contact pledge on another family. Only that
-            # family's own workflow may count there.
-            if contact.supporter_key and contact.supporter_key in supporter_keys_with_workflow:
                 continue
             if user and user.role == 'fundraiser':
                 Link = models.get('SupporterLink')
@@ -131,9 +109,7 @@ def create_app(test_config=None):
             total += contact.monthly_equivalent_cents
         return total
 
-    # Replace the workflow total everywhere (family profile and reports). The
-    # shared supporter key remains useful for charging one person once, but it
-    # must never merge commitments belonging to different family cases.
+    # Replace the workflow total everywhere (family profile and reports).
     if workflows:
         workflows['monthly_pledged'] = case_monthly_pledged
     monthly_pledged = case_monthly_pledged
@@ -198,9 +174,6 @@ def create_app(test_config=None):
                 ).order_by(_app.Contact.id.desc())))
                 if new_contacts:
                     row = new_contacts[0]
-                    # The legacy route used to overwrite these three fields from
-                    # another case sharing the same supporter_key. Preserve what
-                    # was actually entered for this case instead.
                     try:
                         cents = int(Decimal(submitted_monthly) * 100) if submitted_monthly else 0
                     except (InvalidOperation, ValueError):
