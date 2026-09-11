@@ -1331,6 +1331,48 @@ def create_app(test_config=None):
         except (TypeError, ValueError):
             _app.abort(400, 'Enter a valid follow-up date and time.')
 
+    def supporter_pledge_delivery(contact):
+        """Choose the payment destination from the supporter's current pledges.
+
+        Contact rows are case-specific, while ``supporter_key`` is the shared
+        billing identity. Recompute this at render/send time so adding a second
+        family immediately switches the supporter to one Yazory link.
+        """
+        linked = _app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.supporter_key == contact.supporter_key
+        ).order_by(_app.Contact.family_id, _app.Contact.id)).all() \
+            if contact.supporter_key else [contact]
+        active = [row for row in linked
+                  if row.monthly_cents > 0 and row.status not in ('Paused', 'Declined')]
+        by_family = {}
+        for row in active:
+            by_family.setdefault(row.family_id, row)
+        pledges = list(by_family.values()) or [contact]
+        if len(pledges) > 1:
+            return {
+                'kind': 'Yazory',
+                'url': _app.url_for('supporter_donation', contact_id=contact.id,
+                                    _external=True),
+                'pledges': pledges,
+                'reason': f'{len(pledges)} connected family pledges · one charge',
+            }
+        pledge = pledges[0]
+        campaign = _app.db.session.scalar(select(_app.CharityCampaign).where(
+            _app.CharityCampaign.family_id == pledge.family_id,
+            _app.CharityCampaign.public_url != '').order_by(
+                _app.CharityCampaign.id.desc()))
+        if campaign and campaign.public_url:
+            return {'kind': 'ABCharity', 'url': campaign.public_url,
+                    'pledges': pledges,
+                    'reason': f'One family pledge · campaign {campaign.external_id}'}
+        return {
+            'kind': 'Yazory',
+            'url': _app.url_for('supporter_donation', contact_id=contact.id,
+                                _external=True),
+            'pledges': pledges,
+            'reason': 'ABCharity campaign is unavailable · secure Yazory payment',
+        }
+
     def render_communications(ai_contact=None, ai_subject='', ai_body=''):
         user = task_user()
         if user is None or user.role not in (
@@ -1363,9 +1405,11 @@ def create_app(test_config=None):
         for row in history:
             latest.setdefault(row.contact_id, row)
         due = [row for row in history if row.status == 'scheduled']
+        pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             history=history, latest=latest, due=due,
+            pledge_delivery=pledge_delivery,
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
             now=_app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
 
@@ -1493,18 +1537,17 @@ def create_app(test_config=None):
         if contact.monthly_cents <= 0:
             _app.abort(400, 'Enter the pledge amount before sending it.')
         subject = 'Your Yazory pledge confirmation'
-        frequency = {'Weekly': 'each week', 'Monthly': 'each month',
-                     'One time': 'one time'}.get(
-                         contact.pledge_frequency, contact.pledge_frequency)
-        campaign = _app.db.session.scalar(select(_app.CharityCampaign).where(
-            _app.CharityCampaign.family_id == contact.family_id))
-        if campaign is None or not campaign.public_url:
-            _app.abort(400, 'Enter the public ABCharity campaign link for this family before sending the pledge.')
-        body = (f'Dear {contact.name},\n\nThank you for pledging '
-                f'${contact.monthly_cents / 100:,.2f} {frequency} through Yazory.\n\n'
-                f'This pledge is connected to the {contact.family.name} family case. '
-                'Please use this secure ABCharity campaign link to make your donation:\n'
-                f'{campaign.public_url}\n\n'
+        delivery = supporter_pledge_delivery(contact)
+        family_lines = '\n'.join(
+            f'- {row.family.name}: ${row.monthly_cents / 100:,.2f} '
+            f'{({"Weekly": "each week", "Monthly": "each month", "One time": "one time"}.get(row.pledge_frequency, row.pledge_frequency))}'
+            for row in delivery['pledges'])
+        destination = ('ABCharity campaign' if delivery['kind'] == 'ABCharity'
+                       else 'secure Yazory payment page')
+        body = (f'Dear {contact.name},\n\nThank you for your pledge through Yazory.\n\n'
+                f'{family_lines}\n\n'
+                f'Please use this {destination} to make your donation:\n'
+                f'{delivery["url"]}\n\n'
                 'A separate receipt will be emailed every time a payment is successfully received.\n\n'
                 'If any detail is incorrect, please reply to this email before the next payment.')
         message = app.extensions['send_email'](
@@ -1518,7 +1561,7 @@ def create_app(test_config=None):
             if contact.supporter_key else [contact]
         for row in linked:
             row.status = 'Pledged'
-        add_audit(f'{"Sent" if message.status == "sent" else "Prepared"} supporter pledge: {contact.name}')
+        add_audit(f'{"Sent" if message.status == "sent" else "Prepared"} supporter pledge via {delivery["kind"]}: {contact.name}')
         _app.db.session.commit()
         if message.status == 'sent':
             _app.flash('Pledge email sent.')
