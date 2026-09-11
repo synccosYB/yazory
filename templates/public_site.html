@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Yazory, operated by Synccos Inc., provides secure family-support, donation, and transparent fund-distribution services.">
+  <meta name="description" content="Yazory provides secure family-support, donation, and transparent fund-distribution services.">
   <title>{{ title }} · Yazory</title>
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}">
@@ -25,6 +25,8 @@
     </nav>
   </header>
 
+  {% set displayed_operator = 'YOEL BOCHNER' if page in ('privacy', 'terms', 'sms-consent') else 'Synccos Inc.' %}
+  {% filter replace('Synccos Inc.', displayed_operator) %}
   <main class="public-main">
   {% if page == 'about' %}
     {% if language == 'yi' %}
@@ -42,18 +44,18 @@
     {% endif %}
   {% elif page == 'sms-consent' %}
     <section class="policy sms-registered-sender">
-      {% if language == 'yi' %}<p><strong>רעגיסטרירטער SMS שיקער:</strong> יואל באכנער, אלס אייגנטימער, שיקט די מעסעדזשעס דורך די יעזורי פלאטפארמע.</p>
-      {% elif language == 'he' %}<p><strong>שולח ה-SMS הרשום:</strong> יואל באכנר, כעוסק יחיד, שולח את ההודעות באמצעות פלטפורמת יעזורי.</p>
-      {% else %}<p><strong>Registered SMS sender:</strong> Yoel Bochner, sole proprietor, sends messages through the Yazory software platform.</p>{% endif %}
+      {% if language == 'yi' %}<p><strong>רעגיסטרירטער SMS שיקער:</strong> YOEL BOCHNER, אלס אייגנטימער, שיקט די מעסעדזשעס דורך די יעזורי software platform.</p>
+      {% elif language == 'he' %}<p><strong>שולח ה-SMS הרשום:</strong> YOEL BOCHNER, כעוסק יחיד, שולח את ההודעות באמצעות פלטפורמת התוכנה יעזורי.</p>
+      {% else %}<p><strong>Registered SMS sender:</strong> YOEL BOCHNER, sole proprietor, sends messages through the Yazory software platform.</p>{% endif %}
     </section>
     {% if language == 'yi' %}<section class="policy"><span class="eyebrow">SMS הסכמה</span><h1>צושטימען צו באקומען SMS מעסעדזשעס</h1><h2>וויאזוי מען שטימט צו</h2><p>א יעזורי שטאב מיטגליד ערקלערט ביים טעלעפאן אז די מעסעדזשעס קענען ארייננעמען צייטן פאר א קאל, הבטחות, נדבות, באצאלונג דערמאנונגען, באשטעטיגונגען און קבלות. מעסעדזש צאל קען זיך טוישן, בדרך כלל ביז פיר א חודש. מעסעדזש און דאטא ראטעס קענען חל זיין. דער שטאב מיטגליד ערקלערט אז מען קען ענטפערן STOP זיך אפצושרייבן אדער HELP פאר הילף, און פרעגט קלאר: „צי שטימט איר יא צו צו באקומען SMS מעסעדזשעס פון יעזורי?“ נאר נאך א קלארן „יא“ ווערט די הסכמה מיטן דאטום און צייט איינגעשריבן און SMS מעסעדזשעס קענען ווערן געשיקט.</p><h2>אייער ברירה</h2><p>די הסכמה איז פרייוויליג און איז נישט קיין תנאי צו געבן א נדבה אדער צו באקומען א סערוויס. מען קען יעדע צייט צוריקציען די הסכמה דורך ענטפערן STOP.</p><p><a href="{{ url_for('privacy') }}">פריוואטקייט פאליסי</a> · <a href="{{ url_for('terms') }}">תנאי השימוש</a></p></section>
     {% elif language == 'he' %}<section class="policy"><span class="eyebrow">הסכמת SMS</span><h1>הסכמה לקבלת הודעות SMS</h1><h2>כיצד ניתנת הסכמה</h2><p>נציג יעזורי מסביר בשיחת טלפון שההודעות עשויות לכלול תיאום שיחה, התחייבויות, תרומות, תזכורות תשלום, אישורים וקבלות. תדירות ההודעות משתנה, בדרך כלל עד ארבע הודעות בחודש. ייתכן שיחולו תעריפי הודעות ונתונים. הנציג מסביר שניתן להשיב STOP לביטול או HELP לקבלת עזרה, ושואל במפורש: "האם אתה מסכים לקבל הודעות SMS מיעזורי?" רק לאחר תשובת "כן" מפורשת, ההסכמה נרשמת עם תאריך ושעה וניתן להתחיל בשליחת הודעות.</p><h2>הבחירה שלך</h2><p>ההסכמה היא מרצון ואינה תנאי לתרומה או לקבלת שירות. ניתן לבטל בכל עת באמצעות תשובה STOP.</p><p><a href="{{ url_for('privacy') }}">מדיניות פרטיות</a> · <a href="{{ url_for('terms') }}">תנאי שימוש</a></p></section>
     {% else %}<section class="policy"><span class="eyebrow">SMS CONSENT</span><h1>Consent to receive SMS messages</h1><h2>How consent is obtained</h2><p>During a telephone conversation, a Yazory staff member explains that messages may include call scheduling, pledge and donation updates, payment reminders, confirmations, and receipts. Message frequency varies, typically up to four messages per month. Message and data rates may apply. The staff member explains that the recipient may reply STOP to opt out or HELP for assistance and asks: “Do you agree to receive SMS messages from Yazory?” Only after the recipient gives an explicit “yes” is the consent date and time recorded and SMS messaging permitted.</p><h2>Your choice</h2><p>Consent is voluntary and is not a condition of making a donation or receiving service. Consent may be withdrawn at any time by replying STOP.</p><p><a href="{{ url_for('privacy') }}">Privacy Policy</a> · <a href="{{ url_for('terms') }}">Terms &amp; Conditions</a></p></section>{% endif %}
   {% elif page == 'privacy' %}
     <section class="policy sms-registered-sender">
-      {% if language == 'yi' %}<p><strong>רעגיסטרירטער SMS שיקער:</strong> יואל באכנער, אלס אייגנטימער, שיקט די מעסעדזשעס דורך די יעזורי פלאטפארמע.</p>
-      {% elif language == 'he' %}<p><strong>שולח ה-SMS הרשום:</strong> יואל באכנר, כעוסק יחיד, שולח את ההודעות באמצעות פלטפורמת יעזורי.</p>
-      {% else %}<p><strong>Registered SMS sender:</strong> Yoel Bochner, sole proprietor, sends messages through the Yazory software platform.</p>{% endif %}
+      {% if language == 'yi' %}<p><strong>רעגיסטרירטער SMS שיקער:</strong> YOEL BOCHNER, אלס אייגנטימער, שיקט די מעסעדזשעס דורך די יעזורי software platform.</p>
+      {% elif language == 'he' %}<p><strong>שולח ה-SMS הרשום:</strong> YOEL BOCHNER, כעוסק יחיד, שולח את ההודעות באמצעות פלטפורמת התוכנה יעזורי.</p>
+      {% else %}<p><strong>Registered SMS sender:</strong> YOEL BOCHNER, sole proprietor, sends messages through the Yazory software platform.</p>{% endif %}
     </section>
     {% if language == 'yi' %}<section class="policy"><h2>SMS פריוואטקייט</h2><p>מיר נוצן סעלפאן נומערן און SMS הסכמה רעקארדס נאר פאר די מעסעדזשעס וואס דער מענטש האט באשטעטיגט. מיר טיילן נישט קיין סעלפאן נומערן אדער SMS הסכמה מיט דריטע פארטייען אדער אפיליאטן פאר מארקעטינג אדער פראמאציע. מעסעדזש צאל קען זיך טוישן, בדרך כלל ביז פיר א חודש. מעסעדזש און דאטא ראטעס קענען חל זיין. ענטפערט STOP זיך אפצושרייבן אדער HELP פאר הילף.</p></section>
     {% elif language == 'he' %}<section class="policy"><h2>פרטיות SMS</h2><p>מספרי טלפון ניידים ורישומי הסכמה ל־SMS משמשים רק להודעות שהנמען אישר. איננו משתפים מספרי טלפון ניידים או הסכמת SMS עם צדדים שלישיים או חברות קשורות לצורכי שיווק או קידום. תדירות ההודעות משתנה, בדרך כלל עד ארבע הודעות בחודש. ייתכן שיחולו תעריפי הודעות ונתונים. השיבו STOP לביטול או HELP לקבלת עזרה.</p></section>
@@ -63,9 +65,9 @@
     {% else %}<section class="policy"><span class="eyebrow">Last updated September 8, 2026</span><h1>Privacy policy</h1><h2>Who operates Yazory</h2><p>Yazory is developed and operated by Synccos Inc.</p><h2>Information we collect</h2><p>We may collect contact information, family-support application information, pledges, donations, payment status, receipts, and activity within the service.</p><h2>Payment information</h2><p>Card and bank information is submitted securely to our payment provider. Yazory does not store full card numbers or card security codes. We may retain a provider identifier, last four digits, card brand, and transaction status.</p><h2>How information is used</h2><p>We use information to administer support applications, donations, receipts, recurring payments, approved fund distributions, security, reporting, and customer support.</p><h2>How information is shared</h2><p>Information is shared only as necessary with authorized staff and family administrators, payment and service providers, or as required by law.</p><h2>Contact</h2><p><a href="mailto:support@synccos.com">support@synccos.com</a> · <a href="tel:+18452852092">845-285-2092</a></p></section>{% endif %}
   {% elif page == 'terms' %}
     <section class="policy sms-registered-sender">
-      {% if language == 'yi' %}<p><strong>רעגיסטרירטער SMS שיקער:</strong> יואל באכנער, אלס אייגנטימער, שיקט די מעסעדזשעס דורך די יעזורי פלאטפארמע.</p>
-      {% elif language == 'he' %}<p><strong>שולח ה-SMS הרשום:</strong> יואל באכנר, כעוסק יחיד, שולח את ההודעות באמצעות פלטפורמת יעזורי.</p>
-      {% else %}<p><strong>Registered SMS sender:</strong> Yoel Bochner, sole proprietor, sends messages through the Yazory software platform.</p>{% endif %}
+      {% if language == 'yi' %}<p><strong>רעגיסטרירטער SMS שיקער:</strong> YOEL BOCHNER, אלס אייגנטימער, שיקט די מעסעדזשעס דורך די יעזורי software platform.</p>
+      {% elif language == 'he' %}<p><strong>שולח ה-SMS הרשום:</strong> YOEL BOCHNER, כעוסק יחיד, שולח את ההודעות באמצעות פלטפורמת התוכנה יעזורי.</p>
+      {% else %}<p><strong>Registered SMS sender:</strong> YOEL BOCHNER, sole proprietor, sends messages through the Yazory software platform.</p>{% endif %}
     </section>
     {% if language == 'yi' %}<section class="policy"><h2>SMS תנאים</h2><p>נאך א קלארן מונדליכן „יא“ קען דער שטיצער באקומען יעזורי מעסעדזשעס וועגן קאל צייטן, הבטחות, נדבות, באצאלונג דערמאנונגען, באשטעטיגונגען און קבלות. מעסעדזש צאל קען זיך טוישן, בדרך כלל ביז פיר א חודש. די הסכמה איז פרייוויליג און נישט קיין תנאי פאר א נדבה אדער סערוויס. מעסעדזש און דאטא ראטעס קענען חל זיין. ענטפערט STOP זיך אפצושרייבן אדער HELP פאר הילף. קעריערס זענען נישט פאראנטווארטליך פאר פארשפעטיגטע אדער נישט דעליווערד מעסעדזשעס.</p></section>
     {% elif language == 'he' %}<section class="policy"><h2>תנאי SMS</h2><p>לאחר מתן "כן" מפורש בעל פה, התומך עשוי לקבל הודעות יעזורי בנוגע לתיאום שיחות, התחייבויות, תרומות, תזכורות תשלום, אישורים וקבלות. תדירות ההודעות משתנה, בדרך כלל עד ארבע הודעות בחודש. ההסכמה היא מרצון ואינה תנאי לתרומה או לקבלת שירות. ייתכן שיחולו תעריפי הודעות ונתונים. השיבו STOP לביטול או HELP לקבלת עזרה. המפעילים אינם אחראים להודעות שעוכבו או לא נמסרו.</p></section>
@@ -79,6 +81,7 @@
     {% else %}<section class="policy"><span class="eyebrow">Last updated September 8, 2026</span><h1>Donation and recurring payment policy</h1><h2>One-time donations</h2><p>By confirming a donation, the donor authorizes the payment provider to charge the selected amount.</p><h2>Recurring donations</h2><p>By starting a recurring donation, the donor authorizes charges at the selected frequency and for the selected number of installments, until completed or cancelled.</p><h2>Cancellation</h2><p>Future recurring charges may be cancelled by contacting us at least three business days before the next scheduled charge. Cancellation does not automatically refund previous charges.</p><h2>Refunds</h2><p>Donations are generally final. For a duplicate, unauthorized, or mistaken charge, contact us within 30 days. Refund requests are reviewed according to the circumstances and payment-provider rules.</p><h2>Receipts and failed payments</h2><p>Yazory may send receipts, confirmations, and failed-payment notices. Donors are responsible for keeping their contact and payment information current.</p><h2>Contact</h2><p><a href="mailto:support@synccos.com">support@synccos.com</a> · <a href="tel:+18452852092">845-285-2092</a></p></section>{% endif %}
   {% endif %}
   </main>
-  <footer class="public-footer"><strong>Yazory</strong><span>{% if language == 'yi' %}אנטוויקלט און געפירט דורך Synccos Inc.{% elif language == 'he' %}פותחה ומופעלת על ידי Synccos Inc.{% else %}Developed and operated by Synccos Inc.{% endif %}</span><span>69 Brookside Ave., Suite 224, Chester, NY 10918</span><span><a href="mailto:support@synccos.com">support@synccos.com</a> · <a href="tel:+18452852092">845-285-2092</a></span></footer>
+  {% endfilter %}
+  <footer class="public-footer"><strong>Yazory</strong><span>{% if page in ('privacy', 'terms', 'sms-consent') %}{% if language == 'yi' %}רעגיסטרירטער SMS שיקער: YOEL BOCHNER, אייגנטימער{% elif language == 'he' %}שולח SMS רשום: YOEL BOCHNER, עוסק יחיד{% else %}Registered SMS sender: YOEL BOCHNER, sole proprietor{% endif %}{% else %}{% if language == 'yi' %}אנטוויקלט און געפירט דורך Synccos Inc.{% elif language == 'he' %}פותחה ומופעלת על ידי Synccos Inc.{% else %}Developed and operated by Synccos Inc.{% endif %}{% endif %}</span><span>69 Brookside Ave., Suite 224, Chester, NY 10918</span><span><a href="mailto:support@synccos.com">support@synccos.com</a> · <a href="tel:+18452852092">845-285-2092</a></span></footer>
 </body>
 </html>
