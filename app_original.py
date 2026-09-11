@@ -1153,7 +1153,7 @@ def create_app(test_config=None):
         public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
                             'reset_password', 'accept_invitation', 'about', 'privacy',
                             'terms', 'donation_policy', 'stripe_webhook',
-                            'stripe_success', 'stripe_cancel', 'supporter_login',
+                            'stripe_success', 'stripe_cancel', 'sms_consent', 'supporter_login',
                             'supporter_login_link', 'supporter_portal',
                             'supporter_logout', 'supporter_portal_update_pledge',
                             'supporter_portal_donate', 'supporter_portal_manage_payment',
@@ -1317,6 +1317,10 @@ def create_app(test_config=None):
     @app.get('/terms')
     def terms():
         return public_page('terms', 'Terms of service')
+
+    @app.get('/sms-consent')
+    def sms_consent():
+        return public_page('sms-consent', 'SMS consent')
 
     @app.get('/donation-policy')
     def donation_policy():
