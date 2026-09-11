@@ -69,7 +69,18 @@
 </td>
 <td>{{ c.family.name }}</td>
 <td>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
-<td>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</td>
+<td class="pledge-cell">
+<form class="inline-pledge-form no-print" method="post" action="{{ url_for('update_contact', contact_id=c.id) }}">
+{{ token(csrf) }}
+<input type="hidden" name="status" value="{{ c.status }}">
+<label class="sr-only" for="pledge-amount-{{ c.id }}">{{ _('Donation amount ($)') }} — {{ c.name }}</label>
+<div class="pledge-amount-input"><span aria-hidden="true">$</span><input id="pledge-amount-{{ c.id }}" name="monthly" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(c.monthly_cents/100) }}" required></div>
+<label class="sr-only" for="pledge-frequency-{{ c.id }}">{{ _('Donation frequency') }} — {{ c.name }}</label>
+<select id="pledge-frequency-{{ c.id }}" name="pledge_frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}" {{ 'selected' if frequency == c.pledge_frequency }}>{{ _(frequency) }}</option>{% endfor %}</select>
+<button class="small" type="submit">{{ _('Save') }}</button>
+</form>
+<span class="print-only">{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</span>
+</td>
 <td>{{ received[c.id]|money }}</td>
 <td>{{ _(c.status) }}</td>
 <td class="list-actions">
