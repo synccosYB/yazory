@@ -207,9 +207,6 @@ def install_workflows(app, db, entities, helpers):
 
     def financials(fid):
         entries=db.session.scalars(select(Ledger).where(Ledger.family_id==fid)).all()
-        # ABCharity is the processor record of money already received. Include
-        # valid USD receipts as soon as they are imported, but stop adding the
-        # import overlay once its reviewed workflow has posted ledger entries.
         posted_sources={e.source_item_id for e in entries}
         posted_imports=set()
         for item in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind=='collection')):
@@ -259,7 +256,6 @@ def install_workflows(app, db, entities, helpers):
         return p.data if p else {}
 
     def enforced():
-        # Approval of governance is the durable cutover; expiration never turns controls off.
         return not app.config['DEMO'] and bool(app.config.get('WORKFLOW_ENFORCEMENT') or policy())
 
     def conflict(item,uid):
@@ -277,7 +273,6 @@ def install_workflows(app, db, entities, helpers):
         if 'auditor' in roles() and len(roles())==1 and role!='auditor': return False
         if role=='owner': return item.owner_id==user.id
         if role not in roles() or conflict(item,user.id): return False
-        # Review and approval never silently inherit the organization-admin role.
         if item.created_by==user.id or item.data.get('_submitted_by')==user.id: return False
         decisions=db.session.scalars(select(Decision).where(Decision.item_id==item.id,Decision.revision==item.revision,Decision.action=='Approve')).all()
         if any(d.actor_id==user.id and d.stage==item.stage for d in decisions): return False
@@ -340,7 +335,6 @@ def install_workflows(app, db, entities, helpers):
                 if key=='bank_date':
                     try: date.fromisoformat(raw)
                     except ValueError: fail('Enter a valid date.')
-                # The transaction identity on a submitted collection cannot be changed.
                 if key=='reference' and data.get(key) and data[key]!=raw: fail('Submitted references cannot be replaced.')
                 data[key]=raw
         fee=request.form.get('processing_fee','').strip()
@@ -430,12 +424,13 @@ def install_workflows(app, db, entities, helpers):
             if not link or not link.verified or link.permission!='Permitted' or not link.assigned_to: fail('Verify the relationship, contact permission and fundraiser assignment first.')
         if item.kind=='pledge' and next_label=='Active':
             contact=db.session.get(Contact,item.data['contact_id'])
-            for other in db.session.scalars(select(Work).where(Work.kind=='pledge',Work.disposition=='Complete',Work.id!=item.id)):
+            for other in db.session.scalars(select(Work).where(
+                    Work.kind=='pledge', Work.disposition=='Complete', Work.id!=item.id,
+                    Work.family_id==item.family_id)):
                 oc=db.session.get(Contact,other.data.get('contact_id'))
-                if other.data.get('end','')<date.today().isoformat():continue
+                end=other.data.get('end') or ''
+                if end and end<date.today().isoformat():continue
                 if oc and oc.id==contact.id:fail('Pause the previous pledge before confirming a replacement.')
-                if oc and contact.supporter_key and oc.supporter_key==contact.supporter_key and any(other.data.get(k)!=item.data.get(k) for k in ('amount','frequency')):
-                    fail('Linked cases must use the same shared donation amount and frequency.')
         if item.kind=='closure' and next_label=='Closed' and 'StripePayment' in entities:
             payment=entities['StripePayment']
             if db.session.scalar(select(payment.id).join(Contact,Contact.id==payment.contact_id).where(
@@ -505,14 +500,20 @@ def install_workflows(app, db, entities, helpers):
         if fid is not None:query=query.where(Work.family_id==fid)
         if family_ids is not None:query=query.where(Work.family_id.in_(family_ids))
         for w in db.session.scalars(query.order_by(Work.id)):
-            if w.data.get('frequency') in ('Monthly','Weekly') and w.data.get('start','')<=today<=w.data.get('end',''):
-                link=db.session.get(Link,w.data.get('contact_id'))
-                if user and user.role=='fundraiser' and (not link or link.assigned_to!=user.id):continue
-                contact=db.session.get(Contact,w.data.get('contact_id'))
-                identity=(contact.supporter_key or str(contact.id)) if contact and fid is None else str(w.id)
-                amount=w.data.get('amount',0)
-                if w.data['frequency']=='Weekly':amount=round(amount*52/12)
-                totals[identity]=amount
+            frequency=w.data.get('frequency')
+            if frequency not in ('Monthly','Weekly'):continue
+            start=w.data.get('start') or ''
+            end=w.data.get('end') or ''
+            if start and today<start:continue
+            if end and today>end:continue
+            link=db.session.get(Link,w.data.get('contact_id'))
+            if user and user.role=='fundraiser' and (not link or link.assigned_to!=user.id):continue
+            contact=db.session.get(Contact,w.data.get('contact_id'))
+            if not contact or contact.family_id!=w.family_id:continue
+            identity=(w.family_id,contact.id)
+            amount=w.data.get('amount',0)
+            if frequency=='Weekly':amount=round(amount*52/12)
+            totals[identity]=amount
         return sum(totals.values())
 
     def deactivate(item):
@@ -634,9 +635,6 @@ def install_workflows(app, db, entities, helpers):
         if kind:query=query.where(Work.kind==kind)
         if fid:query=query.where(Work.family_id==fid)
         items=[w for w in db.session.scalars(query) if readable(w)]
-        # Imported ABCharity receipts already affect the case balance as soon as
-        # they are imported.  Legacy review drafts are therefore not staff
-        # actions unless the posted receipt later changed and needs attention.
         items=[w for w in items if not (w.kind=='collection' and w.data.get('abcharity_donation_id')
             and (not app.extensions['workflows'].get('import_consistent') or app.extensions['workflows']['import_consistent'](w)))]
         all_items=items
@@ -899,7 +897,6 @@ def install_workflows(app, db, entities, helpers):
 
     @app.cli.command('workflow-escalate')
     def workflow_escalate():
-        """Idempotent daily in-app notices; schedule this command in the runtime."""
         count=0
         for item in db.session.scalars(select(Work).where(Work.disposition=='Open',Work.due<date.today())):
             last=db.session.scalar(select(Notice).where(Notice.item_id==item.id,Notice.message=='Overdue workflow').order_by(Notice.id.desc()))
@@ -909,7 +906,6 @@ def install_workflows(app, db, entities, helpers):
     @app.post('/expenses/<int:expense_id>/workflow')
     def expense_workflow(expense_id):return legacy_expense(expense_id)
 
-    # Shared hooks enforce the workflow even through older URLs.
     app.extensions['workflows']=dict(models=M,active_user=active_user,enforced=enforced,prepare_stripe_release=prepare_stripe_release,finish_stripe_release=finish_stripe_release,roles=roles,legacy_status=legacy_status,
         legacy_expense=legacy_expense,document_access=document_access,document_allowed=document_allowed,
         protect_document_delete=protect_document_delete,financials=financials,emit=emit,readable=readable,
