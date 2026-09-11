@@ -63,13 +63,20 @@ def create_app(test_config=None):
         contacts = list(_app.db.session.scalars(select(_app.Contact).where(
             _app.Contact.family_id.in_(target_ids))))
         contact_by_id = {contact.id: contact for contact in contacts}
+        shared_keys = {contact.supporter_key for contact in contacts if contact.supporter_key}
+        aliases = list(_app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.supporter_key.in_(shared_keys)))) if shared_keys else []
+        alias_by_id = {contact.id: contact for contact in aliases}
         today = date.today().isoformat()
         workflow_amounts = {}
+        supporter_keys_with_workflow = set()
 
+        # Look at all completed pledges for these shared people, not only the
+        # requested family. This lets us distinguish a real case pledge from an
+        # old copied Contact status left behind by the former shared-pledge bug.
         query = select(Work).where(
             Work.kind == 'pledge',
             Work.disposition == 'Complete',
-            Work.family_id.in_(target_ids),
         ).order_by(Work.id)
         for item in _app.db.session.scalars(query):
             frequency = item.data.get('frequency')
@@ -78,25 +85,34 @@ def create_app(test_config=None):
             if not (item.data.get('start', '') <= today <= item.data.get('end', '')):
                 continue
             contact_id = item.data.get('contact_id')
-            contact = contact_by_id.get(contact_id)
-            if contact is None or contact.family_id != item.family_id:
+            alias = alias_by_id.get(contact_id)
+            if alias is None:
+                continue
+            if alias.supporter_key:
+                supporter_keys_with_workflow.add(alias.supporter_key)
+            if alias.family_id not in target_ids or item.family_id != alias.family_id:
                 continue
             if user and user.role == 'fundraiser':
                 Link = models.get('SupporterLink')
-                link = _app.db.session.get(Link, contact.id) if Link else None
+                link = _app.db.session.get(Link, alias.id) if Link else None
                 if not link or link.assigned_to != user.id:
                     continue
             amount = item.data.get('amount', 0)
             if frequency == 'Weekly':
                 amount = round(amount * 52 / 12)
             # Latest active completed pledge for this contact/case wins.
-            workflow_amounts[(item.family_id, contact.id)] = amount
+            workflow_amounts[(item.family_id, alias.id)] = amount
 
         total = sum(workflow_amounts.values())
         covered = set(workflow_amounts)
         for contact in contacts:
             key = (contact.family_id, contact.id)
             if key in covered or contact.status != 'Pledged':
+                continue
+            # If this shared person has a real workflow pledge somewhere, do not
+            # trust a legacy copied Contact pledge on another family. Only that
+            # family's own workflow may count there.
+            if contact.supporter_key and contact.supporter_key in supporter_keys_with_workflow:
                 continue
             if user and user.role == 'fundraiser':
                 Link = models.get('SupporterLink')
