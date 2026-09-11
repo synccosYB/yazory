@@ -77,8 +77,49 @@ def test_full_supporter_communication_workflow(monkeypatch):
         assert contact.status == 'Pledged'
         assert message.status == 'preview'
         assert '$36.00 each month' in message.text_body
+        assert 'https://abcharity.org/campaign/test-family' in message.text_body
         assert db.session.scalar(db.select(db.func.count()).select_from(
             SupporterCommunication)) == 3
+
+
+
+def test_two_family_pledges_automatically_use_one_yazory_link(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        original = db.session.get(Contact, contact_id)
+        second_family = Family(name='Second family')
+        db.session.add(second_family)
+        db.session.flush()
+        db.session.add(Contact(
+            family_id=second_family.id, name=original.name,
+            relationship='Friend', phone=original.phone, email=original.email,
+            supporter_key=original.supporter_key, monthly_cents=2400,
+            pledge_frequency='Monthly', status='Contacted'))
+        db.session.commit()
+
+    page = client.get(f'/communications?contact_id={contact_id}')
+    assert '<strong>Yazory</strong>' in page.text
+    assert '2 connected family pledges' in page.text
+    assert post(client, f'/contacts/{contact_id}/communications/pledge', {}).status_code == 302
+    with app.app_context():
+        message = db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'pledge_confirmation'))
+        assert 'Test family: $36.00 each month' in message.text_body
+        assert 'Second family: $24.00 each month' in message.text_body
+        assert f'/supporters/{contact_id}/donate' in message.text_body
+        assert 'abcharity.org/campaign/test-family' not in message.text_body
+
+
+def test_missing_abcharity_campaign_falls_back_to_yazory(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        db.session.query(CharityCampaign).delete()
+        db.session.commit()
+    assert post(client, f'/contacts/{contact_id}/communications/pledge', {}).status_code == 302
+    with app.app_context():
+        message = db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'pledge_confirmation'))
+        assert f'/supporters/{contact_id}/donate' in message.text_body
 
 
 def test_supporter_communication_link_opens_only_that_supporter(monkeypatch):
