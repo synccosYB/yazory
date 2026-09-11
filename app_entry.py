@@ -66,7 +66,10 @@ def create_app(test_config=None):
         shared_keys = {contact.supporter_key for contact in contacts if contact.supporter_key}
         aliases = list(_app.db.session.scalars(select(_app.Contact).where(
             _app.Contact.supporter_key.in_(shared_keys)))) if shared_keys else []
-        alias_by_id = {contact.id: contact for contact in aliases}
+        # Always include the target case contacts themselves. A legacy contact may
+        # have no supporter_key yet and its valid case pledge must still count.
+        alias_by_id = dict(contact_by_id)
+        alias_by_id.update({contact.id: contact for contact in aliases})
         today = date.today().isoformat()
         workflow_amounts = {}
         supporter_keys_with_workflow = set()
@@ -82,7 +85,13 @@ def create_app(test_config=None):
             frequency = item.data.get('frequency')
             if frequency not in ('Monthly', 'Weekly'):
                 continue
-            if not (item.data.get('start', '') <= today <= item.data.get('end', '')):
+            # A completed pledge remains valid when no explicit date bound was
+            # entered. Apply start/end only when that bound actually exists.
+            start = item.data.get('start') or ''
+            end = item.data.get('end') or ''
+            if start and today < start:
+                continue
+            if end and today > end:
                 continue
             contact_id = item.data.get('contact_id')
             alias = alias_by_id.get(contact_id)
