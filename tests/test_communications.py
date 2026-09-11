@@ -53,6 +53,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'Test Supporter' in page.text and 'First phone call' in page.text
     assert 'data-ai-email-form' in page.text
     assert 'data-loading-text="Writing the email…"' in page.text
+    assert 'outreach-workflow-table' in page.text
 
     assert post(client, f'/contacts/{contact_id}/communications/callback', {
         'scheduled_for': '2026-09-12T14:30', 'note': 'Call after work'}).status_code == 302
