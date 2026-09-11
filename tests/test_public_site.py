@@ -50,7 +50,5 @@ def test_sms_pages_include_carrier_disclosures(public_app):
     assert 'do not share mobile numbers or SMS consent' in privacy
     assert 'Message and data rates may apply' in terms
     for page in (consent, privacy, terms):
-        assert 'YOEL BOCHNER' in page
-        assert 'sole proprietor' in page
+        assert 'Synccos Inc.' in page
         assert 'Yazory software platform' in page
-        assert 'Synccos Inc.' not in page
