@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="{{ language }}" dir="{{ direction }}">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ _('My donor account') }} · Yazory</title>
+  <link rel="icon" href="{{ url_for('static',filename='favicon-32.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+</head>
+<body class="portal-body"><main class="portal-shell portal-wide">
+  <header class="portal-header">
+    <img src="{{ url_for('static',filename='yazory-logo.png') }}" alt="Yazory · יעזורי">
+    <div><h1>{{ _('My donor account') }}</h1><p>{{ supporter.name }}</p></div>
+    <form method="post" action="{{ url_for('supporter_logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet">{{ _('Sign out') }}</button></form>
+  </header>
+  {% for category,message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}">{{ _(message) }}</div>{% endfor %}
+  <section class="card padded">
+    <div class="eyebrow">{{ _('MY PLEDGES') }}</div><h2>{{ _('Families I support') }}</h2>
+    <div class="portal-grid">{% for contact in contacts %}<article class="portal-pledge">
+      <h3>{{ contact.family.name }}</h3><p>{{ _(contact.relationship) }}</p>
+      <form method="post" action="{{ url_for('supporter_portal_update_pledge',contact_id=contact.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>{{ _('Pledge amount') }}<input name="amount" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(contact.monthly_cents/100) }}" required></label>
+        <label>{{ _('Frequency') }}<select name="frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency==contact.pledge_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
+        <button>{{ _('Update pledge') }}</button>
+      </form>
+      <a class="button secondary" href="{{ url_for('supporter_portal_donate',contact_id=contact.id) }}">{{ _('Add a one-time donation') }}</a>
+    </article>{% endfor %}</div>
+  </section>
+  <section class="card padded">
+    <div class="eyebrow">{{ _('PAYMENTS') }}</div><h2>{{ _('Recurring donations') }}</h2>
+    {% set recurring=payments|selectattr('subscription_id')|list %}{% if recurring %}<div class="table-wrap"><table><thead><tr><th>{{ _('Family') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Frequency') }}</th><th>{{ _('Status') }}</th><th>{{ _('Action') }}</th></tr></thead><tbody>{% for payment in recurring %}<tr><td>{{ payment.family.name }}</td><td>{{ payment.amount_cents|money }}</td><td>{{ _(payment.frequency) }}</td><td>{{ _(payment.status|capitalize) }}</td><td><a class="button secondary" href="{{ url_for('supporter_portal_manage_payment',payment_id=payment.id) }}">{{ _('Manage payment method or cancel') }}</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">{{ _('No recurring donations yet.') }}</p>{% endif %}
+  </section>
+  <section class="card padded">
+    <div class="eyebrow">{{ _('RECEIPTS') }}</div><h2>{{ _('Donation history') }}</h2>
+    {% if receipts %}<div class="table-wrap"><table><thead><tr><th>{{ _('Date') }}</th><th>{{ _('Family') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Reference') }}</th><th>{{ _('Action') }}</th></tr></thead><tbody>{% for receipt in receipts %}<tr><td>{{ receipt.received_on.strftime('%m/%d/%Y') }}</td><td>{{ receipt.family.name }}</td><td>{{ receipt.amount_cents|money }}</td><td>{{ receipt.reference or ('YZ-%06d'|format(receipt.id)) }}</td><td><a href="{{ url_for('supporter_portal_receipt',receipt_id=receipt.id) }}">{{ _('Download receipt') }}</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">{{ _('No donation receipts yet.') }}</p>{% endif %}
+  </section>
+</main></body></html>

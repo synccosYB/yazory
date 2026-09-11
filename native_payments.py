@@ -49,6 +49,9 @@ def _authorized_contact(contact_id):
     contact = core.db.session.get(core.Contact, contact_id)
     if contact is None:
         abort(404)
+    portal_key = session.get('supporter_key', '')
+    if portal_key and contact.supporter_key and portal_key == contact.supporter_key:
+        return contact
     if current_app.config.get('DEMO'):
         return contact
     user = core.db.session.get(core.StaffUser, session.get('user_id'))
@@ -244,7 +247,8 @@ def register_native_payments(app):
         if payment is None:
             abort(404)
         _authorized_contact(payment.contact_id)
-        return render_template('stripe_result.html', title='Donation received', success=True, payment=payment)
+        template = 'supporter_payment_result.html' if session.get('supporter_key') else 'stripe_result.html'
+        return render_template(template, title='Donation received', success=True, payment=payment)
 
     def legacy_checkout_redirect(contact_id):
         _authorized_contact(contact_id)
