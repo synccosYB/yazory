@@ -30,7 +30,33 @@
 <div class="form-actions"><button>{{ _('Save changes') }}</button></div>
 </form>
 </details>
-<section class="card padded"><h2>{{ _('Supporter information') }}</h2><dl class="details">
+<section class="card padded">
+<div class="section-heading"><div><h2>{{ _('Supporter information') }}</h2></div><details class="supporter-inline-edit"><summary class="button small secondary">{{ _('Edit supporter') }}</summary>
+<form method="post" action="{{ url_for('edit_contact', contact_id=supporter.id) }}">
+{{ token(csrf) }}
+<input type="hidden" name="name" value="{{ supporter.name }}">
+<input type="hidden" name="relationship" value="{{ supporter.relationship }}">
+<input type="hidden" name="parent_contact_id" value="{% if supporter.parent_connection.startswith('F:') %}family-father{% elif supporter.parent_connection.startswith('I:') %}family-inlaws{% else %}{{ supporter.parent_contact_id or '' }}{% endif %}">
+<input type="hidden" name="parent_connection" value="{% if supporter.parent_connection in ('F:Son','I:Son') %}Son{% elif supporter.parent_connection in ('F:Son-in-law','I:Son-in-law') %}Son-in-law{% else %}{{ supporter.parent_connection }}{% endif %}">
+<input type="hidden" name="monthly" value="{{ '%.2f'|format(supporter.monthly_cents/100) }}">
+<input type="hidden" name="pledge_frequency" value="{{ supporter.pledge_frequency }}">
+<input type="hidden" name="status" value="{{ supporter.status }}">
+<div class="form-grid">
+<label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ (supporter.cell_phone or (supporter.phone if not supporter.home_phone else ''))|phone if supporter.cell_phone or (supporter.phone and not supporter.home_phone) else '' }}" maxlength="80" autocomplete="tel"></label>
+<label>{{ _('Home phone') }}<input name="home_phone" value="{{ supporter.home_phone }}" maxlength="80" autocomplete="tel"></label>
+<label>{{ _('Email address') }}<input name="email" type="email" value="{{ supporter.email }}" maxlength="254" autocomplete="email"></label>
+<label>{{ _('Home address') }}<input name="home_address" value="{{ supporter.home_address }}" maxlength="240" autocomplete="street-address"></label>
+<label>{{ _('City') }}<input name="city" value="{{ supporter.city }}" maxlength="120" autocomplete="address-level2"></label>
+<label>{{ _('State') }}<input name="state" value="{{ supporter.state }}" maxlength="80" autocomplete="address-level1"></label>
+<label>{{ _('ZIP code') }}<input name="zip_code" value="{{ supporter.zip_code }}" maxlength="20" autocomplete="postal-code"></label>
+<label>{{ _('Workplace') }}<input name="workplace" value="{{ supporter.workplace }}" maxlength="160" autocomplete="organization"></label>
+<label>{{ _('Work phone') }}<input name="work_phone" value="{{ supporter.work_phone }}" maxlength="80" autocomplete="tel"></label>
+</div>
+<label>{{ _('Identification notes') }}<textarea name="notes" maxlength="5000" rows="4">{{ supporter.notes }}</textarea></label>
+<div class="form-actions"><button>{{ _('Save changes') }}</button></div>
+</form>
+</details></div>
+<dl class="details">
 <div><dt>{{ _('Cell phone') }}</dt><dd><bdi dir="ltr">{{ (supporter.cell_phone or (supporter.phone if not supporter.home_phone else ''))|phone if supporter.cell_phone or (supporter.phone and not supporter.home_phone) else '—' }}</bdi></dd></div>
 <div><dt>{{ _('Home phone') }}</dt><dd><bdi dir="ltr">{{ supporter.home_phone|phone if supporter.home_phone else '—' }}</bdi></dd></div>
 <div><dt>{{ _('Email address') }}</dt><dd><bdi dir="ltr">{{ supporter.email or '—' }}</bdi></dd></div>
