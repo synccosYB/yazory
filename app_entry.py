@@ -1,6 +1,9 @@
+import os
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlparse
 
+from flask import jsonify
 from sqlalchemy import func, select
 
 import app as _base
@@ -193,6 +196,62 @@ def create_app(test_config=None):
             return None
         value = (record.data or {}).get('manual_shortfall_cents')
         return value if isinstance(value, int) and value >= 0 else None
+
+    @app.get('/admin/db-diagnostic')
+    def live_db_diagnostic():
+        user = current_user()
+        if not user or user.role != 'organization_admin':
+            _app.abort(403)
+
+        family_id = _app.request.args.get('family_id', 2, type=int)
+        uri = app.config.get('SQLALCHEMY_DATABASE_URI') or os.environ.get('DATABASE_URL', '')
+        safe_uri = uri.replace('postgresql+psycopg://', 'postgresql://', 1).replace('postgres://', 'postgresql://', 1)
+        parsed = urlparse(safe_uri)
+        family = _app.db.session.get(_app.Family, family_id)
+        contacts = list(_app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.family_id == family_id).order_by(_app.Contact.id)))
+
+        pledge_rows = []
+        if Work is not None:
+            for item in _app.db.session.scalars(select(Work).where(
+                    Work.family_id == family_id,
+                    Work.kind == 'pledge').order_by(Work.id)):
+                pledge_rows.append({
+                    'id': item.id,
+                    'stage': item.stage,
+                    'disposition': item.disposition,
+                    'contact_id': item.data.get('contact_id'),
+                    'amount_cents': item.data.get('amount'),
+                    'frequency': item.data.get('frequency'),
+                    'start': item.data.get('start'),
+                    'end': item.data.get('end'),
+                })
+
+        return jsonify({
+            'database': {
+                'host': parsed.hostname,
+                'name': parsed.path.lstrip('/'),
+            },
+            'counts': {
+                'families': _app.db.session.scalar(select(func.count()).select_from(_app.Family)),
+                'contacts': _app.db.session.scalar(select(func.count()).select_from(_app.Contact)),
+            },
+            'family': None if family is None else {
+                'id': family.id,
+                'name': family.name,
+                'status': family.status,
+            },
+            'contacts': [{
+                'id': contact.id,
+                'name': contact.name,
+                'status': contact.status,
+                'monthly_cents': contact.monthly_cents,
+                'frequency': contact.pledge_frequency,
+                'supporter_key_present': bool(contact.supporter_key),
+            } for contact in contacts],
+            'pledge_workflows': pledge_rows,
+            'calculated_monthly_pledged_cents': case_monthly_pledged(family_id),
+        })
 
     @app.post('/operations/reports/<int:family_id>/shortfall')
     def update_report_shortfall(family_id):
