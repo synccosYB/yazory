@@ -298,6 +298,28 @@ def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
         assert setting.value == 'MG123'
 
 
+def test_twilio_test_message_shows_actual_delivery_status(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    sid = 'SM' + 'a' * 32
+    overview = {
+        'account': {'friendly_name': 'Yazory', 'status': 'active', 'type': 'Full'},
+        'numbers': [], 'services': [], 'whatsapp_senders': [], 'warnings': []}
+    monkeypatch.setattr('app.account_overview', lambda *args: (overview, None))
+    monkeypatch.setattr('app.deliver_message', lambda *args, **kwargs: (sid, None))
+    monkeypatch.setattr('app.message_status', lambda *args: ({
+        'sid': sid, 'status': 'undelivered', 'error_code': 30034,
+        'error_message': 'US A2P registration required',
+        'to': '+18455551212', 'from': '+12513063232'}, None))
+
+    response = post(client, '/twilio-setup/test-message', {
+        'channel': 'sms', 'recipient_phone': '8455551212'})
+    assert response.status_code == 302
+    page = client.get('/twilio-setup')
+    assert 'Undelivered' in page.text
+    assert '30034' in page.text
+    assert 'US A2P registration required' in page.text
+
+
 def test_no_answer_button_opens_fallback_when_ai_fails(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     monkeypatch.setattr(

@@ -1,6 +1,6 @@
 from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
-                            normalize_phone)
+                            message_status, normalize_phone)
 
 
 def test_normalize_us_phone_numbers():
@@ -103,3 +103,21 @@ def test_finds_service_that_already_owns_number(monkeypatch):
     result = find_messaging_service_for_number(
         'AC1', 'token', [{'sid': 'MGempty'}, {'sid': 'MGexisting'}], 'PNwanted')
     assert result == 'MGexisting'
+
+
+def test_message_status_returns_delivery_error_without_secrets(monkeypatch):
+    sid = 'SM' + 'a' * 32
+    monkeypatch.setattr('twilio_service._request', lambda *args, **kwargs: ({
+        'sid': sid, 'status': 'undelivered', 'error_code': 30034,
+        'error_message': 'US A2P registration required', 'to': '+18455551212',
+        'from': '+12513063232', 'body': 'secret message body'}, None))
+    result, error = message_status('AC1', 'token', sid)
+    assert error is None
+    assert result['status'] == 'undelivered'
+    assert result['error_code'] == 30034
+    assert 'body' not in result
+
+
+def test_message_status_rejects_invalid_reference():
+    assert message_status('AC1', 'token', 'not-a-message') == (
+        None, 'Enter a valid Twilio message reference.')

@@ -6,6 +6,7 @@ import requests
 
 
 TWILIO_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+TWILIO_MESSAGE_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages/{message_sid}.json"
 TWILIO_ACCOUNT_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}.json"
 TWILIO_NUMBERS_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json"
 TWILIO_SERVICES_API = "https://messaging.twilio.com/v1/Services"
@@ -151,3 +152,20 @@ def deliver_message(account_sid, auth_token, recipient, body, *, channel,
     if not response.ok:
         return None, str(data.get("message") or f"Twilio returned HTTP {response.status_code}.")
     return data.get("sid"), None
+
+
+def message_status(account_sid, auth_token, message_sid):
+    """Return safe delivery details for one Twilio Message SID."""
+    if not re.fullmatch(r"SM[a-fA-F0-9]{32}", message_sid or ""):
+        return None, "Enter a valid Twilio message reference."
+    data, error = _request(
+        "GET",
+        TWILIO_MESSAGE_API.format(
+            account_sid=account_sid, message_sid=message_sid),
+        account_sid, auth_token)
+    if error:
+        return None, error
+    return {
+        key: data.get(key)
+        for key in ("sid", "status", "error_code", "error_message", "to", "from")
+    }, None

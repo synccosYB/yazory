@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
-                            normalize_phone)
+                            message_status, normalize_phone)
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
@@ -1462,13 +1462,21 @@ def create_app(test_config=None):
         account_sid = app.config['TWILIO_ACCOUNT_SID']
         auth_token = app.config['TWILIO_AUTH_TOKEN']
         overview, error = account_overview(account_sid, auth_token)
+        test_delivery = None
+        test_delivery_error = None
+        test_message_sid = session.get('twilio_test_message_sid', '')
+        if test_message_sid:
+            test_delivery, test_delivery_error = message_status(
+                account_sid, auth_token, test_message_sid)
         return _app.render_template(
             'twilio_setup.html', title='Twilio setup', overview=overview,
             error=error, account_sid_configured=bool(account_sid),
             auth_token_configured=bool(auth_token),
             sms_from=app.config['TWILIO_SMS_FROM'],
             messaging_service_sid=twilio_service_sid(),
-            whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'])
+            whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'],
+            test_delivery=test_delivery,
+            test_delivery_error=test_delivery_error)
 
     @app.post('/twilio-setup/messaging-service')
     def setup_twilio_messaging_service():
@@ -1523,7 +1531,10 @@ def create_app(test_config=None):
         if error:
             _app.flash(f'Test message failed: {error}', 'error')
         else:
-            _app.flash(f'Test message sent. Twilio reference: {provider_id}')
+            session['twilio_test_message_sid'] = provider_id
+            _app.flash(
+                f'Twilio accepted the test message. Reference: {provider_id}. '
+                'Check the delivery status below.')
         return _app.redirect(_app.url_for('twilio_setup'))
 
     @app.get('/communications')
