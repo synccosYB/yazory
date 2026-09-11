@@ -15,7 +15,6 @@ def create_app(test_config=None):
 
     workflows = app.extensions.get('workflows', {})
     financials = workflows.get('financials')
-    original_monthly_pledged = workflows.get('monthly_pledged')
     approved = workflows.get('approved')
     models = workflows.get('models', {})
     Work = models.get('WorkItem')
@@ -43,11 +42,6 @@ def create_app(test_config=None):
         return user
 
     def case_monthly_pledged(fid=None, user=None, family_ids=None):
-        """Return monthly commitments owned by the selected family case(s).
-
-        A supporter identity may be shared across cases for contact/billing purposes,
-        but pledge amount, frequency, and status are always case-specific.
-        """
         if fid is not None:
             target_ids = [fid]
         elif family_ids is not None:
@@ -63,8 +57,6 @@ def create_app(test_config=None):
         today = date.today().isoformat()
         workflow_amounts = {}
 
-        # Completed pledge workflows are authoritative for the exact contact row
-        # and family they belong to. Never dedupe or merge them by supporter_key.
         if Work is not None:
             query = select(Work).where(
                 Work.kind == 'pledge',
@@ -97,9 +89,6 @@ def create_app(test_config=None):
 
         total = sum(workflow_amounts.values())
         covered = set(workflow_amounts)
-
-        # Legacy/manual pledges live directly on the case-specific Contact row.
-        # Count them when that same case/contact has no completed workflow pledge.
         for contact in contacts:
             key = (contact.family_id, contact.id)
             if key in covered or contact.status != 'Pledged':
@@ -112,7 +101,6 @@ def create_app(test_config=None):
             total += contact.monthly_equivalent_cents
         return total
 
-    # Replace the workflow total everywhere (family profile and reports).
     if workflows:
         workflows['monthly_pledged'] = case_monthly_pledged
     monthly_pledged = case_monthly_pledged
@@ -129,24 +117,32 @@ def create_app(test_config=None):
         }
 
     def restore_other_case_pledges(snapshot):
-        if not snapshot:
-            return
-        changed = False
         for contact_id, values in snapshot.items():
             row = _app.db.session.get(_app.Contact, contact_id)
-            if row is None:
-                continue
-            row.status, row.monthly_cents, row.pledge_frequency = values
-            changed = True
-        if changed:
-            _app.db.session.commit()
+            if row is not None:
+                row.status, row.monthly_cents, row.pledge_frequency = values
 
     original_update_contact = app.view_functions.get('update_contact')
     if original_update_contact:
         def update_contact_case_specific(contact_id):
             snapshot = pledge_snapshot(contact_id)
+            submitted_status = _app.request.form.get('status', '').strip()
+            submitted_frequency = _app.request.form.get('pledge_frequency', '').strip() or 'Monthly'
+            submitted_monthly = _app.request.form.get('monthly', '').strip().replace(',', '').replace('$', '')
             response = original_update_contact(contact_id)
             restore_other_case_pledges(snapshot)
+            row = _app.db.session.get(_app.Contact, contact_id)
+            if row is not None:
+                try:
+                    cents = int(Decimal(submitted_monthly) * 100) if submitted_monthly else row.monthly_cents
+                except (InvalidOperation, ValueError):
+                    cents = row.monthly_cents
+                if submitted_status in _app.CONTACT_STATUSES:
+                    row.status = submitted_status
+                if submitted_frequency in _app.PLEDGE_FREQUENCIES:
+                    row.pledge_frequency = submitted_frequency
+                row.monthly_cents = cents
+            _app.db.session.commit()
             return response
         app.view_functions['update_contact'] = update_contact_case_specific
 
@@ -155,7 +151,9 @@ def create_app(test_config=None):
         def edit_contact_case_specific(contact_id):
             snapshot = pledge_snapshot(contact_id) if _app.request.method == 'POST' else {}
             response = original_edit_contact(contact_id)
-            restore_other_case_pledges(snapshot)
+            if snapshot:
+                restore_other_case_pledges(snapshot)
+                _app.db.session.commit()
             return response
         app.view_functions['edit_contact'] = edit_contact_case_specific
 
@@ -169,7 +167,6 @@ def create_app(test_config=None):
             submitted_frequency = _app.request.form.get('pledge_frequency', '').strip() or 'Monthly'
             submitted_monthly = _app.request.form.get('monthly', '').strip().replace(',', '').replace('$', '')
             response = original_add_contact(family_id)
-
             if target_family:
                 new_contacts = list(_app.db.session.scalars(select(_app.Contact).where(
                     _app.Contact.family_id == target_family,
@@ -190,6 +187,28 @@ def create_app(test_config=None):
             return response
         app.view_functions['add_contact'] = add_contact_case_specific
 
+    # One-time repair for the exact production state observed on Family 2:
+    # one positive monthly amount, no pledge workflow, but status left as To contact.
+    with app.app_context():
+        family = _app.db.session.get(_app.Family, 2)
+        if family and family.name == 'אברהם אבא טארים':
+            rows = list(_app.db.session.scalars(select(_app.Contact).where(
+                _app.Contact.family_id == 2,
+                _app.Contact.monthly_cents > 0,
+                _app.Contact.pledge_frequency.in_(['Monthly', 'Weekly']),
+            )))
+            if len(rows) == 1 and rows[0].status == 'To contact':
+                has_workflow = False
+                if Work is not None:
+                    has_workflow = bool(_app.db.session.scalar(select(Work.id).where(
+                        Work.family_id == 2,
+                        Work.kind == 'pledge',
+                        Work.data['contact_id'].as_integer() == rows[0].id,
+                    )))
+                if not has_workflow:
+                    rows[0].status = 'Pledged'
+                    _app.db.session.commit()
+
     def manual_shortfall(family_id):
         record = _app.db.session.get(_app.HouseholdBudget, family_id)
         if not record:
@@ -202,7 +221,6 @@ def create_app(test_config=None):
         user = current_user()
         if not user or user.role != 'organization_admin':
             _app.abort(403)
-
         family_id = _app.request.args.get('family_id', 2, type=int)
         uri = app.config.get('SQLALCHEMY_DATABASE_URI') or os.environ.get('DATABASE_URL', '')
         safe_uri = uri.replace('postgresql+psycopg://', 'postgresql://', 1).replace('postgres://', 'postgresql://', 1)
@@ -210,7 +228,6 @@ def create_app(test_config=None):
         family = _app.db.session.get(_app.Family, family_id)
         contacts = list(_app.db.session.scalars(select(_app.Contact).where(
             _app.Contact.family_id == family_id).order_by(_app.Contact.id)))
-
         pledge_rows = []
         if Work is not None:
             for item in _app.db.session.scalars(select(Work).where(
@@ -226,21 +243,13 @@ def create_app(test_config=None):
                     'start': item.data.get('start'),
                     'end': item.data.get('end'),
                 })
-
         return jsonify({
-            'database': {
-                'host': parsed.hostname,
-                'name': parsed.path.lstrip('/'),
-            },
+            'database': {'host': parsed.hostname, 'name': parsed.path.lstrip('/')},
             'counts': {
                 'families': _app.db.session.scalar(select(func.count()).select_from(_app.Family)),
                 'contacts': _app.db.session.scalar(select(func.count()).select_from(_app.Contact)),
             },
-            'family': None if family is None else {
-                'id': family.id,
-                'name': family.name,
-                'status': family.status,
-            },
+            'family': None if family is None else {'id': family.id, 'name': family.name, 'status': family.status},
             'contacts': [{
                 'id': contact.id,
                 'name': contact.name,
@@ -266,25 +275,20 @@ def create_app(test_config=None):
         except (InvalidOperation, ValueError):
             _app.flash('Enter a valid monthly shortfall.', 'error')
             return _app.redirect(_app.url_for('operating_reports'))
-
         record = _app.db.session.get(_app.HouseholdBudget, family_id)
         if record is None:
             record = _app.HouseholdBudget(family_id=family_id, data={})
             _app.db.session.add(record)
         before = (record.data or {}).get('manual_shortfall_cents')
         record.data = {**(record.data or {}), 'manual_shortfall_cents': cents}
-        _app.db.session.add(_app.Audit(
-            actor=user.email,
-            action=f'Updated report monthly shortfall for {family.name}: {before} -> {cents}',
-        ))
+        _app.db.session.add(_app.Audit(actor=user.email, action=f'Updated report monthly shortfall for {family.name}: {before} -> {cents}'))
         _app.db.session.commit()
         _app.flash('Monthly shortfall saved.', 'success')
         return _app.redirect(_app.url_for('operating_reports'))
 
     def operating_reports_override():
         user = require_report_access()
-        families = [f for f in _app.db.session.scalars(select(_app.Family).order_by(_app.Family.name))
-                    if can_access_family(user, f.id)]
+        families = [f for f in _app.db.session.scalars(select(_app.Family).order_by(_app.Family.name)) if can_access_family(user, f.id)]
         rows = []
         for family in families:
             row = financials(family.id)
@@ -297,9 +301,7 @@ def create_app(test_config=None):
             row['goal'] = assessment.data['goal'] if assessment else None
             plan = approved('support_plan', family.id)
             review = approved('review', family.id)
-            row['review_date'] = (review.data['review_date']
-                                  if review and plan and review.data.get('plan_id') == plan.id
-                                  else plan.data['review_date'] if plan else None)
+            row['review_date'] = (review.data['review_date'] if review and plan and review.data.get('plan_id') == plan.id else plan.data['review_date'] if plan else None)
             row['due_reviews'] = bool(row['review_date'] and row['review_date'] < date.today().isoformat())
             row['failed'] = _app.db.session.scalar(select(func.count()).select_from(Work).where(
                 Work.family_id == family.id,
@@ -307,7 +309,6 @@ def create_app(test_config=None):
                 Work.disposition == 'Failed',
             ))
             rows.append(row)
-
         totals = {k: sum(r[k] for r in rows) for k in [
             'collected', 'assistance', 'overhead', 'balance', 'reserved', 'available',
             'protected_reserve', 'pledged', 'unmatched', 'failed'
