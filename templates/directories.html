@@ -117,7 +117,28 @@
             <div class="form-grid"><label>{{ _('Person *') }}<select name="person" required><option value="">{{ _('Choose') }}</option>{% for person_type, person_id, name, role, context in people %}<option value="{{ person_type }}:{{ person_id }}">{{ name }} — {{ _(role) }} — {{ context }}</option>{% endfor %}</select></label>{% if kind == 'Yeshivah' %}<label>{{ _('Class entered *') }}<input name="grade" maxlength="80" required></label><label>{{ _('Year in *') }}<input name="year_from" type="number" min="1900" max="2100" required></label><label>{{ _('Year out *') }}<input name="year_to" type="number" min="1900" max="2100" required></label>{% endif %}<label>{{ _('Notes') }}<input name="note" maxlength="300"></label></div>
             <button>{{ _('Connect person') }}</button>
           </form>
-          <p class="directory-help">{{ _('Create new supporters in Supporters, then connect them here.') }}</p>
+        </details>
+
+        <details><summary>{{ _('+ Add a new person') }}</summary>
+          <form method="post" action="{{ url_for('add_directory_person_full') }}">{{ token(csrf) }}<input type="hidden" name="institution_id" value="{{ institution.id }}">
+            <div class="form-grid">
+              <label>{{ _('Applicant *') }}<select name="family_id" required><option value="">{{ _('Choose') }}</option>{% for grade, connections in institution.directory_groups %}{% for connection in connections %}{% if connection.person_type == 'family' %}{% set applicant = people_by_key.get(('family', connection.person_id)) %}<option value="{{ connection.person_id }}">{{ applicant.name if applicant else connection.person_id }}</option>{% endif %}{% endfor %}{% endfor %}</select></label>
+              <label>{{ _('Name *') }}<input name="name" maxlength="160" required></label>
+              <label>{{ _('Relationship *') }}<select name="relationship" required>{% for relationship in relationships %}<option value="{{ relationship }}" {% if relationship == 'Shul friend' %}selected{% endif %}>{{ _(relationship) }}</option>{% endfor %}</select></label>
+              <label>{{ _('Cell phone') }}<input name="cell_phone" maxlength="80" autocomplete="tel"></label>
+              <label>{{ _('Home phone') }}<input name="home_phone" maxlength="80" autocomplete="tel"></label>
+              <label>{{ _('Email address') }}<input name="email" type="email" maxlength="254" autocomplete="email"></label>
+              <label>{{ _('Home address') }}<input name="home_address" maxlength="240" autocomplete="street-address"></label>
+              <label>{{ _('City') }}<input name="city" maxlength="120"></label>
+              <label>{{ _('State') }}<input name="state" maxlength="80"></label>
+              <label>{{ _('Zip code') }}<input name="zip_code" maxlength="20" autocomplete="postal-code"></label>
+              <label>{{ _('Workplace') }}<input name="workplace" maxlength="160"></label>
+              <label>{{ _('Work phone') }}<input name="work_phone" maxlength="80" autocomplete="tel"></label>
+              {% if kind == 'Yeshivah' %}<label>{{ _('Class entered *') }}<input name="grade" maxlength="80" required></label><label>{{ _('Year in *') }}<input name="year_from" type="number" min="1900" max="2100" required></label><label>{{ _('Year out *') }}<input name="year_to" type="number" min="1900" max="2100" required></label>{% endif %}
+            </div>
+            <label>{{ _('Identification notes') }}<textarea name="notes" maxlength="5000" rows="4"></textarea></label>
+            <button>{{ _('Add and connect person') }}</button>
+          </form>
         </details>
       </div>
       {% if not institution.affiliations %}<form method="post" action="{{ url_for('delete_institution', institution_id=institution.id) }}" class="institution-delete no-print">{{ token(csrf) }}<button class="small danger">{{ _('Delete') }}</button></form>{% endif %}
