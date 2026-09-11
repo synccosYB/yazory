@@ -12,7 +12,7 @@ def create_app(test_config=None):
 
     workflows = app.extensions.get('workflows', {})
     financials = workflows.get('financials')
-    monthly_pledged = workflows.get('monthly_pledged')
+    original_monthly_pledged = workflows.get('monthly_pledged')
     approved = workflows.get('approved')
     models = workflows.get('models', {})
     Work = models.get('WorkItem')
@@ -38,6 +38,156 @@ def create_app(test_config=None):
         if family_id is not None and not can_access_family(user, family_id):
             _app.abort(403)
         return user
+
+    def case_monthly_pledged(fid=None, user=None, family_ids=None):
+        """Return commitments by case, never by shared supporter identity.
+
+        One real person may be connected to several families, but a promise to one
+        family is not a promise to every family. Completed pledge workflows are
+        authoritative when present; older case-level Contact pledges remain visible
+        as a fallback so existing commitments do not disappear from the profile.
+        """
+        if Work is None:
+            return original_monthly_pledged(fid=fid, user=user, family_ids=family_ids) \
+                if original_monthly_pledged else 0
+
+        if fid is not None:
+            target_ids = [fid]
+        elif family_ids is not None:
+            target_ids = list(family_ids)
+        else:
+            target_ids = list(_app.db.session.scalars(select(_app.Family.id)))
+        if not target_ids:
+            return 0
+
+        contacts = list(_app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.family_id.in_(target_ids))))
+        contact_by_id = {contact.id: contact for contact in contacts}
+        today = date.today().isoformat()
+        workflow_amounts = {}
+
+        query = select(Work).where(
+            Work.kind == 'pledge',
+            Work.disposition == 'Complete',
+            Work.family_id.in_(target_ids),
+        ).order_by(Work.id)
+        for item in _app.db.session.scalars(query):
+            frequency = item.data.get('frequency')
+            if frequency not in ('Monthly', 'Weekly'):
+                continue
+            if not (item.data.get('start', '') <= today <= item.data.get('end', '')):
+                continue
+            contact_id = item.data.get('contact_id')
+            contact = contact_by_id.get(contact_id)
+            if contact is None or contact.family_id != item.family_id:
+                continue
+            if user and user.role == 'fundraiser':
+                Link = models.get('SupporterLink')
+                link = _app.db.session.get(Link, contact.id) if Link else None
+                if not link or link.assigned_to != user.id:
+                    continue
+            amount = item.data.get('amount', 0)
+            if frequency == 'Weekly':
+                amount = round(amount * 52 / 12)
+            # Latest active completed pledge for this contact/case wins.
+            workflow_amounts[(item.family_id, contact.id)] = amount
+
+        total = sum(workflow_amounts.values())
+        covered = set(workflow_amounts)
+        for contact in contacts:
+            key = (contact.family_id, contact.id)
+            if key in covered or contact.status != 'Pledged':
+                continue
+            if user and user.role == 'fundraiser':
+                Link = models.get('SupporterLink')
+                link = _app.db.session.get(Link, contact.id) if Link else None
+                if not link or link.assigned_to != user.id:
+                    continue
+            total += contact.monthly_equivalent_cents
+        return total
+
+    # Replace the workflow total everywhere (family profile and reports). The
+    # shared supporter key remains useful for charging one person once, but it
+    # must never merge commitments belonging to different family cases.
+    if workflows:
+        workflows['monthly_pledged'] = case_monthly_pledged
+    monthly_pledged = case_monthly_pledged
+
+    def pledge_snapshot(contact_id):
+        contact = _app.db.session.get(_app.Contact, contact_id)
+        if contact is None or not contact.supporter_key:
+            return {}
+        return {
+            row.id: (row.status, row.monthly_cents, row.pledge_frequency)
+            for row in _app.db.session.scalars(select(_app.Contact).where(
+                _app.Contact.supporter_key == contact.supporter_key))
+            if row.id != contact.id
+        }
+
+    def restore_other_case_pledges(snapshot):
+        if not snapshot:
+            return
+        changed = False
+        for contact_id, values in snapshot.items():
+            row = _app.db.session.get(_app.Contact, contact_id)
+            if row is None:
+                continue
+            row.status, row.monthly_cents, row.pledge_frequency = values
+            changed = True
+        if changed:
+            _app.db.session.commit()
+
+    original_update_contact = app.view_functions.get('update_contact')
+    if original_update_contact:
+        def update_contact_case_specific(contact_id):
+            snapshot = pledge_snapshot(contact_id)
+            response = original_update_contact(contact_id)
+            restore_other_case_pledges(snapshot)
+            return response
+        app.view_functions['update_contact'] = update_contact_case_specific
+
+    original_edit_contact = app.view_functions.get('edit_contact')
+    if original_edit_contact:
+        def edit_contact_case_specific(contact_id):
+            snapshot = pledge_snapshot(contact_id) if _app.request.method == 'POST' else {}
+            response = original_edit_contact(contact_id)
+            restore_other_case_pledges(snapshot)
+            return response
+        app.view_functions['edit_contact'] = edit_contact_case_specific
+
+    original_add_contact = app.view_functions.get('add_contact')
+    if original_add_contact:
+        def add_contact_case_specific(family_id=None):
+            target_family = family_id or _app.request.form.get('family_id', type=int)
+            before_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
+                _app.Contact.family_id == target_family))) if target_family else set()
+            submitted_status = _app.request.form.get('status', '').strip()
+            submitted_frequency = _app.request.form.get('pledge_frequency', '').strip() or 'Monthly'
+            submitted_monthly = _app.request.form.get('monthly', '').strip().replace(',', '').replace('$', '')
+            response = original_add_contact(family_id)
+
+            if target_family:
+                new_contacts = list(_app.db.session.scalars(select(_app.Contact).where(
+                    _app.Contact.family_id == target_family,
+                    _app.Contact.id.notin_(before_ids),
+                ).order_by(_app.Contact.id.desc())))
+                if new_contacts:
+                    row = new_contacts[0]
+                    # The legacy route used to overwrite these three fields from
+                    # another case sharing the same supporter_key. Preserve what
+                    # was actually entered for this case instead.
+                    try:
+                        cents = int(Decimal(submitted_monthly) * 100) if submitted_monthly else 0
+                    except (InvalidOperation, ValueError):
+                        cents = row.monthly_cents
+                    if submitted_status in _app.CONTACT_STATUSES:
+                        row.status = submitted_status
+                    if submitted_frequency in _app.PLEDGE_FREQUENCIES:
+                        row.pledge_frequency = submitted_frequency
+                    row.monthly_cents = cents
+                    _app.db.session.commit()
+            return response
+        app.view_functions['add_contact'] = add_contact_case_specific
 
     def manual_shortfall(family_id):
         record = _app.db.session.get(_app.HouseholdBudget, family_id)
