@@ -1,4 +1,6 @@
 """Case-owned family relationships, outreach consent, and contact-level assignment."""
+import re
+
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
@@ -10,6 +12,7 @@ PREFERENCES=['Phone','Text message','Email','Through family']
 
 def install_network(app,db,entities,helpers):
     Family=entities['Family'];Contact=entities['Contact'];User=entities['StaffUser'];Assignment=entities['FamilyAssignment']
+    Institution=entities['Institution'];PersonAffiliation=entities['PersonAffiliation']
     relations=list(dict.fromkeys(entities['RELATIONSHIPS']+RELATIONS))
     Link=app.extensions['workflows']['models']['SupporterLink']
     current_user=helpers['current_user'];scope=helpers['can_access_family']
@@ -19,6 +22,14 @@ def install_network(app,db,entities,helpers):
         if not user or not app.extensions['workflows']['active_user'](user) or not scope(fid):abort(403)
         if manage and user.role not in ('organization_admin','family_admin'):abort(403)
         if user.role=='office_employee':abort(403)
+        return user
+
+    def org_admin():
+        if app.config['DEMO']:
+            return None
+        user=current_user()
+        if not user or not app.extensions['workflows']['active_user'](user) or user.role!='organization_admin':
+            abort(403)
         return user
 
     def contact_allowed(contact,edit=False):
@@ -36,6 +47,99 @@ def install_network(app,db,entities,helpers):
         v=request.form.get(key,'').strip()
         if (required and not v) or len(v)>1000:abort(400,'Complete the required fields.')
         return v
+
+    @app.post('/community-directories/people/new')
+    def add_directory_person_full():
+        """Create a full supporter profile without leaving a shul/yeshivah directory."""
+        org_admin()
+        institution=db.get_or_404(Institution,request.form.get('institution_id',type=int))
+        family_id=request.form.get('family_id',type=int)
+        family=db.session.get(Family,family_id) if family_id else None
+        if family is None:
+            abort(400,'Choose a valid applicant.')
+        family_link=db.session.scalar(select(PersonAffiliation.id).where(
+            PersonAffiliation.institution_id==institution.id,
+            PersonAffiliation.person_type=='family',
+            PersonAffiliation.person_id==family.id))
+        if family_link is None:
+            abort(400,'Choose an applicant connected to this shul or yeshivah.')
+
+        name=value('name',True)
+        cell_phone=value('cell_phone')
+        home_phone=value('home_phone')
+        email=value('email').lower()
+        home_address=value('home_address')
+        city=value('city')
+        state=value('state')
+        zip_code=value('zip_code')
+        workplace=value('workplace')
+        work_phone=value('work_phone')
+        notes=value('notes')
+        relationship=value('relationship') or ('Shul friend' if 'Shul friend' in relations else 'Other')
+        limits={
+            'name':160,'cell_phone':80,'home_phone':80,'email':254,'home_address':240,
+            'city':120,'state':80,'zip_code':20,'workplace':160,'work_phone':80,
+            'notes':5000,
+        }
+        submitted={
+            'name':name,'cell_phone':cell_phone,'home_phone':home_phone,'email':email,
+            'home_address':home_address,'city':city,'state':state,'zip_code':zip_code,
+            'workplace':workplace,'work_phone':work_phone,'notes':notes,
+        }
+        if any(len(submitted[key])>limit for key,limit in limits.items()):
+            abort(400,'One of the person details is too long.')
+        if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',email):
+            abort(400,'Enter a valid email address.')
+        if relationship not in relations:
+            abort(400,'Choose a valid relationship.')
+
+        phone=cell_phone or home_phone
+        key=helpers['supporter_key'](name,phone)
+        if key.startswith('phone:') and db.session.scalar(select(Contact.id).where(
+                Contact.family_id==family.id,Contact.supporter_key==key)):
+            abort(400,'This supporter is already connected to this case.')
+
+        existing=(db.session.scalar(select(Contact).where(Contact.supporter_key==key).order_by(Contact.id))
+                  if key.startswith('phone:') else None)
+        if existing is not None:
+            email=email or existing.email
+            cell_phone=cell_phone or existing.cell_phone
+            home_phone=home_phone or existing.home_phone
+            home_address=home_address or existing.home_address
+            city=city or existing.city
+            state=state or existing.state
+            zip_code=zip_code or existing.zip_code
+            workplace=workplace or existing.workplace
+            work_phone=work_phone or existing.work_phone
+            notes=notes or existing.notes
+            phone=cell_phone or home_phone or existing.phone
+
+        contact=Contact(
+            family_id=family.id,name=name,relationship=relationship,phone=phone,
+            cell_phone=cell_phone,home_phone=home_phone,email=email,
+            home_address=home_address,city=city,state=state,zip_code=zip_code,
+            workplace=workplace,work_phone=work_phone,notes=notes,
+            supporter_key=key,monthly_cents=0,pledge_frequency='Monthly',status='To contact')
+        db.session.add(contact);db.session.flush()
+
+        grade=value('grade')
+        year_from=year_to=None
+        if institution.kind=='Yeshivah':
+            if not grade:
+                abort(400,'Enter the class or grade.')
+            try:
+                year_from=int(value('year_from',True));year_to=int(value('year_to',True))
+            except ValueError:
+                abort(400,'Enter a valid year.')
+            if not (1900<=year_from<=year_to<=2100):
+                abort(400,'Enter valid attendance years.')
+        db.session.add(PersonAffiliation(
+            institution_id=institution.id,person_type='supporter',person_id=contact.id,
+            grade=grade,year_from=year_from,year_to=year_to,note=value('note')))
+        db.session.commit()
+        flash('New person added and connected.')
+        return redirect(url_for('community_directories',kind=institution.kind,
+                                network_id=institution.id))
 
     @app.route('/families/<int:family_id>/network',methods=['GET','POST'])
     def supporter_network(family_id):
