@@ -187,27 +187,26 @@ def create_app(test_config=None):
             return response
         app.view_functions['add_contact'] = add_contact_case_specific
 
-    # One-time repair for the exact production state observed on Family 2:
-    # one positive monthly amount, no pledge workflow, but status left as To contact.
+    # Narrow one-time cleanup for the exact linked supporter rows observed in production.
+    # Family 2 / contact 33 owns the $10 monthly pledge. Family 1 / contact 31 is
+    # merely the same supporter identity and must not inherit that amount.
     with app.app_context():
-        family = _app.db.session.get(_app.Family, 2)
-        if family and family.name == 'אברהם אבא טארים':
-            rows = list(_app.db.session.scalars(select(_app.Contact).where(
-                _app.Contact.family_id == 2,
-                _app.Contact.monthly_cents > 0,
-                _app.Contact.pledge_frequency.in_(['Monthly', 'Weekly']),
-            )))
-            if len(rows) == 1 and rows[0].status == 'To contact':
-                has_workflow = False
-                if Work is not None:
-                    has_workflow = bool(_app.db.session.scalar(select(Work.id).where(
-                        Work.family_id == 2,
-                        Work.kind == 'pledge',
-                        Work.data['contact_id'].as_integer() == rows[0].id,
-                    )))
-                if not has_workflow:
-                    rows[0].status = 'Pledged'
-                    _app.db.session.commit()
+        pledged = _app.db.session.get(_app.Contact, 33)
+        other = _app.db.session.get(_app.Contact, 31)
+        changed = False
+        if (pledged and pledged.family_id == 2 and pledged.monthly_cents == 1000
+                and pledged.pledge_frequency == 'Monthly'):
+            if pledged.status == 'To contact':
+                pledged.status = 'Pledged'
+                changed = True
+            if (other and other.family_id == 1 and other.supporter_key
+                    and other.supporter_key == pledged.supporter_key
+                    and other.status == 'To contact' and other.monthly_cents == 1000):
+                other.monthly_cents = 0
+                other.pledge_frequency = 'Monthly'
+                changed = True
+        if changed:
+            _app.db.session.commit()
 
     def manual_shortfall(family_id):
         record = _app.db.session.get(_app.HouseholdBudget, family_id)
