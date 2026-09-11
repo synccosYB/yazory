@@ -7,7 +7,8 @@ from flask import current_app, has_request_context, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
-from twilio_service import deliver_message, normalize_phone
+from twilio_service import (account_overview, create_messaging_service,
+                            deliver_message, normalize_phone)
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
@@ -1444,6 +1445,84 @@ def create_app(test_config=None):
     def contact_mobile(contact):
         return contact.cell_phone or contact.phone or contact.home_phone or ''
 
+    def twilio_setting(key):
+        row = _app.db.session.get(_app.OrganizationSetting, key)
+        return row.value if row and isinstance(row.value, str) else ''
+
+    def twilio_service_sid():
+        return (app.config['TWILIO_MESSAGING_SERVICE_SID'] or
+                twilio_setting('twilio_messaging_service_sid'))
+
+    @app.get('/twilio-setup')
+    def twilio_setup():
+        if not task_is_admin(task_user()):
+            _app.abort(403)
+        account_sid = app.config['TWILIO_ACCOUNT_SID']
+        auth_token = app.config['TWILIO_AUTH_TOKEN']
+        overview, error = account_overview(account_sid, auth_token)
+        return _app.render_template(
+            'twilio_setup.html', title='Twilio setup', overview=overview,
+            error=error, account_sid_configured=bool(account_sid),
+            auth_token_configured=bool(auth_token),
+            sms_from=app.config['TWILIO_SMS_FROM'],
+            messaging_service_sid=twilio_service_sid(),
+            whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'])
+
+    @app.post('/twilio-setup/messaging-service')
+    def setup_twilio_messaging_service():
+        if not task_is_admin(task_user()):
+            _app.abort(403)
+        phone_number_sid = _app.request.form.get('phone_number_sid', '').strip()
+        if not re.fullmatch(r'PN[a-fA-F0-9]{32}', phone_number_sid):
+            _app.abort(400, 'Choose a valid Twilio phone number.')
+        overview, error = account_overview(
+            app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'])
+        owned = {row['sid'] for row in (overview or {}).get('numbers', [])}
+        if error or phone_number_sid not in owned:
+            _app.abort(400, error or 'That phone number does not belong to this Twilio account.')
+        existing = next((row for row in overview.get('services', [])
+                         if row.get('friendly_name') == 'Yazory Messaging'), None)
+        if existing:
+            service_sid, error = existing['sid'], None
+        else:
+            service_sid, error = create_messaging_service(
+                app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                phone_number_sid)
+        if error:
+            _app.flash(f'Twilio setup failed: {error}', 'error')
+        else:
+            setting = _app.db.session.get(
+                _app.OrganizationSetting, 'twilio_messaging_service_sid')
+            if setting is None:
+                setting = _app.OrganizationSetting(
+                    key='twilio_messaging_service_sid', value=service_sid)
+                _app.db.session.add(setting)
+            else:
+                setting.value = service_sid
+            _app.db.session.commit()
+            _app.flash('Yazory Messaging Service is connected.')
+        return _app.redirect(_app.url_for('twilio_setup'))
+
+    @app.post('/twilio-setup/test-message')
+    def twilio_test_message():
+        if not task_is_admin(task_user()):
+            _app.abort(403)
+        channel = _app.request.form.get('channel', '')
+        if channel not in ('sms', 'whatsapp'):
+            _app.abort(400, 'Choose SMS or WhatsApp.')
+        recipient = _app.request.form.get('recipient_phone', '').strip()[:80]
+        provider_id, error = deliver_message(
+            app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+            recipient, 'Yazory Twilio connection test.', channel=channel,
+            sms_from=app.config['TWILIO_SMS_FROM'],
+            whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'],
+            messaging_service_sid=twilio_service_sid())
+        if error:
+            _app.flash(f'Test message failed: {error}', 'error')
+        else:
+            _app.flash(f'Test message sent. Twilio reference: {provider_id}')
+        return _app.redirect(_app.url_for('twilio_setup'))
+
     @app.get('/communications')
     def communications():
         return render_communications()
@@ -1582,7 +1661,7 @@ def create_app(test_config=None):
                 normalized, body, channel=channel,
                 sms_from=app.config['TWILIO_SMS_FROM'],
                 whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'],
-                messaging_service_sid=app.config['TWILIO_MESSAGING_SERVICE_SID'])
+                messaging_service_sid=twilio_service_sid())
             status = 'failed' if error else 'completed'
         communication_row(
             contact, channel, 'WhatsApp message' if channel == 'whatsapp' else 'Text message',

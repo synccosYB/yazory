@@ -6,6 +6,74 @@ import requests
 
 
 TWILIO_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+TWILIO_ACCOUNT_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}.json"
+TWILIO_NUMBERS_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json"
+TWILIO_SERVICES_API = "https://messaging.twilio.com/v1/Services"
+TWILIO_WHATSAPP_SENDERS_API = "https://messaging.twilio.com/v2/Channels/Senders"
+
+
+def _request(method, url, account_sid, auth_token, **kwargs):
+    if not account_sid or not auth_token:
+        return None, "Twilio Account SID and Auth Token are not configured."
+    try:
+        response = requests.request(
+            method, url, auth=(account_sid, auth_token), timeout=15, **kwargs)
+        data = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        return None, f"Twilio could not be reached: {exc}"
+    if not response.ok:
+        return None, str(data.get("message") or f"Twilio returned HTTP {response.status_code}.")
+    return data, None
+
+
+def account_overview(account_sid, auth_token):
+    """Return safe account, owned-number, service, and WhatsApp sender metadata."""
+    account, error = _request(
+        "GET", TWILIO_ACCOUNT_API.format(account_sid=account_sid),
+        account_sid, auth_token)
+    if error:
+        return None, error
+    numbers, numbers_error = _request(
+        "GET", TWILIO_NUMBERS_API.format(account_sid=account_sid),
+        account_sid, auth_token, params={"PageSize": 100})
+    services, services_error = _request(
+        "GET", TWILIO_SERVICES_API, account_sid, auth_token,
+        params={"PageSize": 50})
+    senders, senders_error = _request(
+        "GET", TWILIO_WHATSAPP_SENDERS_API, account_sid, auth_token,
+        params={"PageSize": 50})
+    return {
+        "account": {key: account.get(key) for key in ("friendly_name", "status", "type")},
+        "numbers": [
+            {key: row.get(key) for key in ("sid", "phone_number", "friendly_name", "capabilities")}
+            for row in (numbers or {}).get("incoming_phone_numbers", [])
+        ],
+        "services": [
+            {key: row.get(key) for key in ("sid", "friendly_name")}
+            for row in (services or {}).get("services", [])
+        ],
+        "whatsapp_senders": [
+            {key: row.get(key) for key in ("sid", "sender_id", "status")}
+            for row in (senders or {}).get("senders", [])
+        ],
+        "warnings": [message for message in (numbers_error, services_error, senders_error) if message],
+    }, None
+
+
+def create_messaging_service(account_sid, auth_token, phone_number_sid):
+    """Create Yazory's Messaging Service and attach one owned SMS number."""
+    service, error = _request(
+        "POST", TWILIO_SERVICES_API, account_sid, auth_token,
+        data={"FriendlyName": "Yazory Messaging"})
+    if error:
+        return None, error
+    service_sid = service.get("sid")
+    _, error = _request(
+        "POST", f"{TWILIO_SERVICES_API}/{service_sid}/PhoneNumbers",
+        account_sid, auth_token, data={"PhoneNumberSid": phone_number_sid})
+    if error:
+        return None, error
+    return service_sid, None
 
 
 def normalize_phone(value):

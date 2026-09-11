@@ -1,0 +1,28 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">{{ _('COMMUNICATIONS') }}</div><h1>{{ _('Twilio setup') }}</h1><p>{{ _('Connect Yazory to SMS and WhatsApp without displaying any secret credentials.') }}</p></div></div>
+
+<section class="metrics">
+  <article><span>{{ _('Account SID') }}</span><strong>{{ _('Connected') if account_sid_configured else _('Missing') }}</strong></article>
+  <article><span>{{ _('Auth Token') }}</span><strong>{{ _('Connected') if auth_token_configured else _('Missing') }}</strong></article>
+  <article><span>{{ _('SMS sender') }}</span><strong><bdi dir="ltr">{{ sms_from or _('Missing') }}</bdi></strong></article>
+  <article><span>{{ _('WhatsApp sender') }}</span><strong><bdi dir="ltr">{{ whatsapp_from or _('Not registered') }}</bdi></strong></article>
+</section>
+
+{% if error %}<section class="card padded"><h2>{{ _('Connection needs attention') }}</h2><p class="error">{{ error }}</p><p>{{ _('Check the Twilio Secrets in Replit and reload this page.') }}</p></section>{% else %}
+<section class="card padded"><div class="section-heading"><div><h2>{{ _('Twilio account') }}</h2><p>{{ overview.account.friendly_name }} · {{ _(overview.account.status.title()) }}</p></div></div>
+{% for warning in overview.warnings %}<p class="error">{{ warning }}</p>{% endfor %}
+</section>
+
+<section class="card padded"><div class="section-heading"><div><h2>{{ _('SMS connection') }}</h2><p>{{ _('Create one Yazory Messaging Service and attach the existing Twilio number.') }}</p></div></div>
+{% if messaging_service_sid %}<p><span class="badge completed">{{ _('Connected') }}</span> <bdi dir="ltr">{{ messaging_service_sid }}</bdi></p>
+{% elif overview.numbers %}<form method="post" action="{{ url_for('setup_twilio_messaging_service') }}">{{ token(csrf) }}<label>{{ _('Twilio number') }}<select name="phone_number_sid" required>{% for number in overview.numbers %}{% if number.capabilities.sms %}<option value="{{ number.sid }}">{{ number.phone_number }} · {{ number.friendly_name }}</option>{% endif %}{% endfor %}</select></label><button>{{ _('Connect SMS automatically') }}</button></form>
+{% else %}<p>{{ _('No SMS-capable Twilio number was found.') }}</p>{% endif %}</section>
+
+<section class="card padded"><div class="section-heading"><div><h2>{{ _('WhatsApp connection') }}</h2><p>{{ _('A production WhatsApp sender requires approval through Twilio and Meta.') }}</p></div></div>
+{% if overview.whatsapp_senders %}<table><thead><tr><th>{{ _('Sender') }}</th><th>{{ _('Status') }}</th></tr></thead><tbody>{% for sender in overview.whatsapp_senders %}<tr><td><bdi dir="ltr">{{ sender.sender_id }}</bdi></td><td>{{ sender.status }}</td></tr>{% endfor %}</tbody></table>
+{% else %}<p>{{ _('No production WhatsApp sender is registered yet. Use Twilio WhatsApp Self Sign-up to obtain Meta approval.') }}</p><a class="button secondary" href="https://console.twilio.com/us1/develop/sms/senders/whatsapp-senders" target="_blank" rel="noopener">{{ _('Open WhatsApp registration') }}</a>{% endif %}</section>
+
+<section class="card padded"><div class="section-heading"><div><h2>{{ _('Send a test message') }}</h2><p>{{ _('The message is sent immediately to the number entered below.') }}</p></div></div><form method="post" action="{{ url_for('twilio_test_message') }}">{{ token(csrf) }}<div class="form-grid"><label>{{ _('Channel') }}<select name="channel"><option value="sms">SMS</option><option value="whatsapp">WhatsApp</option></select></label><label>{{ _('Mobile number') }}<input type="tel" dir="ltr" name="recipient_phone" required placeholder="(845) 555-1212"></label></div><button>{{ _('Send test message') }}</button></form></section>
+{% endif %}
+{% endblock %}

@@ -276,6 +276,27 @@ def test_failed_twilio_message_keeps_error_in_history(monkeypatch):
         assert row.delivery_error == 'Twilio rejected this destination.'
 
 
+def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    overview = {
+        'account': {'friendly_name': 'Yazory', 'status': 'active', 'type': 'Full'},
+        'numbers': [{'sid': 'PN' + '1' * 32, 'phone_number': '+12513063232',
+                     'friendly_name': 'Yazory', 'capabilities': {'sms': True}}],
+        'services': [], 'whatsapp_senders': [], 'warnings': []}
+    monkeypatch.setattr('app.account_overview', lambda *args: (overview, None))
+    monkeypatch.setattr('app.create_messaging_service', lambda *args: ('MG123', None))
+    page = client.get('/twilio-setup')
+    assert page.status_code == 200
+    assert 'Connect SMS automatically' in page.text
+    response = post(client, '/twilio-setup/messaging-service', {
+        'phone_number_sid': 'PN' + '1' * 32})
+    assert response.status_code == 302
+    with app.app_context():
+        setting = db.session.get(core_module.OrganizationSetting,
+                                 'twilio_messaging_service_sid')
+        assert setting.value == 'MG123'
+
+
 def test_no_answer_button_opens_fallback_when_ai_fails(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     monkeypatch.setattr(
