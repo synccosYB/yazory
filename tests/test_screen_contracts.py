@@ -68,3 +68,11 @@ def test_dashboard_uses_translated_labels_and_keeps_preview_rows_visible():
     assert '_("All cases")' in template
     assert 'class="overview-grid dashboard-overview"' in template
     assert "dashboard-overview table" in script
+
+
+def test_family_name_is_the_only_profile_link_in_family_table():
+    root = Path(__file__).resolve().parents[1]
+    macro = (root / 'templates/macros.html').read_text().splitlines()[3]
+    assert macro.count('href="/families/{{ f.id }}"') == 1
+    assert '_("View →")' not in macro
+    assert 'colspan="4"' in macro
