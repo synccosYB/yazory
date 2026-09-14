@@ -322,6 +322,8 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     searched_list = client.get('/supporters?family_id=1&q=Hersh').text
     assert searched_list.index('Shlomo supporter') < searched_list.index('Hersh Levy')
     supporter_detail = client.get(f'/supporters/{hersh_id}').text
+    assert 'class="metrics clickable-metrics"' in supporter_detail
+    assert f'/communications?contact_id={hersh_id}' in supporter_detail
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_detail
     assert 'Supporter hierarchy' in supporter_detail
     hierarchy = supporter_detail.split('class="supporter-hierarchy"', 1)[1]
