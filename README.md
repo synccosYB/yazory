@@ -248,3 +248,11 @@ Translators put suggested wording in **Proposed Yiddish** and leave it as
 the status becomes `Current`, and the versioned
 `translation_sheet_overrides.json` file is regenerated. Commit that JSON file
 with the application change to retain review and rollback history.
+
+The `Translation Sheet Sync` GitHub Action runs hourly and can also be started
+manually. Add the complete service-account JSON as the repository Actions secret
+`GOOGLE_TRANSLATIONS_CREDENTIALS_JSON`. The service account must have Editor
+access to the Sheet. Unlike a browser OAuth connection, it does not require
+periodic sign-in; synchronization stops only if the key is revoked, the Sheet
+permission is removed, or GitHub Actions is disabled. Never put the JSON key in
+the repository or in Replit source files.
