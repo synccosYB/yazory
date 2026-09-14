@@ -113,6 +113,12 @@ def test_message_uses_saved_phone_without_asking_for_it_again(monkeypatch):
     response = client.post(f'/contacts/{contact_id}/communications/message/sms', data={
         'body': 'Can we speak today?', 'csrf': csrf})
     assert response.status_code == 302, response.text
+    page = client.get(response.location)
+    assert 'Communication with Test Supporter' in page.text
+    assert 'Test family' in page.text
+    assert 'Messages and communication history' in page.text
+    assert 'Can we speak today?' in page.text
+    assert 'Show all supporters' in page.text
     with app.app_context():
         row = db.session.scalar(db.select(SupporterCommunication).where(
             SupporterCommunication.contact_id == contact_id,

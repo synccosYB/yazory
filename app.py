@@ -1701,6 +1701,7 @@ def create_app(test_config=None):
         contacts = _app.db.session.scalars(contact_statement).all()
         if selected_contact_id is not None and not contacts:
             _app.abort(404)
+        selected_contact = contacts[0] if selected_contact_id is not None else None
         contact_ids = [row.id for row in contacts]
         history = (_app.db.session.scalars(select(SupporterCommunication).where(
             SupporterCommunication.contact_id.in_(contact_ids)).order_by(
@@ -1754,6 +1755,7 @@ def create_app(test_config=None):
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
+            selected_contact=selected_contact,
             history=history, latest=latest, due=due, email_replies=email_replies,
             applicant_history=applicant_history, applicant_replies=applicant_replies,
             callback_contact_ids=callback_contact_ids,
