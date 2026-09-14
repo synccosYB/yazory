@@ -392,6 +392,45 @@ def test_failed_twilio_message_keeps_error_in_history(monkeypatch):
         assert row.delivery_error == 'Twilio rejected this destination.'
 
 
+def test_valid_twilio_reply_is_saved_once_in_supporter_history(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    app.config.update(TESTING=False, DEMO=False, TWILIO_AUTH_TOKEN='secret')
+    monkeypatch.setattr('app.validate_webhook_signature', lambda *args: True)
+    payload = {
+        'From': '+18455551212', 'To': '+12513063232',
+        'Body': 'Yes, please call after six.',
+        'MessageSid': 'SM' + 'b' * 32}
+
+    first = client.post('/twilio/incoming-message', data=payload)
+    duplicate = client.post('/twilio/incoming-message', data=payload)
+
+    assert first.status_code == 200
+    assert duplicate.status_code == 200
+    assert first.mimetype == 'application/xml'
+    with app.app_context():
+        rows = db.session.scalars(db.select(SupporterCommunication)).all()
+        assert len(rows) == 1
+        assert rows[0].contact_id == contact_id
+        assert rows[0].kind == 'sms'
+        assert rows[0].direction == 'inbound'
+        assert rows[0].subject == 'Incoming text message'
+        assert rows[0].body == 'Yes, please call after six.'
+
+
+def test_twilio_reply_rejects_invalid_signature(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    app.config.update(TESTING=False, DEMO=False, TWILIO_AUTH_TOKEN='secret')
+    monkeypatch.setattr('app.validate_webhook_signature', lambda *args: False)
+
+    response = client.post('/twilio/incoming-message', data={
+        'From': '+18455551212', 'Body': 'Untrusted'})
+
+    assert response.status_code == 403
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count()).select_from(
+            SupporterCommunication)) == 0
+
+
 def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)
     overview = {
