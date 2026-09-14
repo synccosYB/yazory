@@ -1,0 +1,23 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
+    <h1>{{ _('Edit imported person') }}</h1>
+    <p>{{ _('Changes will also update every case connected to this person.') }}</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Back to imported people') }}</a>
+</div>
+
+<section class="card padded">
+  <form method="post" class="form-grid">
+    {{ token(csrf) }}
+    <label>{{ _('Name') }} *<input name="name" value="{{ profile.name }}" maxlength="160" required></label>
+    <label>{{ _('Phone') }} *<input name="phone" value="{{ profile.phone }}" maxlength="80" required></label>
+    <label>{{ _('Email address') }}<input type="email" name="email" value="{{ profile.email }}" maxlength="254"></label>
+    <div class="form-actions">
+      <button type="submit">{{ _('Save changes') }}</button>
+      <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Cancel') }}</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
