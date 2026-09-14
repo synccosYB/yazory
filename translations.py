@@ -452,7 +452,16 @@ _EXTRA.update({
     'Changes will also update every case connected to this person.': {'he': 'השינויים יעדכנו גם כל תיק המקושר לאדם זה.', 'yi': 'די ענדערונגען וועלן אויך אפדעיטן יעדן קעיס וואס איז פארבונדן צו דעם מענטש.'},
     'Back to imported people': {'he': 'חזרה לאנשים שיובאו', 'yi': 'צוריק צו די אימפארטירטע מענטשן'},
     'No people have been imported yet.': {'he': 'עדיין לא יובאו אנשים.', 'yi': 'מען האט נאכנישט אימפארטירט קיין מענטשן.'},
+    'New applicant messages': {'he': 'הודעות חדשות מפונים', 'yi': 'נייע מעסעדזשעס פון פונים'},
+    'Portal messages and direct email replies waiting for staff review.': {'he': 'הודעות מהפורטל ותשובות אימייל ישירות הממתינות לטיפול הצוות.', 'yi': 'פארטאל מעסעדזשעס און דירעקטע אימעיל תשובות וואס ווארטן אויפן שטאב זיי איבערצוקוקן.'},
+    'Applicant communication history': {'he': 'היסטוריית תקשורת עם פונים', 'yi': 'קאמיוניקאציע היסטאריע מיט פונים'},
+    'Every portal message and direct applicant email reply.': {'he': 'כל הודעת פורטל ותשובת אימייל ישירה מהפונה.', 'yi': 'יעדער פארטאל מעסעדזש און דירעקטע אימעיל תשובה פונעם פונה.'},
+    'Supporter communication history': {'he': 'היסטוריית תקשורת עם תומכים', 'yi': 'קאמיוניקאציע היסטאריע מיט העלפער'},
 })
+
+# Expose extension labels through the canonical catalog as well as the runtime
+# translator so CI can enforce complete locale coverage from one source.
+CATALOG.update(_EXTRA)
 
 def translate(text):
     extra = _EXTRA.get(text)

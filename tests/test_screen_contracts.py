@@ -33,3 +33,19 @@ def test_visual_ci_covers_required_layout_modes():
     for locale in ("'he'", "'yi'"):
         assert locale in visual_test
     assert 'npm run test:visual' in workflow
+
+
+def test_communications_section_names_are_translated_in_all_locales():
+    from translations import CATALOG
+
+    labels = (
+        'New applicant messages',
+        'Portal messages and direct email replies waiting for staff review.',
+        'Applicant communication history',
+        'Every portal message and direct applicant email reply.',
+        'Supporter communication history',
+    )
+    assert not [
+        label for label in labels
+        if label not in CATALOG or not all(CATALOG[label].get(locale) for locale in ('he', 'yi'))
+    ]
