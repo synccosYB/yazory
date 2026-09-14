@@ -1201,6 +1201,57 @@ def create_app(test_config=None):
         _app.flash('Person connected to the case. You can now complete the profile.')
         return _app.redirect(_app.url_for('edit_contact', contact_id=contact.id))
 
+
+    @app.route('/supporter-directory/<int:profile_id>/edit', methods=['GET', 'POST'])
+    def edit_supporter_profile(profile_id):
+        supporter_directory_families()
+        profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        if _app.request.method == 'POST':
+            name = _app.request.form.get('name', '').strip()
+            phone = _app.request.form.get('phone', '').strip()
+            email = _app.request.form.get('email', '').strip()
+            normalized = normalized_profile_phone(phone)
+            if not name or not normalized:
+                _app.flash('Name and a valid phone number are required.', 'error')
+                return _app.render_template(
+                    'supporter_profile_edit.html', title='Edit imported person',
+                    profile=profile), 400
+
+            duplicate = _app.db.session.scalar(select(SupporterProfile.id).where(
+                SupporterProfile.normalized_phone == normalized,
+                SupporterProfile.id != profile.id))
+            old_key = 'phone:' + profile.normalized_phone
+            new_key = 'phone:' + normalized
+            case_duplicate = None
+            if new_key != old_key:
+                case_duplicate = _app.db.session.scalar(select(_app.Contact.id).where(
+                    _app.Contact.supporter_key == new_key))
+            if duplicate or case_duplicate:
+                _app.flash('That phone number already belongs to another person.', 'error')
+                return _app.render_template(
+                    'supporter_profile_edit.html', title='Edit imported person',
+                    profile=profile), 409
+
+            linked_contacts = _app.db.session.scalars(select(_app.Contact).where(
+                _app.Contact.supporter_key == old_key)).all()
+            profile.name = name[:160]
+            profile.phone = phone[:80]
+            profile.normalized_phone = normalized
+            profile.email = email[:254]
+            for contact in linked_contacts:
+                contact.name = profile.name
+                contact.phone = profile.phone
+                contact.cell_phone = profile.phone
+                contact.email = profile.email
+                contact.supporter_key = new_key
+            _app.db.session.commit()
+            _app.flash('Person updated everywhere they are connected.')
+            return _app.redirect(_app.url_for('supporter_directory'))
+
+        return _app.render_template(
+            'supporter_profile_edit.html', title='Edit imported person',
+            profile=profile)
+
     def add_shared_gabbai(family_id):
         user = (_app.db.session.get(_app.StaffUser, _app.session.get('user_id'))
                 if _app.session.get('user_id') else None)
