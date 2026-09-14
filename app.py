@@ -378,7 +378,7 @@ class ResendWebhookEvent(_app.db.Model):
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
 from supporter_portal import register_supporter_portal  # noqa: E402
-from applicant_portal import register_applicant_portal  # noqa: E402
+from applicant_portal import ApplicantMessage, register_applicant_portal  # noqa: E402
 from ai_email import (draft_initial_email, fallback_initial_email,
                       initial_email_subject)  # noqa: E402
 from inbound_email import (html_to_text, retrieve_received_email,
@@ -1732,10 +1732,23 @@ def create_app(test_config=None):
         }
         email_replies = [row for row in history
                          if row.kind == 'email_reply' and row.status == 'received']
+        applicant_history = []
+        if user.role != 'fundraiser':
+            applicant_statement = select(ApplicantMessage).order_by(
+                ApplicantMessage.created_at.desc(), ApplicantMessage.id.desc()).limit(300)
+            if not task_is_admin(user):
+                applicant_statement = applicant_statement.where(
+                    ApplicantMessage.family_id.in_(select(
+                        _app.FamilyAssignment.family_id).where(
+                            _app.FamilyAssignment.staff_user_id == user.id)))
+            applicant_history = _app.db.session.scalars(applicant_statement).all()
+        applicant_replies = [row for row in applicant_history
+                             if row.direction == 'applicant' and row.status == 'unread']
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             history=history, latest=latest, due=due, email_replies=email_replies,
+            applicant_history=applicant_history, applicant_replies=applicant_replies,
             callback_contact_ids=callback_contact_ids,
             overdue_contact_ids=overdue_contact_ids,
             pledge_delivery=pledge_delivery,
@@ -1897,12 +1910,39 @@ def create_app(test_config=None):
                     message = candidate
                     break
 
-        timeline = (_app.db.session.scalar(select(SupporterCommunication).where(
-            SupporterCommunication.email_message_id == message.id).order_by(
-                SupporterCommunication.id.desc())) if message else None)
         sender_values = inbound.get('from') or data.get('from') or ''
         sender = next((address.lower() for _, address in getaddresses(
             [sender_values] if isinstance(sender_values, str) else sender_values)), '')
+        body = (inbound.get('text') or html_to_text(inbound.get('html')) or
+                '[Email reply contained no readable text.]')[:50000]
+        attachments = inbound.get('attachments') or []
+        if attachments:
+            names = ', '.join(str(item.get('filename') or 'attachment')[:255]
+                              for item in attachments[:20])
+            body += f'\n\nAttachments: {names}'
+
+        # Staff emails to an applicant use the same signed Reply-To address.
+        # Store a direct email reply in the applicant's portal conversation.
+        if (message and message.kind == 'applicant_portal_message'
+                and message.family_id and sender
+                and sender == message.recipient.strip().lower()):
+            family = _app.db.session.get(_app.Family, message.family_id)
+            if family and sender == (family.email or '').strip().lower():
+                _app.db.session.add(ApplicantMessage(
+                    family_id=family.id, direction='applicant', status='unread',
+                    body=body))
+                _app.db.session.add(_app.Audit(
+                    actor=f'Applicant: {family.email}',
+                    action='Applicant replied by email', family_id=family.id))
+                _app.db.session.add(ResendWebhookEvent(
+                    event_id=event_id, email_id=email_id, event_type=event_type))
+                _app.db.session.commit()
+                return jsonify({'received': True, 'matched': True,
+                                'recipient': 'applicant'})
+
+        timeline = (_app.db.session.scalar(select(SupporterCommunication).where(
+            SupporterCommunication.email_message_id == message.id).order_by(
+                SupporterCommunication.id.desc())) if message else None)
         # The signed per-message address identifies the case; requiring the same
         # sender prevents a leaked reply address from adding mail to its timeline.
         if not timeline or not sender or sender != message.recipient.strip().lower():
@@ -1911,13 +1951,6 @@ def create_app(test_config=None):
             _app.db.session.commit()
             return jsonify({'received': True, 'unmatched': True})
 
-        body = (inbound.get('text') or html_to_text(inbound.get('html')) or
-                '[Email reply contained no readable text.]')[:50000]
-        attachments = inbound.get('attachments') or []
-        if attachments:
-            names = ', '.join(str(item.get('filename') or 'attachment')[:255]
-                              for item in attachments[:20])
-            body += f'\n\nAttachments: {names}'
         now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
         _app.db.session.add(SupporterCommunication(
             contact_id=timeline.contact_id, family_id=timeline.family_id,

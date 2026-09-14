@@ -26,6 +26,7 @@ class ApplicantMessage(core.db.Model):
     family_id = core.db.Column(core.db.Integer, core.db.ForeignKey('family.id'), nullable=False, index=True)
     staff_user_id = core.db.Column(core.db.Integer, core.db.ForeignKey('staff_user.id'), nullable=True, index=True)
     direction = core.db.Column(core.db.String(20), nullable=False, index=True)
+    status = core.db.Column(core.db.String(20), nullable=False, default='handled', index=True)
     body = core.db.Column(core.db.Text, nullable=False)
     created_at = core.db.Column(core.db.DateTime, nullable=False, default=lambda: _utcnow(), index=True)
     family = core.db.relationship('Family')
@@ -61,6 +62,13 @@ def register_applicant_portal(app):
     def ensure_schema():
         ApplicantLoginToken.__table__.create(core.db.engine, checkfirst=True)
         ApplicantMessage.__table__.create(core.db.engine, checkfirst=True)
+        columns = {column['name'] for column in core.inspect(
+            core.db.engine).get_columns('applicant_message')}
+        if 'status' not in columns:
+            core.db.session.execute(core.text(
+                "ALTER TABLE applicant_message ADD COLUMN status "
+                "VARCHAR(20) NOT NULL DEFAULT 'handled'"))
+            core.db.session.commit()
 
     app.extensions.setdefault('init_db_hooks', []).append(ensure_schema)
     if app.config.get('DEMO') or app.config.get('TESTING'):
@@ -130,7 +138,7 @@ def register_applicant_portal(app):
         if not body:
             abort(400, 'Enter a message.')
         core.db.session.add(ApplicantMessage(
-            family_id=family.id, direction='applicant', body=body))
+            family_id=family.id, direction='applicant', status='unread', body=body))
         staff = core.db.session.scalars(select(core.StaffUser).join(
             core.FamilyAssignment).where(
                 core.FamilyAssignment.family_id == family.id,
@@ -176,7 +184,7 @@ def register_applicant_portal(app):
             abort(400, 'Enter a message.')
         core.db.session.add(ApplicantMessage(
             family_id=family.id, staff_user_id=user.id,
-            direction='staff', body=body))
+            direction='staff', status='sent', body=body))
         portal_url = app.config.get('APP_BASE_URL', '').rstrip('/') + url_for('applicant_portal')
         app.extensions['send_email'](
             'applicant_portal_message', family.email,
@@ -188,5 +196,16 @@ def register_applicant_portal(app):
         core.db.session.commit()
         flash('Message sent to the applicant portal.', 'success')
         return redirect(url_for('staff_applicant_messages', family_id=family.id))
+
+    @app.post('/communications/applicant-messages/<int:message_id>/handled')
+    def handle_applicant_message(message_id):
+        message = core.db.get_or_404(ApplicantMessage, message_id)
+        _family_for_staff(message.family_id)
+        if message.direction != 'applicant':
+            abort(404)
+        message.status = 'handled'
+        core.db.session.commit()
+        flash('Applicant message marked as handled.', 'success')
+        return redirect(url_for('communications', _anchor='applicant-messages'))
 
     return app
