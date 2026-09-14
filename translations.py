@@ -423,7 +423,7 @@ _EXTRA.update({
     'Back to supporters': {'he': 'חזרה לתומכים', 'yi': 'צוריק צו די העלפער'},
     'Upload contacts': {'he': 'העלאת אנשי קשר', 'yi': 'ארויפלאדענען קאנטאקטן'},
     'Upload names, phone numbers, and email addresses. The phone number is the unique profile identity.': {'he': 'העלו שמות, מספרי טלפון וכתובות אימייל. מספר הטלפון הוא המזהה הייחודי של הפרופיל.', 'yi': 'לאדט ארויף נעמען, טעלעפאן נומערן און אימעיל אדרעסן. דער טעלעפאן נומער איז דער איינציגער אייגנארטיגער אידענטיפיקאציע פונעם פראפיל.'},
-    'Use a CSV or Excel file with columns named Name, Phone, and Email. Name and phone are required; email is optional.': {'he': 'השתמשו בקובץ CSV או Excel עם עמודות Name, Phone ו-Email. שם וטלפון הם חובה; אימייל אינו חובה.', 'yi': 'נוצט א CSV אדער Excel פייל מיט די קאלומס Name, Phone און Email. נאמען און טעלעפאן זענען פארלאנגט; אימעיל איז נישט פארלאנגט.'},
+    'Upload a CSV or Excel contact sheet. The system recognizes Name or English and Yiddish/Hebrew Name, Phone 1–3, and Email 1–2. A name and at least one phone number are required.': {'he': 'העלו קובץ אנשי קשר מסוג CSV או Excel. המערכת מזהה Name או English Name ו-Yiddish/Hebrew Name, וכן Phone 1–3 ו-Email 1–2. נדרשים שם ומספר טלפון אחד לפחות.', 'yi': 'לאדט ארויף א CSV אדער Excel קאנטאקט ליסטע. די סיסטעם דערקענט Name, אדער English Name און Yiddish/Hebrew Name, ווי אויך Phone 1–3 און Email 1–2. מען דארף האבן א נאמען און כאטש איין טעלעפאן נומער.'},
     'CSV or Excel file': {'he': 'קובץ CSV או Excel', 'yi': 'CSV אדער Excel פייל'},
     'Upload and check duplicates': {'he': 'העלאה ובדיקת כפילויות', 'yi': 'לאד ארויף און כאפ דאפלטע'},
     'Import result': {'he': 'תוצאות הייבוא', 'yi': 'אימפארט רעזולטאט'},
