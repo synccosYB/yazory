@@ -442,6 +442,9 @@ _EXTRA.update({
     'Connect to a case': {'he': 'חיבור לתיק', 'yi': 'פארבינדן צו א קעיס'},
     'Choose case': {'he': 'בחירת תיק', 'yi': 'קלויב א קעיס'},
     'Connect': {'he': 'חיבור', 'yi': 'פארבינדן'},
+    'Edit imported person': {'he': 'עריכת אדם מיובא', 'yi': 'פאררעכטן אן אימפארטירטן מענטש'},
+    'Changes will also update every case connected to this person.': {'he': 'השינויים יעדכנו גם כל תיק המקושר לאדם זה.', 'yi': 'די ענדערונגען וועלן אויך אפדעיטן יעדן קעיס וואס איז פארבונדן צו דעם מענטש.'},
+    'Back to imported people': {'he': 'חזרה לאנשים שיובאו', 'yi': 'צוריק צו די אימפארטירטע מענטשן'},
     'No people have been imported yet.': {'he': 'עדיין לא יובאו אנשים.', 'yi': 'מען האט נאכנישט אימפארטירט קיין מענטשן.'},
 })
 
