@@ -32,6 +32,21 @@ _app.Family.denial_reason = property(
 def create_app(test_config=None):
     app = _base.create_app(test_config)
 
+    @app.cli.command('translations-push')
+    def translations_push():
+        """Add newly discovered application labels to the review Sheet."""
+        from translations import CATALOG
+        from translation_sheet import push_missing
+        count = push_missing(CATALOG)
+        print(f'Added {count} new translation rows.')
+
+    @app.cli.command('translations-pull')
+    def translations_pull():
+        """Import Current wording and promote Approved proposals."""
+        from translation_sheet import pull_approved
+        count, promoted = pull_approved()
+        print(f'Imported {count} current Yiddish translations; promoted {promoted} approved proposals.')
+
     original_family_status = app.view_functions['family_status']
 
     def family_status_with_reason(family_id):

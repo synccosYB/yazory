@@ -224,3 +224,27 @@ only USD campaigns show net receipts less the family's recorded paid expenses.
 API behavior is covered by mocked fixtures based on the documentation; live
 family campaign credentials must be verified during setup. The Yomim Noraim key
 supplied during planning is deliberately not embedded or linked to a family.
+# Translation review Sheet
+
+Production translations remain versioned in Git; the running application never
+depends on Google Sheets. The review Sheet is synchronized explicitly through
+the canonical application factory:
+
+```bash
+python -m flask --app 'app_entry:create_app()' translations-push
+python -m flask --app 'app_entry:create_app()' translations-pull
+python -m pytest -q
+```
+
+Set `GOOGLE_TRANSLATIONS_CREDENTIALS_JSON` to a Google service-account JSON
+document, or set `GOOGLE_APPLICATION_CREDENTIALS` to its file path. Share the
+translation Sheet with that service account. `GOOGLE_TRANSLATION_SHEET_ID` is
+optional and defaults to the Yazory translation registry.
+
+`translations-push` appends new labels without changing existing rows.
+Translators put suggested wording in **Proposed Yiddish** and leave it as
+`Draft`. Change the status to `Approved` only when it is ready. On
+`translations-pull`, approved wording is promoted to **Production Yiddish**,
+the status becomes `Current`, and the versioned
+`translation_sheet_overrides.json` file is regenerated. Commit that JSON file
+with the application change to retain review and rollback history.

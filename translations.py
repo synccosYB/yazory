@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
@@ -462,6 +465,14 @@ _EXTRA.update({
 # Expose extension labels through the canonical catalog as well as the runtime
 # translator so CI can enforce complete locale coverage from one source.
 CATALOG.update(_EXTRA)
+
+# Generated only by the explicit translation Sheet pull command. Google is not
+# contacted while serving requests, so an outage cannot affect the application.
+_sheet_path = Path(__file__).with_name('translation_sheet_overrides.json')
+if _sheet_path.exists():
+    for _source, _yiddish in json.loads(_sheet_path.read_text(encoding='utf-8')).items():
+        if _source in CATALOG and _yiddish:
+            CATALOG[_source]['yi'] = _yiddish
 
 def translate(text):
     extra = _EXTRA.get(text)
