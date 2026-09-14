@@ -1686,6 +1686,26 @@ def create_app(test_config=None):
         latest = {}
         for row in history:
             latest.setdefault(row.contact_id, row)
+        # Older communication records may have the delivered address even when
+        # the supporter profile was not updated at the time. Repair that once so
+        # the pledge workflow never asks staff to enter the same address again.
+        repaired_email = False
+        for contact in contacts:
+            if contact.email:
+                continue
+            sent_address = next((
+                row.email_message.recipient.strip().lower()
+                for row in history
+                if row.contact_id == contact.id and row.email_message
+                and row.email_message.recipient
+                and re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',
+                                 row.email_message.recipient.strip())
+            ), '')
+            if sent_address:
+                contact.email = sent_address[:254]
+                repaired_email = True
+        if repaired_email:
+            _app.db.session.commit()
         due = [row for row in history if row.status == 'scheduled']
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
@@ -1910,7 +1930,9 @@ def create_app(test_config=None):
         if channel not in ('sms', 'whatsapp'):
             _app.abort(404)
         contact = communication_contact(contact_id)
-        recipient = _app.request.form.get('recipient_phone', '').strip()[:80]
+        recipient = (_app.request.form.get('recipient_phone') or
+                     contact.cell_phone or contact.phone or
+                     contact.home_phone or '').strip()[:80]
         body = _app.request.form.get('body', '').strip()[:1600]
         if not body:
             _app.abort(400, 'Enter a message.')

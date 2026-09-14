@@ -55,6 +55,10 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'data-ai-email-form' in page.text
     assert 'data-loading-text="Writing the email…"' in page.text
     assert 'outreach-workflow-table' in page.text
+    assert 'data-table-search="communications-supporters-table"' in page.text
+    assert 'id="communications-supporters-table"' in page.text
+    assert 'aria-label="Search supporters"' in page.text
+    assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
 
     assert post(client, f'/contacts/{contact_id}/communications/callback', {
         'scheduled_for': '2026-09-12T14:30', 'note': 'Call after work'}).status_code == 302
@@ -81,6 +85,25 @@ def test_full_supporter_communication_workflow(monkeypatch):
         assert 'https://abcharity.org/campaign/test-family' in message.text_body
         assert db.session.scalar(db.select(db.func.count()).select_from(
             SupporterCommunication)) == 3
+
+
+def test_message_uses_saved_phone_without_asking_for_it_again(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).phone == '8455551212'
+    client.get('/communications')
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).phone == '8455551212'
+    with client.session_transaction() as session:
+        csrf = session['csrf']
+    response = client.post(f'/contacts/{contact_id}/communications/message/sms', data={
+        'body': 'Can we speak today?', 'csrf': csrf})
+    assert response.status_code == 302, response.text
+    with app.app_context():
+        row = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'sms'))
+        assert row is not None and row.status == 'preview'
 
 
 
@@ -229,6 +252,12 @@ def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):
         'recipient_email': 'new-address@example.test',
         'subject': 'Hello', 'body': 'A short message'})
     assert sent.status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).email == 'new-address@example.test'
+        db.session.get(Contact, contact_id).email = ''
+        db.session.commit()
+    repaired = client.get('/communications')
+    assert 'value="new-address@example.test"' in repaired.text
     with app.app_context():
         assert db.session.get(Contact, contact_id).email == 'new-address@example.test'
 
