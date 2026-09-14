@@ -116,3 +116,54 @@ def test_large_import_checks_existing_profiles_in_bulk(app, client):
 
     assert response.status_code == 200
     assert len(profile_selects) <= 3
+
+
+
+def test_edit_imported_profile_updates_connected_cases(app, client):
+    with app.app_context():
+        family_id = db.session.scalar(db.select(Family.id).order_by(Family.id))
+        profile = SupporterProfile(
+            name='Old Name', phone='845-555-2100',
+            normalized_phone='8455552100', email='old@example.test')
+        contact = Contact(
+            family_id=family_id, name='Old Name', phone='845-555-2100',
+            cell_phone='845-555-2100', email='old@example.test',
+            relationship='Friend', supporter_key='phone:8455552100')
+        db.session.add_all([profile, contact])
+        db.session.commit()
+        profile_id = profile.id
+        contact_id = contact.id
+
+    response = client.post(f'/supporter-directory/{profile_id}/edit', data={
+        'csrf': csrf(client), 'name': 'New Name', 'phone': '(845) 555-2200',
+        'email': 'new@example.test'})
+    assert response.status_code == 302
+    with app.app_context():
+        profile = db.session.get(SupporterProfile, profile_id)
+        contact = db.session.get(Contact, contact_id)
+        assert (profile.name, profile.normalized_phone, profile.email) == (
+            'New Name', '8455552200', 'new@example.test')
+        assert (contact.name, contact.phone, contact.cell_phone, contact.email,
+                contact.supporter_key) == (
+            'New Name', '(845) 555-2200', '(845) 555-2200',
+            'new@example.test', 'phone:8455552200')
+
+
+def test_edit_imported_profile_rejects_duplicate_phone(app, client):
+    with app.app_context():
+        first = SupporterProfile(
+            name='First', phone='845-555-2300',
+            normalized_phone='8455552300', email='')
+        second = SupporterProfile(
+            name='Second', phone='845-555-2400',
+            normalized_phone='8455552400', email='')
+        db.session.add_all([first, second])
+        db.session.commit()
+        first_id = first.id
+
+    response = client.post(f'/supporter-directory/{first_id}/edit', data={
+        'csrf': csrf(client), 'name': 'First', 'phone': '845-555-2400',
+        'email': ''})
+    assert response.status_code == 409
+    with app.app_context():
+        assert db.session.get(SupporterProfile, first_id).normalized_phone == '8455552300'
