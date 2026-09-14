@@ -1716,6 +1716,23 @@ def create_app(test_config=None):
         _app.db.session.add(row)
         return row
 
+    def family_for_inbound_phone(sender):
+        """Match an inbound text to one unambiguous applicant phone number."""
+        try:
+            sender = normalize_phone(sender.replace('whatsapp:', '', 1))
+        except ValueError:
+            return None
+        matches = []
+        for family in _app.db.session.scalars(select(_app.Family)):
+            for value in _family_phones(family):
+                try:
+                    if normalize_phone(value) == sender:
+                        matches.append(family)
+                        break
+                except ValueError:
+                    continue
+        return matches[0] if len(matches) == 1 else None
+
     def contact_for_inbound_phone(sender, channel):
         """Match a reply to the supporter most recently contacted on this channel."""
         try:
@@ -1989,16 +2006,24 @@ def create_app(test_config=None):
 
         provider_id = (_app.request.form.get('MessageSid') or
                        _app.request.form.get('SmsSid') or '').strip()[:100]
-        if provider_id and _app.db.session.scalar(select(
-                SupporterCommunication.id).where(
-                    SupporterCommunication.provider_message_id == provider_id)):
+        if provider_id and (
+                _app.db.session.scalar(select(SupporterCommunication.id).where(
+                    SupporterCommunication.provider_message_id == provider_id)) or
+                _app.db.session.scalar(select(ApplicantMessage.id).where(
+                    ApplicantMessage.provider_message_id == provider_id))):
             return Response('<Response></Response>', mimetype='application/xml')
 
         sender = _app.request.form.get('From', '').strip()[:80]
         body = _app.request.form.get('Body', '').strip()[:1600]
         channel = 'whatsapp' if sender.startswith('whatsapp:') else 'sms'
-        contact = contact_for_inbound_phone(sender, channel)
-        if contact:
+        family = family_for_inbound_phone(sender)
+        contact = None if family else contact_for_inbound_phone(sender, channel)
+        if family:
+            _app.db.session.add(ApplicantMessage(
+                family_id=family.id, direction='applicant', status='unread',
+                body=body, provider_message_id=provider_id or None))
+            _app.db.session.commit()
+        elif contact:
             communication_row(
                 contact, channel,
                 'Incoming WhatsApp message' if channel == 'whatsapp'
