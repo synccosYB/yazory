@@ -49,3 +49,12 @@ def test_communications_section_names_are_translated_in_all_locales():
         label for label in labels
         if label not in CATALOG or not all(CATALOG[label].get(locale) for locale in ('he', 'yi'))
     ]
+
+
+def test_supporter_tree_names_link_to_profiles_and_table_is_searchable():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/supporter_network.html').read_text()
+    assert 'data-table-search="supporter-network-table"' in template
+    assert 'id="supporter-network-table"' in template
+    assert "url_for('supporter_detail',contact_id=row.contact.id)" in template
+    assert "url_for('supporter_detail',contact_id=row.through.id)" in template
