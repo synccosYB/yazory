@@ -64,10 +64,17 @@ def imported_contact_rows(upload):
     else:
         raise ValueError('Upload a CSV or Excel (.xlsx) file.')
 
+    # Ordered aliases support both a simple three-column file and exports with
+    # separate English/Yiddish names and several phone/email columns.  The
+    # first populated phone is the profile's one unique identity.
     aliases = {
-        'name': {'name', 'full name', 'fullname', 'supporter', 'contact'},
-        'phone': {'phone', 'phone number', 'telephone', 'cell', 'cell phone', 'mobile'},
-        'email': {'email', 'email address', 'e-mail'},
+        'name': ('yiddish/hebrew name', 'english name', 'name', 'full name',
+                 'fullname', 'supporter', 'contact', 'original full name'),
+        'phone': ('phone 1', 'phone1', 'phone', 'phone number', 'telephone',
+                  'cell', 'cell phone', 'mobile', 'phone 2', 'phone2',
+                  'phone 3', 'phone3'),
+        'email': ('email 1', 'email1', 'email', 'email address', 'e-mail',
+                  'email 2', 'email2'),
     }
     rows = []
     for number, source in enumerate(source_rows, start=2):
