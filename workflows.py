@@ -546,9 +546,11 @@ def install_workflows(app, db, entities, helpers):
             app.extensions['workflows']['import_correction'](item,next_label,True)
         if item.kind=='governance' and next_label=='Approved': db.session.add(Policy(data=dict(data),source_item_id=item.id))
         if item.kind=='case_approval' and next_label=='Approved':
-            family.status='Under review';family.denial_reason=''
+            family.status='Under review'
+            if family.denial_reason: family.denial_reason=''
         if item.kind=='support_plan' and next_label=='Active':
-            family.status='Active';family.denial_reason=''
+            family.status='Active'
+            if family.denial_reason: family.denial_reason=''
             schedule_review(item,item.id,data['review_date'])
         if item.kind=='review' and next_label=='Completed':
             if data['review_decision']=='Pause assistance':family.status='Paused'

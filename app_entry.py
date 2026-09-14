@@ -10,8 +10,48 @@ import app as _base
 import app_original as _app
 
 
+def _family_denial_reason(family):
+    record = _app.db.session.get(_app.HouseholdIntake, family.id) if family.id else None
+    return ((record.data or {}).get('denial_reason', '') if record else '')
+
+
+def _set_family_denial_reason(family, value):
+    record = _app.db.session.get(_app.HouseholdIntake, family.id) if family.id else None
+    if record is None:
+        record = _app.HouseholdIntake(family_id=family.id, data={})
+        _app.db.session.add(record)
+    record.data = {**(record.data or {}), 'denial_reason': value or ''}
+
+
+# Denial metadata belongs to the intake record so this additive feature does
+# not require altering the core family table on existing installations.
+_app.Family.denial_reason = property(
+    _family_denial_reason, _set_family_denial_reason)
+
+
 def create_app(test_config=None):
     app = _base.create_app(test_config)
+
+    original_family_status = app.view_functions['family_status']
+
+    def family_status_with_reason(family_id):
+        status = _app.request.form.get('status', '').strip()
+        if app.extensions['workflows']['enforced']():
+            return original_family_status(family_id)
+        reason = _app.request.form.get('denial_reason', '').strip()
+        if status == 'Declined' and not reason:
+            _app.abort(400, 'A reason is required when declining a case.')
+        response = original_family_status(family_id)
+        family = _app.db.session.get(_app.Family, family_id)
+        family.denial_reason = reason if status == 'Declined' else ''
+        if reason:
+            _app.db.session.add(_app.Audit(
+                actor=(current_user().email if current_user() else 'System'),
+                action=f'Case denial reason: {reason}', family_id=family_id))
+        _app.db.session.commit()
+        return response
+
+    app.view_functions['family_status'] = family_status_with_reason
     app.config.setdefault(
         'ENABLE_DB_DIAGNOSTIC',
         os.environ.get('ENABLE_DB_DIAGNOSTIC', '').strip().lower() in ('1', 'true', 'yes'),
