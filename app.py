@@ -1724,16 +1724,24 @@ def create_app(test_config=None):
         if repaired_email:
             _app.db.session.commit()
         due = [row for row in history if row.status == 'scheduled']
+        now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+        callback_contact_ids = {row.contact_id for row in due}
+        overdue_contact_ids = {
+            row.contact_id for row in due
+            if row.scheduled_for and row.scheduled_for < now
+        }
         email_replies = [row for row in history
                          if row.kind == 'email_reply' and row.status == 'received']
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             history=history, latest=latest, due=due, email_replies=email_replies,
+            callback_contact_ids=callback_contact_ids,
+            overdue_contact_ids=overdue_contact_ids,
             pledge_delivery=pledge_delivery,
             pledge_frequencies=_app.PLEDGE_FREQUENCIES,
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
-            now=_app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+            now=now)
 
     def contact_mobile(contact):
         return contact.cell_phone or contact.phone or contact.home_phone or ''
