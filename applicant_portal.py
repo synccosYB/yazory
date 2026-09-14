@@ -28,6 +28,7 @@ class ApplicantMessage(core.db.Model):
     direction = core.db.Column(core.db.String(20), nullable=False, index=True)
     status = core.db.Column(core.db.String(20), nullable=False, default='handled', index=True)
     body = core.db.Column(core.db.Text, nullable=False)
+    provider_message_id = core.db.Column(core.db.String(100), nullable=True, unique=True, index=True)
     created_at = core.db.Column(core.db.DateTime, nullable=False, default=lambda: _utcnow(), index=True)
     family = core.db.relationship('Family')
     staff_user = core.db.relationship('StaffUser')
@@ -68,7 +69,13 @@ def register_applicant_portal(app):
             core.db.session.execute(core.text(
                 "ALTER TABLE applicant_message ADD COLUMN status "
                 "VARCHAR(20) NOT NULL DEFAULT 'handled'"))
-            core.db.session.commit()
+        if 'provider_message_id' not in columns:
+            core.db.session.execute(core.text(
+                "ALTER TABLE applicant_message ADD COLUMN provider_message_id VARCHAR(100)"))
+            core.db.session.execute(core.text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_applicant_message_provider_message_id "
+                "ON applicant_message (provider_message_id)"))
+        core.db.session.commit()
 
     app.extensions.setdefault('init_db_hooks', []).append(ensure_schema)
     if app.config.get('DEMO') or app.config.get('TESTING'):
