@@ -1,6 +1,24 @@
+import base64
+import hashlib
+import hmac
+
+from werkzeug.datastructures import MultiDict
+
 from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
-                            message_status, normalize_phone)
+                            message_status, normalize_phone,
+                            validate_webhook_signature)
+
+
+def test_validate_twilio_webhook_signature():
+    url = 'https://yaazory.org/twilio/incoming-message'
+    params = MultiDict([('From', '+18455551212'), ('Body', 'Hello')])
+    value = url + 'BodyHelloFrom+18455551212'
+    signature = base64.b64encode(hmac.new(
+        b'secret', value.encode(), hashlib.sha1).digest()).decode()
+
+    assert validate_webhook_signature('secret', url, params, signature)
+    assert not validate_webhook_signature('secret', url, params, 'wrong')
 
 
 def test_normalize_us_phone_numbers():
