@@ -1,6 +1,7 @@
+from app_entry import create_app
 import pytest
 
-from app import Contact, Family, Institution, PersonAffiliation, create_app, db
+from app import Contact, Family, Institution, PersonAffiliation, db
 
 
 @pytest.fixture
@@ -56,7 +57,8 @@ def test_directory_uses_one_shared_network_for_multiple_applicants(app, client):
     assert 'via' in page
     # The old embedded create-supporter-per-applicant flow is gone.
     assert 'Add and connect person' not in page
-    assert 'name="family_id"' not in page
+    # Applicant filtering remains available without creating a second network.
+    assert 'name="family_id"' in page
 
 
 def test_directory_only_renders_one_network_workspace(app, client):

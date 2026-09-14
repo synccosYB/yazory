@@ -1,6 +1,7 @@
+from app_entry import create_app
 from io import BytesIO
 
-from app import create_app, db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
+from app import db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
 from werkzeug.security import generate_password_hash
 
 def post(client, path, data):

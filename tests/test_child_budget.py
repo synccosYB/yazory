@@ -1,3 +1,4 @@
+from app_entry import create_app
 from types import SimpleNamespace
 from datetime import date
 import pytest
@@ -46,7 +47,7 @@ def test_birthday_and_invalid_values():
 
 
 def test_save_permissions_locales_and_intake_isolation(monkeypatch):
-    from app import create_app, db, Family, Child, HouseholdBudget, HouseholdIntake, StaffUser, FamilyAssignment
+    from app import db, Family, Child, HouseholdBudget, HouseholdIntake, StaffUser, FamilyAssignment
     for k in ('APP_ENV','DATABASE_URL','ADMIN_EMAIL','ADMIN_PASSWORD_HASH','SESSION_SECRET'): monkeypatch.delenv(k,raising=False)
     app=create_app({'TESTING':True,'SQLALCHEMY_DATABASE_URI':'sqlite://','SECRET_KEY':'test','DEMO':False})
     with app.app_context():

@@ -1,6 +1,7 @@
+from app_entry import create_app
 from werkzeug.security import generate_password_hash
 
-from app import StaffTask, create_app
+from app import StaffTask
 from app_original import Contact, Family, FamilyAssignment, StaffUser, db
 
 

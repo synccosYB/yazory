@@ -1,6 +1,7 @@
+from app_entry import create_app
 import pytest
 
-from app import Contact, Family, create_app, db
+from app import Contact, Family, db
 
 
 @pytest.fixture

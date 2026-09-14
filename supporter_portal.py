@@ -49,6 +49,8 @@ def register_supporter_portal(app):
     def supporter_login():
         if request.method == 'POST':
             email = (request.form.get('email') or '').strip().lower()[:254]
+            app.extensions['consume_throttle'](
+                'supporter_login_link', email, 3, 60 * 60)
             contacts = core.db.session.scalars(select(core.Contact).where(
                 func.lower(core.Contact.email) == email,
                 core.Contact.supporter_key != '',

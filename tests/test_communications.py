@@ -1,10 +1,11 @@
+from app_entry import create_app
 from datetime import datetime
 
 from werkzeug.security import generate_password_hash
 
 import app_original as core_module
 from app import (CharityCampaign, Contact, EmailMessage, Family, Receipt, StaffTask,
-                 SupporterCommunication, create_app, db)
+                 SupporterCommunication, db)
 
 
 def post(client, path, data):

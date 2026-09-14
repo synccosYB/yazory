@@ -1,3 +1,4 @@
+from app_entry import create_app
 import json
 import pytest
 from budget_report import household_report
@@ -39,7 +40,7 @@ def test_treatment_persists_and_validates():
 
 
 def test_report_locales_and_permissions(monkeypatch):
-    from app import create_app, db, Family, StaffUser, FamilyAssignment, HouseholdIntake
+    from app import db, Family, StaffUser, FamilyAssignment, HouseholdIntake
     for key in ['APP_ENV','DATABASE_URL','ADMIN_EMAIL','ADMIN_PASSWORD_HASH','SESSION_SECRET']:
         monkeypatch.delenv(key,raising=False)
     app=create_app({'TESTING':True,'SQLALCHEMY_DATABASE_URI':'sqlite://','SECRET_KEY':'test','DEMO':False})

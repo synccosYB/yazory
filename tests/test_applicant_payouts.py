@@ -1,9 +1,10 @@
+from app_entry import create_app
 from datetime import date
 
 import pdfplumber
 import app_original as core_module
 
-from app import ApplicantPayout, CheckBankAccount, Family, StripeRecipient, create_app, db
+from app import ApplicantPayout, CheckBankAccount, Family, StripeRecipient, db
 
 
 def payout_app(tmp_path, name):

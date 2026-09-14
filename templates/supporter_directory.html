@@ -1,0 +1,62 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
+    <h1>{{ _('Import people') }}</h1>
+    <p>{{ _('Upload names, phone numbers, and email addresses. The phone number is the unique profile identity.') }}</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('supporters') }}">{{ _('Back to supporters') }}</a>
+</div>
+
+<section class="card padded no-print">
+  <h2>{{ _('Upload contacts') }}</h2>
+  <p>{{ _('Use a CSV or Excel file with columns named Name, Phone, and Email. Name and phone are required; email is optional.') }}</p>
+  <form method="post" enctype="multipart/form-data" class="compact-form">
+    {{ token(csrf) }}
+    <label>{{ _('CSV or Excel file') }}
+      <input type="file" name="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+    </label>
+    <button type="submit">{{ _('Upload and check duplicates') }}</button>
+  </form>
+</section>
+
+{% if import_result %}
+<section class="card padded">
+  <h2>{{ _('Import result') }}</h2>
+  <div class="stats-grid">
+    <div><strong>{{ import_result.created }}</strong><small>{{ _('New profiles') }}</small></div>
+    <div><strong>{{ import_result.duplicates }}</strong><small>{{ _('Duplicates found') }}</small></div>
+    <div><strong>{{ import_result.updated }}</strong><small>{{ _('Blank emails filled') }}</small></div>
+    <div><strong>{{ import_result.skipped }}</strong><small>{{ _('Rows skipped') }}</small></div>
+  </div>
+  {% if import_result.errors %}<details><summary>{{ _('See skipped and duplicate rows') }}</summary>
+    <ul>{% for error in import_result.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  </details>{% endif %}
+</section>
+{% endif %}
+
+<section class="card list-filter-card no-print">
+  <form method="get" class="list-filter-form">
+    <label>{{ _('Search people') }}<input type="search" name="q" value="{{ query }}" placeholder="{{ _('Name, phone, or email') }}"></label>
+    <div class="list-filter-actions"><button>{{ _('Search') }}</button>{% if query %}<a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Clear') }}</a>{% endif %}</div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{ _('Name') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Email address') }}</th><th>{{ _('Cases') }}</th><th>{{ _('Connect to a case') }}</th></tr></thead>
+    <tbody>{% for profile in profiles %}<tr>
+      <td><strong>{{ profile.name }}</strong></td>
+      <td><bdi dir="ltr">{{ profile.phone|phone }}</bdi></td>
+      <td><bdi dir="ltr">{{ profile.email or '—' }}</bdi></td>
+      <td>{{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</td>
+      <td>{% if families %}<form method="post" action="{{ url_for('connect_supporter_profile', profile_id=profile.id) }}" class="compact-form">
+        {{ token(csrf) }}
+        <select name="family_id" required><option value="">{{ _('Choose case') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select>
+        <select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}</select>
+        <button class="small">{{ _('Connect') }}</button>
+      </form>{% else %}—{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="5" class="empty">{{ _('No people have been imported yet.') }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

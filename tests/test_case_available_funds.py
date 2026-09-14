@@ -1,6 +1,7 @@
+from app_entry import create_app
 from datetime import date
 
-from app import ApplicantPayout, Expense, Family, Receipt, create_app, db
+from app import ApplicantPayout, Expense, Family, Receipt, db
 
 
 def test_case_available_balance_counts_all_non_voided_disbursements(tmp_path):

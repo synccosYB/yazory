@@ -1,5 +1,6 @@
+from app_entry import create_app
 """Focused regression coverage for the connected workspace additions."""
-from app import create_app, db, Family, Contact, Receipt, OrganizationSetting, StaffUser
+from app import db, Family, Contact, Receipt, OrganizationSetting, StaffUser
 
 
 def csrf(client):

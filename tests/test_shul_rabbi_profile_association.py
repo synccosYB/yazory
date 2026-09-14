@@ -1,8 +1,9 @@
+from app_entry import create_app
 import pytest
 from sqlalchemy import event
 
 from app import (FamilyRabbiConnection, Institution, ShulGabbaiDirectory,
-                 ShulGabbaiPhone, ShulRabbi, ShulRabbiPhone, create_app, db)
+                 ShulGabbaiPhone, ShulRabbi, ShulRabbiPhone, db)
 
 
 @pytest.fixture

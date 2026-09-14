@@ -1,7 +1,8 @@
+from app_entry import create_app
 import hashlib
 import pytest
 
-from app import Contact, Family, Receipt, create_app, db
+from app import Contact, Family, Receipt, db
 from supporter_portal import SupporterLoginToken
 
 

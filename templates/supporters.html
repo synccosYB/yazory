@@ -6,7 +6,7 @@
 <h1>{{ _('Supporters') }}</h1>
 <p>{{ _('Assigned supporter relationships, pledges, receipts, and follow-up.') }}</p>
 </div>
-<button type="button" class="no-print" onclick="window.print()">{{ _('Print list') }}</button>
+<div class="row-actions no-print"><a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Import people') }}</a><button type="button" onclick="window.print()">{{ _('Print list') }}</button></div>
 </div>
 <nav class="list-switcher no-print" aria-label="{{ _('List filters') }}">
 <a class="button {{ 'secondary' if relationship_group != 'siblings' }}" href="{{ url_for('supporters', relationship_group='siblings', family_id=selected_family_id or None) }}">{{ _('Brothers / brothers-in-law list') }}</a>

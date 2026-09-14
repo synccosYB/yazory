@@ -155,6 +155,15 @@ class AccountToken(db.Model):
     staff_user = db.relationship('StaffUser', foreign_keys=[staff_user_id])
 
 
+class RequestThrottle(db.Model):
+    """Durable request counters shared by every application worker."""
+    __tablename__ = 'request_throttle'
+    scope = db.Column(db.String(40), primary_key=True)
+    key_hash = db.Column(db.String(64), primary_key=True)
+    window_started_at = db.Column(db.DateTime, nullable=False)
+    request_count = db.Column(db.Integer, nullable=False, default=0)
+
+
 class EmailMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     kind = db.Column(db.String(40), nullable=False, index=True)
@@ -511,6 +520,29 @@ def create_app(test_config=None):
 
     def utcnow():
         return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def consume_throttle(scope, identity, limit, window_seconds):
+        """Record an attempt and reject requests beyond a durable fixed window."""
+        remote = request.headers.get('X-Forwarded-For', request.remote_addr or '')
+        remote = remote.split(',', 1)[0].strip()
+        key_hash = hashlib.sha256(
+            f'{scope}|{identity.strip().lower()}|{remote}'.encode()).hexdigest()
+        now = utcnow()
+        row = db.session.get(RequestThrottle, (scope, key_hash))
+        if row is None:
+            row = RequestThrottle(scope=scope, key_hash=key_hash,
+                                  window_started_at=now, request_count=1)
+            db.session.add(row)
+        elif now - row.window_started_at >= timedelta(seconds=window_seconds):
+            row.window_started_at = now
+            row.request_count = 1
+        else:
+            row.request_count += 1
+        db.session.commit()
+        if row.request_count > limit:
+            abort(429, 'Too many attempts. Please wait and try again.')
+
+    app.extensions['consume_throttle'] = consume_throttle
 
     def account_token(user, purpose, hours, created_by=None):
         raw = secrets.token_urlsafe(32)
@@ -1276,6 +1308,8 @@ def create_app(test_config=None):
                           amount_cents=amount_cents, received_on=date.today(),
                           reference=reference, note='Processed securely by Stripe')
         db.session.add(receipt)
+        db.session.flush()
+        g.created_receipt_ids = [*(getattr(g, 'created_receipt_ids', ()) or ()), receipt.id]
         receipt_email = donor_email or contact.email
         if receipt_email:
             send_email('donation_receipt', receipt_email, 'Your Yazory donation receipt',
@@ -1579,9 +1613,8 @@ def create_app(test_config=None):
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':
-            import time
-            time.sleep(1)
             email = email_field()
+            consume_throttle('staff_login', email, 8, 15 * 60)
             ensure_bootstrap_owner()
             user = db.session.scalar(select(StaffUser).where(StaffUser.email == email.lower()))
             if user and app.extensions['workflows']['active_user'](user) and check_password_hash(user.password_hash, request.form.get('password', '')):
@@ -1607,6 +1640,7 @@ def create_app(test_config=None):
     def forgot_password():
         if request.method == 'POST':
             email = email_field()
+            consume_throttle('password_reset', email, 3, 60 * 60)
             user = db.session.scalar(select(StaffUser).where(
                 StaffUser.email == email, StaffUser.status == 'active'))
             if user:
@@ -2180,16 +2214,19 @@ def create_app(test_config=None):
         if duplicate_case:
             abort(400, 'This supporter is already connected to this case.')
         if existing and key.startswith('phone:'):
-            pledge, pledge_frequency, status = existing.monthly_cents, existing.pledge_frequency, existing.status
             if not phone:
                 phone = existing.phone
             if not email:
                 email = existing.email
-        db.session.add(Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
-                               email=email,
-                               supporter_key=key, parent_contact_id=parent_contact_id,
-                               parent_connection=parent_connection, monthly_cents=pledge,
-                               pledge_frequency=pledge_frequency, status=status))
+        contact = Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
+                          email=email, supporter_key=key, parent_contact_id=parent_contact_id,
+                          parent_connection=parent_connection, monthly_cents=pledge,
+                          pledge_frequency=pledge_frequency, status=status)
+        db.session.add(contact)
+        db.session.flush()
+        sync_followup = app.extensions.get('sync_supporter_followup_task')
+        if sync_followup:
+            sync_followup(contact)
         audit('Added donor network contact', family_id)
         db.session.commit()
         relationship_group = request.form.get('relationship_group', '').strip()
@@ -2215,13 +2252,12 @@ def create_app(test_config=None):
         monthly_cents = amount('monthly', allow_zero=status!='Pledged')
         pledge_frequency = field('pledge_frequency') or 'Monthly'
         if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
-        linked = [contact]
-        if contact.supporter_key:
-            linked = db.session.scalars(select(Contact).where(Contact.supporter_key == contact.supporter_key)).all()
-        for linked_contact in linked:
-            linked_contact.status = status
-            linked_contact.monthly_cents = monthly_cents
-            linked_contact.pledge_frequency = pledge_frequency
+        contact.status = status
+        contact.monthly_cents = monthly_cents
+        contact.pledge_frequency = pledge_frequency
+        sync_followup = app.extensions.get('sync_supporter_followup_task')
+        if sync_followup:
+            sync_followup(contact)
         audit(f'Updated donor pledge: {status}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
@@ -2301,12 +2337,15 @@ def create_app(test_config=None):
                 linked_contact.work_phone = field('work_phone', limit=80)
                 linked_contact.notes = field('notes', limit=5000)
                 linked_contact.supporter_key = new_key
-                linked_contact.status = status
-                linked_contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
-                linked_contact.pledge_frequency = pledge_frequency
+            contact.status = status
+            contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
+            contact.pledge_frequency = pledge_frequency
             contact.relationship = relationship
             contact.parent_contact_id = parent_contact_id
             contact.parent_connection = parent_connection
+            sync_followup = app.extensions.get('sync_supporter_followup_task')
+            if sync_followup:
+                sync_followup(contact)
             audit(f'Updated supporter details: {name}', contact.family_id)
             db.session.commit()
             flash('Supporter updated.')
@@ -2617,6 +2656,8 @@ def create_app(test_config=None):
                           note=field('note', limit=5000),
                           recorded_by=current_user().id if current_user() else None)
         db.session.add(receipt)
+        db.session.flush()
+        g.created_receipt_ids = [*(getattr(g, 'created_receipt_ids', ()) or ()), receipt.id]
         audit('Recorded manual receipt', contact.family_id)
         db.session.commit()
         flash('Manual receipt recorded.')

@@ -12,6 +12,10 @@ import app_original as _app
 
 def create_app(test_config=None):
     app = _base.create_app(test_config)
+    app.config.setdefault(
+        'ENABLE_DB_DIAGNOSTIC',
+        os.environ.get('ENABLE_DB_DIAGNOSTIC', '').strip().lower() in ('1', 'true', 'yes'),
+    )
 
     workflows = app.extensions.get('workflows', {})
     financials = workflows.get('financials')
@@ -105,109 +109,6 @@ def create_app(test_config=None):
         workflows['monthly_pledged'] = case_monthly_pledged
     monthly_pledged = case_monthly_pledged
 
-    def pledge_snapshot(contact_id):
-        contact = _app.db.session.get(_app.Contact, contact_id)
-        if contact is None or not contact.supporter_key:
-            return {}
-        return {
-            row.id: (row.status, row.monthly_cents, row.pledge_frequency)
-            for row in _app.db.session.scalars(select(_app.Contact).where(
-                _app.Contact.supporter_key == contact.supporter_key))
-            if row.id != contact.id
-        }
-
-    def restore_other_case_pledges(snapshot):
-        for contact_id, values in snapshot.items():
-            row = _app.db.session.get(_app.Contact, contact_id)
-            if row is not None:
-                row.status, row.monthly_cents, row.pledge_frequency = values
-
-    original_update_contact = app.view_functions.get('update_contact')
-    if original_update_contact:
-        def update_contact_case_specific(contact_id):
-            snapshot = pledge_snapshot(contact_id)
-            submitted_status = _app.request.form.get('status', '').strip()
-            submitted_frequency = _app.request.form.get('pledge_frequency', '').strip() or 'Monthly'
-            submitted_monthly = _app.request.form.get('monthly', '').strip().replace(',', '').replace('$', '')
-            response = original_update_contact(contact_id)
-            restore_other_case_pledges(snapshot)
-            row = _app.db.session.get(_app.Contact, contact_id)
-            if row is not None:
-                try:
-                    cents = int(Decimal(submitted_monthly) * 100) if submitted_monthly else row.monthly_cents
-                except (InvalidOperation, ValueError):
-                    cents = row.monthly_cents
-                if submitted_status in _app.CONTACT_STATUSES:
-                    row.status = submitted_status
-                if submitted_frequency in _app.PLEDGE_FREQUENCIES:
-                    row.pledge_frequency = submitted_frequency
-                row.monthly_cents = cents
-            _app.db.session.commit()
-            return response
-        app.view_functions['update_contact'] = update_contact_case_specific
-
-    original_edit_contact = app.view_functions.get('edit_contact')
-    if original_edit_contact:
-        def edit_contact_case_specific(contact_id):
-            snapshot = pledge_snapshot(contact_id) if _app.request.method == 'POST' else {}
-            response = original_edit_contact(contact_id)
-            if snapshot:
-                restore_other_case_pledges(snapshot)
-                _app.db.session.commit()
-            return response
-        app.view_functions['edit_contact'] = edit_contact_case_specific
-
-    original_add_contact = app.view_functions.get('add_contact')
-    if original_add_contact:
-        def add_contact_case_specific(family_id=None):
-            target_family = family_id or _app.request.form.get('family_id', type=int)
-            before_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
-                _app.Contact.family_id == target_family))) if target_family else set()
-            submitted_status = _app.request.form.get('status', '').strip()
-            submitted_frequency = _app.request.form.get('pledge_frequency', '').strip() or 'Monthly'
-            submitted_monthly = _app.request.form.get('monthly', '').strip().replace(',', '').replace('$', '')
-            response = original_add_contact(family_id)
-            if target_family:
-                new_contacts = list(_app.db.session.scalars(select(_app.Contact).where(
-                    _app.Contact.family_id == target_family,
-                    _app.Contact.id.notin_(before_ids),
-                ).order_by(_app.Contact.id.desc())))
-                if new_contacts:
-                    row = new_contacts[0]
-                    try:
-                        cents = int(Decimal(submitted_monthly) * 100) if submitted_monthly else 0
-                    except (InvalidOperation, ValueError):
-                        cents = row.monthly_cents
-                    if submitted_status in _app.CONTACT_STATUSES:
-                        row.status = submitted_status
-                    if submitted_frequency in _app.PLEDGE_FREQUENCIES:
-                        row.pledge_frequency = submitted_frequency
-                    row.monthly_cents = cents
-                    _app.db.session.commit()
-            return response
-        app.view_functions['add_contact'] = add_contact_case_specific
-
-    # Narrow one-time cleanup for the exact linked supporter rows observed in production.
-    # Family 2 / contact 33 owns the $10 monthly pledge. Family 1 / contact 31 is
-    # merely the same supporter identity and must not inherit that amount.
-    with app.app_context():
-        pledged = _app.db.session.get(_app.Contact, 33)
-        other = _app.db.session.get(_app.Contact, 31)
-        changed = False
-        if (pledged and pledged.family_id == 2 and pledged.monthly_cents == 1000
-                and pledged.pledge_frequency == 'Monthly'):
-            if pledged.status == 'To contact':
-                pledged.status = 'Pledged'
-                changed = True
-            if (other and other.family_id == 1 and other.supporter_key
-                    and other.supporter_key == pledged.supporter_key
-                    and other.status == 'To contact' and other.monthly_cents == 1000):
-                other.monthly_cents = 0
-                other.pledge_frequency = 'Monthly'
-                changed = True
-        if changed:
-            _app.db.session.commit()
-
     def manual_shortfall(family_id):
         record = _app.db.session.get(_app.HouseholdBudget, family_id)
         if not record:
@@ -217,6 +118,8 @@ def create_app(test_config=None):
 
     @app.get('/admin/db-diagnostic')
     def live_db_diagnostic():
+        if not app.config['ENABLE_DB_DIAGNOSTIC']:
+            _app.abort(404)
         user = current_user()
         if not user or user.role != 'organization_admin':
             _app.abort(403)

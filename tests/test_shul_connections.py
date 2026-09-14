@@ -1,3 +1,4 @@
+from app_entry import create_app
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,6 @@ from app import (
     ShulRabbiAssistant,
     ShulRabbiAssistantPhone,
     ShulRabbiPhone,
-    create_app,
     db,
     _migrate_canonical_helpers,
     _migrate_family_gabbaim_to_shared_shuls,

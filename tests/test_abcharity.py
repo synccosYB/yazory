@@ -1,6 +1,7 @@
+from app_entry import create_app
 import pytest
 from datetime import datetime
-from app import create_app, db, Family, StaffUser, FamilyAssignment, CharityCampaign, CharityDonation, CharityDonor, Contact
+from app import db, Family, StaffUser, FamilyAssignment, CharityCampaign, CharityDonation, CharityDonor, Contact
 from abcharity import normalize, fetch_donations, decrypt_api_key, normalize_public_url, ERROR
 from translations import CATALOG
 

@@ -1,7 +1,8 @@
+from app_entry import create_app
 from datetime import date, timedelta
 from io import BytesIO
 import pytest
-from app import create_app, db, Family, StaffUser, FamilyAssignment, Contact, HouseholdIntake, HouseholdBudget, Expense
+from app import db, Family, StaffUser, FamilyAssignment, Contact, HouseholdIntake, HouseholdBudget, Expense
 from workflow_catalog import CATALOG, ROLES, FIELDS
 
 @pytest.fixture

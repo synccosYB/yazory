@@ -1,3 +1,4 @@
+from app_entry import create_app
 import re
 
 import app_original as app_module
@@ -5,7 +6,7 @@ import app_original as core_module
 from werkzeug.security import generate_password_hash
 
 from app import (AccountToken, EmailMessage, Family, FamilyAssignment, StaffUser,
-                 create_app, db)
+                 db)
 
 
 def post(client, path, data):

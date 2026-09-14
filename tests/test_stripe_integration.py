@@ -1,8 +1,9 @@
+from app_entry import create_app
 import app_original as app_module
 import app_original as core_module
 import native_payments as native_module
 from app import (Contact, Expense, Family, Receipt, StripeEvent, StripePayment,
-                 StripeRecipient, StripeTransfer, create_app, db)
+                 StripeRecipient, StripeTransfer, db)
 from native_payments import StripeSettlement
 
 

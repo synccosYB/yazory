@@ -1,6 +1,7 @@
+from app_entry import create_app
 import pytest
+from werkzeug.exceptions import NotFound
 
-from app import create_app
 
 
 @pytest.fixture
@@ -9,6 +10,12 @@ def public_app(monkeypatch):
         monkeypatch.delenv(key, raising=False)
     return create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://',
                        'SECRET_KEY': 'test', 'DEMO': False})
+
+
+def test_database_diagnostic_is_disabled_by_default(public_app):
+    with public_app.test_request_context('/admin/db-diagnostic'):
+        with pytest.raises(NotFound):
+            public_app.view_functions['live_db_diagnostic']()
 
 
 def test_public_business_pages_are_available_without_login(public_app):

@@ -1,3 +1,4 @@
+from app_entry import create_app
 import pathlib
 
 import pytest
@@ -10,7 +11,6 @@ from app import (
     RabbiPerson,
     ShulRabbi,
     ShulRabbiAssociation,
-    create_app,
     db,
 )
 

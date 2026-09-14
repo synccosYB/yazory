@@ -1,8 +1,9 @@
+from app_entry import create_app
 from pathlib import Path
 
 import pytest
 from flask import session
-from app import Family, FamilyPhone, create_app, db
+from app import Family, FamilyPhone, db
 
 
 @pytest.fixture

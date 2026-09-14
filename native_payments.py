@@ -4,8 +4,9 @@ The application owns the checkout UI. Raw card details are entered into Stripe
 Elements in the browser and never pass through or get stored by Yazory.
 """
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
-from flask import abort, current_app, redirect, render_template, request, session, url_for
+from flask import abort, current_app, g, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 
 import app_original as core
@@ -79,8 +80,11 @@ def _authorized_contact(contact_id):
 
 def _parse_amount(value):
     try:
-        cents = round(float(value) * 100)
-    except (TypeError, ValueError):
+        amount = Decimal(str(value))
+        if not amount.is_finite() or amount.as_tuple().exponent < -2:
+            raise ValueError
+        cents = int(amount * 100)
+    except (InvalidOperation, TypeError, ValueError):
         cents = 0
     if cents < 100 or cents > 100000000:
         abort(400, 'Enter a donation between $1.00 and $1,000,000.00.')
@@ -282,14 +286,18 @@ def register_native_payments(app):
                     payment.successful_charges = 1
                     if not core.db.session.scalar(select(core.Receipt.id).where(
                             core.Receipt.reference == payment.payment_intent_id)):
-                        core.db.session.add(core.Receipt(
+                        receipt = core.Receipt(
                             contact_id=payment.contact_id,
                             family_id=payment.family_id,
                             amount_cents=payment.amount_cents,
                             received_on=datetime.now(timezone.utc).date(),
                             reference=payment.payment_intent_id,
                             note='Stripe card payment',
-                        ))
+                        )
+                        core.db.session.add(receipt)
+                        core.db.session.flush()
+                        g.created_receipt_ids = [
+                            *(getattr(g, 'created_receipt_ids', ()) or ()), receipt.id]
                 _record_settlement(
                     payment,
                     payment_intent_id=payment.payment_intent_id,

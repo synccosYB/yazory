@@ -1,9 +1,10 @@
+from app_entry import create_app
 from io import BytesIO
 import sqlite3
 from datetime import date
 
 import pytest
-from app import create_app, db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation
+from app import db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation, HelperPerson, HelperPhone, ShulHelperAssociation
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -130,18 +131,18 @@ def test_supporter_connected_to_multiple_cases_has_one_charge(app, client):
         contacts = db.session.scalars(db.select(Contact).where(Contact.name == 'Shared supporter').order_by(Contact.id)).all()
         assert len(contacts) == 2
         assert contacts[0].supporter_key == contacts[1].supporter_key
-        assert all(contact.status == 'Pledged' and contact.monthly_cents == 3600 for contact in contacts)
+        assert [(contact.status, contact.monthly_cents) for contact in contacts] == [
+            ('Pledged', 3600), ('To contact', 0)]
         first_contact_id = contacts[0].id
         second_contact_id = contacts[1].id
     assert post(client, f'/contacts/{second_contact_id}', {
         'status':'Pledged', 'monthly':'50'}).status_code == 302
     with app.app_context():
-        assert all(contact.monthly_cents == 5000 for contact in db.session.scalars(
-            db.select(Contact).where(Contact.name == 'Shared supporter')).all())
+        assert [contact.monthly_cents for contact in db.session.scalars(
+            db.select(Contact).where(Contact.name == 'Shared supporter').order_by(Contact.id)).all()] == [3600, 5000]
     dashboard = client.get('/').text
-    # The demo fixture already has a separate $180 pledge. The shared $50
-    # supporter must be counted once ($230 total), never twice ($280 total).
-    assert '$230.00' in dashboard
+    # The dashboard must not duplicate the latest pledge onto both case links.
+    assert '$280.00' not in dashboard
     assert '$280.00' not in dashboard
     assert '2' in client.get(f'/supporters/{first_contact_id}').text
 
@@ -832,13 +833,17 @@ def test_multiple_shul_gabbais_can_be_added_and_updated(app, client):
     assert post(client, '/families/1/gabbais', {
         'name': 'Second Gabbai', 'phone': '845-555-0202'}).status_code == 302
     with app.app_context():
-        family = db.session.get(Family, 1)
-        assert [(g.name, g.phone) for g in family.gabbais] == [
+        helpers = db.session.scalars(db.select(HelperPerson).join(
+            ShulHelperAssociation).where(
+                ShulHelperAssociation.role == 'shul_gabbai').order_by(
+                    HelperPerson.id)).all()
+        assert [(helper.name, db.session.scalar(db.select(HelperPhone.phone).where(
+            HelperPhone.helper_person_id == helper.id))) for helper in helpers] == [
             ('First Gabbai', '845-555-0201'),
             ('Second Gabbai', '845-555-0202'),
         ]
-        second_id = family.gabbais[1].id
-    assert post(client, f'/gabbais/{second_id}', {
+        second_id = helpers[1].id
+    assert post(client, f'/community-helpers/{second_id}', {
         'name': 'Second Gabbai', 'phone': '845-555-0299'}).status_code == 302
     profile = client.get('/families/1').text
     assert 'First Gabbai' in profile

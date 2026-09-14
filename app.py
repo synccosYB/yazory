@@ -1,6 +1,9 @@
 import json
 import os
 import re
+import csv
+from decimal import Decimal, InvalidOperation
+from io import BytesIO, StringIO
 
 import app_original as _app
 from flask import current_app, has_request_context, session
@@ -10,6 +13,70 @@ from sqlalchemy.orm.exc import StaleDataError
 from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
                             message_status, normalize_phone)
+
+
+class SupporterProfile(_app.db.Model):
+    """A person in the shared directory, before they are assigned to a case."""
+    __tablename__ = 'supporter_profile'
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    name = _app.db.Column(_app.db.String(160), nullable=False)
+    phone = _app.db.Column(_app.db.String(80), nullable=False)
+    normalized_phone = _app.db.Column(
+        _app.db.String(20), nullable=False, unique=True, index=True)
+    email = _app.db.Column(_app.db.String(254), nullable=False, default='')
+    created_at = _app.db.Column(
+        _app.db.DateTime, nullable=False,
+        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+
+
+def normalized_profile_phone(value):
+    """Return the canonical phone identity used by imports and case contacts."""
+    digits = re.sub(r'\D', '', value or '')
+    if len(digits) == 11 and digits.startswith('1'):
+        digits = digits[1:]
+    return digits if 7 <= len(digits) <= 15 else ''
+
+
+def imported_contact_rows(upload):
+    """Read a small CSV or XLSX upload and yield normalized field dictionaries."""
+    filename = (upload.filename or '').lower()
+    raw = upload.read()
+    if filename.endswith('.xlsx'):
+        try:
+            from openpyxl import load_workbook
+        except ImportError as exc:  # pragma: no cover - dependency is deployed
+            raise ValueError('Excel imports are unavailable on this server.') from exc
+        sheet = load_workbook(BytesIO(raw), read_only=True, data_only=True).active
+        values = list(sheet.iter_rows(values_only=True))
+        if not values:
+            return []
+        headers = [str(value or '').strip() for value in values[0]]
+        source_rows = (dict(zip(headers, row)) for row in values[1:])
+    elif filename.endswith('.csv'):
+        try:
+            content = raw.decode('utf-8-sig')
+        except UnicodeDecodeError as exc:
+            raise ValueError('Save the CSV as UTF-8 and upload it again.') from exc
+        source_rows = csv.DictReader(StringIO(content))
+    else:
+        raise ValueError('Upload a CSV or Excel (.xlsx) file.')
+
+    aliases = {
+        'name': {'name', 'full name', 'fullname', 'supporter', 'contact'},
+        'phone': {'phone', 'phone number', 'telephone', 'cell', 'cell phone', 'mobile'},
+        'email': {'email', 'email address', 'e-mail'},
+    }
+    rows = []
+    for number, source in enumerate(source_rows, start=2):
+        cleaned = {
+            re.sub(r'[_-]+', ' ', str(key or '').strip().lower()):
+            str(value or '').strip() for key, value in source.items()
+        }
+        row = {'row': number}
+        for field, choices in aliases.items():
+            row[field] = next((cleaned[key] for key in choices if cleaned.get(key)), '')
+        rows.append(row)
+    return rows
 
 if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
@@ -952,6 +1019,27 @@ def create_app(test_config=None):
             'ON staff_task (source_contact_id)'
         ))
         _app.db.session.commit()
+        # Seed the shared directory from existing case contacts. A phone number
+        # is the sole unique identity; names and email addresses remain editable.
+        existing_profiles = {
+            row.normalized_phone: row for row in
+            _app.db.session.scalars(select(SupporterProfile)).all()
+        }
+        for contact in _app.db.session.scalars(select(_app.Contact).where(
+                _app.Contact.phone != '')).all():
+            normalized = normalized_profile_phone(contact.phone)
+            if not normalized:
+                continue
+            profile = existing_profiles.get(normalized)
+            if profile is None:
+                profile = SupporterProfile(
+                    name=contact.name, phone=contact.phone,
+                    normalized_phone=normalized, email=contact.email or '')
+                _app.db.session.add(profile)
+                existing_profiles[normalized] = profile
+            elif not profile.email and contact.email:
+                profile.email = contact.email
+        _app.db.session.commit()
         _migrate_canonical_rabbis()
         _migrate_canonical_helpers()
         _migrate_family_gabbaim_to_shared_shuls()
@@ -964,6 +1052,118 @@ def create_app(test_config=None):
     if app.config['DEMO'] or app.config.get('TESTING'):
         with app.app_context():
             ensure_extension_schema()
+
+    def supporter_directory_families():
+        user_id = _app.session.get('user_id')
+        statement = select(_app.Family).order_by(_app.Family.name)
+        if not app.config['DEMO']:
+            user = _app.db.session.get(_app.StaffUser, user_id) if user_id else None
+            if user is None or user.role not in ('organization_admin', 'family_admin', 'fundraiser'):
+                _app.abort(403)
+            if user.role != 'organization_admin':
+                statement = statement.where(_app.Family.id.in_(select(
+                    _app.FamilyAssignment.family_id).where(
+                        _app.FamilyAssignment.staff_user_id == user.id)))
+        return _app.db.session.scalars(statement).all()
+
+    @app.route('/supporter-directory', methods=['GET', 'POST'])
+    def supporter_directory():
+        families = supporter_directory_families()
+        import_result = None
+        if _app.request.method == 'POST':
+            upload = _app.request.files.get('file')
+            if upload is None or not upload.filename:
+                _app.abort(400, 'Choose a CSV or Excel file.')
+            try:
+                rows = imported_contact_rows(upload)
+            except ValueError as exc:
+                _app.abort(400, str(exc))
+            created = updated = duplicates = skipped = 0
+            seen = set()
+            errors = []
+            for row in rows:
+                phone = normalized_profile_phone(row['phone'])
+                if not row['name'] or not phone:
+                    skipped += 1
+                    errors.append(f"Row {row['row']}: name and a valid phone number are required.")
+                    continue
+                if phone in seen:
+                    duplicates += 1
+                    errors.append(f"Row {row['row']}: duplicate phone number in this file.")
+                    continue
+                seen.add(phone)
+                profile = _app.db.session.scalar(select(SupporterProfile).where(
+                    SupporterProfile.normalized_phone == phone))
+                if profile:
+                    duplicates += 1
+                    # The upload can safely fill blanks, but never silently
+                    # overwrite established profile data.
+                    changed = False
+                    if not profile.email and row['email']:
+                        profile.email = row['email'][:254]
+                        changed = True
+                    if not profile.name and row['name']:
+                        profile.name = row['name'][:160]
+                        changed = True
+                    updated += int(changed)
+                else:
+                    _app.db.session.add(SupporterProfile(
+                        name=row['name'][:160], phone=row['phone'][:80],
+                        normalized_phone=phone, email=row['email'][:254]))
+                    created += 1
+            _app.db.session.commit()
+            import_result = dict(created=created, updated=updated, duplicates=duplicates,
+                                 skipped=skipped, errors=errors[:20])
+
+        query = _app.request.args.get('q', '').strip()[:160]
+        statement = select(SupporterProfile).order_by(SupporterProfile.name)
+        if query:
+            statement = statement.where(_app.or_(
+                SupporterProfile.name.icontains(query, autoescape=True),
+                SupporterProfile.phone.icontains(query, autoescape=True),
+                SupporterProfile.email.icontains(query, autoescape=True)))
+        profiles = _app.db.session.scalars(statement).all()
+        case_counts = dict(_app.db.session.execute(select(
+            _app.Contact.supporter_key, _app.func.count(_app.Contact.id)
+        ).where(_app.Contact.supporter_key.in_([
+            'phone:' + row.normalized_phone for row in profiles
+        ])).group_by(_app.Contact.supporter_key)).all()) if profiles else {}
+        return _app.render_template(
+            'supporter_directory.html', title='People import', profiles=profiles,
+            families=families, import_result=import_result, query=query,
+            case_counts=case_counts)
+
+    @app.post('/supporter-directory/<int:profile_id>/connect')
+    def connect_supporter_profile(profile_id):
+        families = supporter_directory_families()
+        allowed_family_ids = {family.id for family in families}
+        family_id = _app.request.form.get('family_id', type=int)
+        if family_id not in allowed_family_ids:
+            _app.abort(403, 'Choose a case you can access.')
+        profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        relationship = _app.request.form.get('relationship', 'Other').strip()
+        if relationship not in set(_app.RELATIONSHIPS) | _app.LEGACY_RELATIONSHIPS:
+            _app.abort(400, 'Choose a valid relationship.')
+        key = 'phone:' + profile.normalized_phone
+        duplicate = _app.db.session.scalar(select(_app.Contact.id).where(
+            _app.Contact.family_id == family_id,
+            _app.Contact.supporter_key == key))
+        if duplicate:
+            _app.flash('This person is already connected to that case.')
+            return _app.redirect(_app.url_for('supporter_directory'))
+        existing = _app.db.session.scalar(select(_app.Contact).where(
+            _app.Contact.supporter_key == key).order_by(_app.Contact.id))
+        contact = _app.Contact(
+            family_id=family_id, name=profile.name, phone=profile.phone,
+            cell_phone=profile.phone, email=profile.email,
+            relationship=relationship, supporter_key=key,
+            monthly_cents=existing.monthly_cents if existing else 0,
+            pledge_frequency=existing.pledge_frequency if existing else 'Monthly',
+            status=existing.status if existing else 'To contact')
+        _app.db.session.add(contact)
+        _app.db.session.commit()
+        _app.flash('Person connected to the case. You can now complete the profile.')
+        return _app.redirect(_app.url_for('edit_contact', contact_id=contact.id))
 
     def add_shared_gabbai(family_id):
         user = (_app.db.session.get(_app.StaffUser, _app.session.get('user_id'))
@@ -986,6 +1186,22 @@ def create_app(test_config=None):
         if institution is None and len(shuls) == 1:
             institution = shuls[0]
         if institution is None:
+            legacy_name = (family.weekday_shul or family.shabbos_shul or '').strip()
+            if legacy_name:
+                institution = _find_shul(legacy_name)
+                if institution is None:
+                    institution = _app.Institution(kind='Shul', name=legacy_name)
+                    _app.db.session.add(institution)
+                    _app.db.session.flush()
+                linked = _app.db.session.scalar(select(_app.PersonAffiliation.id).where(
+                    _app.PersonAffiliation.institution_id == institution.id,
+                    _app.PersonAffiliation.person_type == 'family',
+                    _app.PersonAffiliation.person_id == family.id))
+                if linked is None:
+                    _app.db.session.add(_app.PersonAffiliation(
+                        institution_id=institution.id, person_type='family',
+                        person_id=family.id))
+        if institution is None:
             _app.abort(400, 'Choose which shul this gabbai belongs to.')
         name = (_app.request.form.get('name') or '').strip()
         phone = (_app.request.form.get('phone') or '').strip()
@@ -996,12 +1212,47 @@ def create_app(test_config=None):
         person = _canonical_helper(name, [phone])
         if person is not None:
             _attach_helper(institution, person, 'shul_gabbai')
-        audit('Added shared shul gabbai', family.id)
+        actor = user.email if user else 'Demo user'
+        _app.db.session.add(_app.Audit(
+            actor=actor, action='Added shared shul gabbai', family_id=family.id))
         _app.db.session.commit()
         _app.flash('Shul gabbai added.')
         return _app.redirect(_app.url_for('family_detail', family_id=family.id))
 
     app.view_functions['add_gabbai'] = add_shared_gabbai
+
+    @app.post('/community-helpers/<int:helper_id>')
+    def update_shared_helper(helper_id):
+        user = (_app.db.session.get(_app.StaffUser, _app.session.get('user_id'))
+                if _app.session.get('user_id') else None)
+        if not app.config['DEMO'] and (user is None or user.role != 'organization_admin'):
+            _app.abort(403)
+        helper = _app.db.get_or_404(HelperPerson, helper_id)
+        name = ' '.join((_app.request.form.get('name') or '').split())[:160]
+        phone = (_app.request.form.get('phone') or '').strip()[:80]
+        if not name:
+            _app.abort(400, 'Gabbai name is required.')
+        normalized = _normalize_rabbi_name(name)
+        duplicate = _app.db.session.scalar(select(HelperPerson.id).where(
+            HelperPerson.normalized_name == normalized,
+            HelperPerson.id != helper.id))
+        if duplicate:
+            _app.abort(409, 'A helper with this name already exists.')
+        helper.name = name
+        helper.normalized_name = normalized
+        for saved_phone in _app.db.session.scalars(select(HelperPhone).where(
+                HelperPhone.helper_person_id == helper.id)).all():
+            _app.db.session.delete(saved_phone)
+        _app.db.session.flush()
+        if phone:
+            _app.db.session.add(HelperPhone(helper_person_id=helper.id, phone=phone))
+        _app.db.session.add(_app.Audit(
+            actor=user.email if user else 'Demo user',
+            action='Updated shared shul helper'))
+        _app.db.session.commit()
+        _app.flash('Shul gabbai updated.')
+        return _app.redirect(_app.request.referrer or _app.url_for(
+            'community_directories', kind='Shul'))
 
     @app.get('/api/shul-rabbis')
     def shul_rabbis_api():
@@ -1747,8 +1998,11 @@ def create_app(test_config=None):
         if email and (len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email)):
             _app.abort(400, 'Enter a valid supporter email address.')
         try:
-            pledge_cents = int(round(float(_app.request.form.get('monthly', '0')) * 100))
-        except (TypeError, ValueError):
+            pledge_amount = Decimal(_app.request.form.get('monthly', '0'))
+            if not pledge_amount.is_finite() or pledge_amount.as_tuple().exponent < -2:
+                raise ValueError
+            pledge_cents = int(pledge_amount * 100)
+        except (InvalidOperation, TypeError, ValueError):
             _app.abort(400, 'Enter a valid pledge amount.')
         if pledge_cents < 0 or pledge_cents > 100000000:
             _app.abort(400, 'Enter a valid pledge amount.')
@@ -1837,6 +2091,8 @@ def create_app(test_config=None):
                 sync_supporter_followup_task(contact)
         _app.db.session.commit()
 
+    app.extensions['sync_supporter_followup_task'] = sync_supporter_followup_task
+
     def backfill_missing_supporter_tasks():
         """Create only missing follow-up tasks for existing open supporters."""
         missing_ids = _app.db.session.scalars(
@@ -1849,39 +2105,6 @@ def create_app(test_config=None):
         ).all()
         if missing_ids:
             sync_contact_ids(missing_ids)
-
-    # Keep supporter outreach and the team task list in lockstep. The original
-    # handlers remain authoritative for validation and permissions.
-    for endpoint in ('add_contact', 'update_contact', 'edit_contact'):
-        original = app.view_functions.get(endpoint)
-        if original is None:
-            continue
-
-        def contact_task_wrapper(*args, __original=original, __endpoint=endpoint, **kwargs):
-            before_ids = set()
-            if __endpoint == 'add_contact':
-                family_id = kwargs.get('family_id') or _app.request.form.get('family_id', type=int)
-                if family_id:
-                    before_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
-                        _app.Contact.family_id == family_id)).all())
-            response = app.make_response(__original(*args, **kwargs))
-            if _app.request.method == 'POST' and response.status_code < 400:
-                if __endpoint == 'add_contact':
-                    family_id = kwargs.get('family_id') or _app.request.form.get('family_id', type=int)
-                    after_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
-                        _app.Contact.family_id == family_id)).all()) if family_id else set()
-                    contact_ids = after_ids - before_ids
-                else:
-                    contact = _app.db.session.get(_app.Contact, kwargs.get('contact_id'))
-                    if contact and contact.supporter_key:
-                        contact_ids = set(_app.db.session.scalars(select(_app.Contact.id).where(
-                            _app.Contact.supporter_key == contact.supporter_key)).all())
-                    else:
-                        contact_ids = {contact.id} if contact else set()
-                sync_contact_ids(contact_ids)
-            return response
-
-        app.view_functions[endpoint] = contact_task_wrapper
 
     def parsed_due_date():
         raw = _app.request.form.get('due_date', '').strip()
@@ -2050,11 +2273,11 @@ def create_app(test_config=None):
             return
 
         def wrapped(*args, **kwargs):
-            before_id = _app.db.session.scalar(select(
-                _app.func.coalesce(_app.func.max(_app.Receipt.id), 0))) or 0
             response = original(*args, **kwargs)
-            new_receipts = _app.db.session.scalars(select(_app.Receipt).where(
-                _app.Receipt.id > before_id).order_by(_app.Receipt.id)).all()
+            receipt_ids = tuple(getattr(_app.g, 'created_receipt_ids', ()) or ())
+            new_receipts = [_app.db.session.get(_app.Receipt, receipt_id)
+                            for receipt_id in receipt_ids]
+            new_receipts = [receipt for receipt in new_receipts if receipt is not None]
             for receipt in new_receipts:
                 if _app.db.session.scalar(select(SupporterCommunication.id).where(
                         SupporterCommunication.receipt_id == receipt.id)):
