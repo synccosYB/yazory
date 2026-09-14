@@ -58,7 +58,11 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'data-table-search="communications-supporters-table"' in page.text
     assert 'id="communications-supporters-table"' in page.text
     assert 'aria-label="Search supporters"' in page.text
+    assert 'class="outreach-actions"><div class="outreach-action-grid">' in page.text
+    assert 'pages.js?v=20260914-communications-search-v2' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
+    javascript = client.get('/static/pages.js').text
+    assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
 
     assert post(client, f'/contacts/{contact_id}/communications/callback', {
         'scheduled_for': '2026-09-12T14:30', 'note': 'Call after work'}).status_code == 302
