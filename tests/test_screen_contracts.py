@@ -88,3 +88,13 @@ def test_family_profile_actions_and_summary_reflow_without_losing_controls():
     assert "profileStatus.addEventListener('change'" in script
     assert ".profile-sheet-layout{display:flex;flex-direction:column}" in css
     assert ".page-panels{flex-wrap:nowrap;overflow-x:auto" in css
+
+
+def test_family_supporter_list_groups_tools_and_formats_phone_numbers():
+    root = Path(__file__).resolve().parents[1]
+    script = (root / 'static/pages.js').read_text()
+    css = (root / 'static/style.css').read_text()
+    assert "tools.append(count)" in script
+    assert "digits?.length===10" in script
+    assert "familySupporterTable.classList.add('family-supporters-table')" in script
+    assert '.family-supporters-table{table-layout:fixed' in css
