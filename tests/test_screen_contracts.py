@@ -97,6 +97,7 @@ def test_family_supporter_list_groups_tools_and_formats_phone_numbers():
     assert "tools.append(count)" in script
     assert "digits?.length===10" in script
     assert "familySupporterTable.classList.add('family-supporters-table')" in script
+    assert "familyMinimum=table.classList.contains('family-supporters-table')" in script
     assert '.family-supporters-table{table-layout:fixed' in css
 
 
