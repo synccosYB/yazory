@@ -1,7 +1,7 @@
 from app_entry import create_app
 import pytest
 
-from app import Contact, Family, db
+from app import Contact, Family, Institution, PersonAffiliation, db
 
 
 @pytest.fixture
@@ -110,3 +110,140 @@ def test_clearing_cell_phone_does_not_redisplay_home_phone_as_cell(app, client):
 
     edit = client.get(f'/contacts/{supporter_id}/edit').text
     assert 'name="cell_phone" value=""' in edit
+
+
+def test_existing_supporter_can_be_connected_to_another_family(app, client):
+    with app.app_context():
+        first_family = Family(name='First connected family')
+        second_family = Family(name='Second connected family')
+        db.session.add_all([first_family, second_family])
+        db.session.flush()
+        supporter = Contact(
+            family_id=first_family.id, name='One Real Person',
+            relationship='Sibling', phone='845-555-2525',
+            cell_phone='845-555-2525', email='one@example.test',
+            supporter_key='phone:8455552525', monthly_cents=5000,
+            pledge_frequency='Monthly', status='Pledged')
+        db.session.add(supporter)
+        db.session.commit()
+        supporter_id = supporter.id
+        second_family_id = second_family.id
+
+    detail = client.get(f'/supporters/{supporter_id}')
+    assert detail.status_code == 200
+    assert '+ Connect to another family' in detail.text
+    assert 'Second connected family' in detail.text
+    assert 'Whose son or son-in-law is he?' in detail.text
+
+    response = _post(client, f'/supporters/{supporter_id}/connect-family', {
+        'family_id': str(second_family_id), 'relationship': 'Friend',
+    })
+    assert response.status_code == 302
+
+    with app.app_context():
+        connections = db.session.scalars(db.select(Contact).where(
+            Contact.supporter_key == 'phone:8455552525').order_by(Contact.id)).all()
+        assert len(connections) == 2
+        added = connections[1]
+        assert added.family_id == second_family_id
+        assert added.name == 'One Real Person'
+        assert added.email == 'one@example.test'
+        assert added.relationship == 'Friend'
+        assert added.monthly_cents == 0
+        assert added.status == 'To contact'
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        assert db.session.get(link_model, added.id) is not None
+
+    updated = client.get(response.headers['Location'])
+    assert updated.status_code == 200
+    assert 'First connected family' in updated.text
+    assert 'Second connected family' in updated.text
+
+
+def test_new_family_connection_keeps_case_specific_hierarchy(app, client):
+    with app.app_context():
+        first_family = Family(name='Original family')
+        second_family = Family(name='Hierarchy family')
+        db.session.add_all([first_family, second_family])
+        db.session.flush()
+        source = Contact(
+            family_id=first_family.id, name='Shared Child', relationship='Friend',
+            phone='845-555-2727', supporter_key='phone:8455552727')
+        parent = Contact(
+            family_id=second_family.id, name='Second Case Parent',
+            relationship='Sibling', phone='845-555-2828',
+            supporter_key='phone:8455552828')
+        db.session.add_all([source, parent])
+        db.session.commit()
+        source_id, parent_id, second_family_id = source.id, parent.id, second_family.id
+
+    response = _post(client, f'/supporters/{source_id}/connect-family', {
+        'family_id': str(second_family_id), 'relationship': 'Nephew',
+        'parent_contact_id': str(parent_id), 'parent_connection': 'Son-in-law',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        added = db.session.scalar(db.select(Contact).where(
+            Contact.family_id == second_family_id,
+            Contact.supporter_key == 'phone:8455552727'))
+        assert added.parent_contact_id == parent_id
+        assert added.parent_connection == 'Son-in-law'
+
+
+def test_new_family_connection_can_record_shared_shul(app, client):
+    with app.app_context():
+        first_family = Family(name='First shul family')
+        second_family = Family(name='Second shul family')
+        shul = Institution(kind='Shul', name='Shared Connection Shul')
+        db.session.add_all([first_family, second_family, shul])
+        db.session.flush()
+        source = Contact(
+            family_id=first_family.id, name='Shul Friend',
+            relationship='Shul friend', phone='845-555-2929',
+            supporter_key='phone:8455552929')
+        db.session.add(source)
+        db.session.flush()
+        db.session.add(PersonAffiliation(
+            institution_id=shul.id, person_type='family',
+            person_id=second_family.id))
+        db.session.commit()
+        source_id, second_family_id, shul_id = source.id, second_family.id, shul.id
+
+    detail = client.get(f'/supporters/{source_id}')
+    assert 'Shared Connection Shul' in detail.text
+    response = _post(client, f'/supporters/{source_id}/connect-family', {
+        'family_id': str(second_family_id), 'relationship': 'Shul friend',
+        'institution_id': str(shul_id),
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        added = db.session.scalar(db.select(Contact).where(
+            Contact.family_id == second_family_id,
+            Contact.supporter_key == 'phone:8455552929'))
+        affiliation = db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.person_type == 'supporter',
+            PersonAffiliation.person_id == added.id,
+            PersonAffiliation.institution_id == shul_id))
+        assert affiliation is not None
+
+
+def test_connect_supporter_rejects_duplicate_family(app, client):
+    with app.app_context():
+        family = Family(name='Only family')
+        db.session.add(family)
+        db.session.flush()
+        supporter = Contact(
+            family_id=family.id, name='Already Here', relationship='Friend',
+            phone='845-555-2626', supporter_key='phone:8455552626')
+        db.session.add(supporter)
+        db.session.commit()
+        supporter_id = supporter.id
+        family_id = family.id
+
+    response = _post(client, f'/supporters/{supporter_id}/connect-family', {
+        'family_id': str(family_id), 'relationship': 'Friend',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count(Contact.id)).where(
+            Contact.supporter_key == 'phone:8455552626')) == 1

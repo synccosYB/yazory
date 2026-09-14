@@ -5,6 +5,22 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    '+ Connect to another family': {'he': '+ חיבור למשפחה נוספת', 'yi': '+ פארבינדן צו נאך א משפחה'},
+    'Connect family': {'he': 'חיבור המשפחה', 'yi': 'פארבינד די משפחה'},
+    'Shul or yeshivah connection': {'he': 'קשר דרך בית מדרש או ישיבה', 'yi': 'קשר דורך א שול אדער ישיבה'},
+    'No shul or yeshivah connection': {'he': 'ללא קשר דרך בית מדרש או ישיבה', 'yi': 'נישט פארבונדן דורך א שול אדער ישיבה'},
+    'Choose the shul or yeshivah through which this supporter is connected to the selected family.': {
+        'he': 'בחרו את בית המדרש או הישיבה שדרכם התומך קשור למשפחה שנבחרה.',
+        'yi': 'קלויבט אויס די שול אדער ישיבה דורך וועלכע דער העלפער איז פארבונדן צו דער אויסגעקליבענער משפחה.'
+    },
+    'The person’s contact details stay shared. Relationship, pledge, and follow-up remain separate for each family.': {
+        'he': 'פרטי הקשר של האדם נשארים משותפים. הקרבה, ההתחייבות והמעקב נשמרים בנפרד לכל משפחה.',
+        'yi': 'די קאנטאקט פרטים פונעם מענטש בלייבן צוזאמען. די קרבה, די נדבה און דער קשר מצב בלייבן באזונדער פאר יעדע משפחה.'
+    },
+    'Supporter connected to the additional family.': {
+        'he': 'התומך חובר למשפחה הנוספת.',
+        'yi': 'דער העלפער איז פארבונדן געווארן צו דער נאך א משפחה.'
+    },
     'Donor sign in': {'he': 'כניסת תורם', 'yi': 'דאנאר לאגאין'},
     'DONOR ACCOUNT': {'he': 'חשבון תורם', 'yi': 'דאנאר אקאונט'},
     'Enter your email and we will send you a secure one-time sign-in link.': {'he': 'הזינו את כתובת האימייל ונשלח קישור כניסה מאובטח לשימוש חד־פעמי.', 'yi': 'לייגט אריין אייער אימעיל און מיר וועלן שיקן א זיכערע איינמאליגע לאגאין לינק.'},

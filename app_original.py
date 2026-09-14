@@ -2823,12 +2823,155 @@ def create_app(test_config=None):
             descendants.update(pending)
         possible_parents = [row for row in possible_parents
                             if row.id not in descendants and contact_visible(row)]
+        linked_family_ids = {row.family_id for row in linked_contacts}
+        family_statement = select(Family).where(
+            Family.id.not_in(linked_family_ids),
+            Family.status != 'Closed',
+        ).order_by(Family.name)
+        if not organization_admin():
+            family_statement = family_statement.where(Family.id.in_(select(
+                FamilyAssignment.family_id).where(
+                    FamilyAssignment.staff_user_id == current_user().id)))
+        available_families = db.session.scalars(family_statement).all()
+        available_family_ids = [family.id for family in available_families]
+        available_parents = db.session.scalars(scoped_contacts_statement().where(
+            Contact.family_id.in_(available_family_ids)
+        ).order_by(Contact.family_id, Contact.name)).all() if available_family_ids else []
+        available_institutions = db.session.execute(select(
+            PersonAffiliation.person_id, Institution
+        ).join(
+            Institution, Institution.id == PersonAffiliation.institution_id
+        ).where(
+            PersonAffiliation.person_type == 'family',
+            PersonAffiliation.person_id.in_(available_family_ids),
+            Institution.kind.in_(('Shul', 'Yeshivah')),
+        ).order_by(PersonAffiliation.person_id, Institution.kind, Institution.name)).all() \
+            if available_family_ids else []
         return render_template('supporter_detail.html', title='Supporter history',
                                supporter=contact, linked_contacts=linked_contacts,
                                hierarchy_groups=hierarchy_groups,
                                receipts=receipts, payments=payments,
                                possible_parents=possible_parents,
+                               available_families=available_families,
+                               available_parents=available_parents,
+                               available_institutions=available_institutions,
                                total_received=sum(receipt.amount_cents for receipt in receipts))
+
+    @app.post('/supporters/<int:contact_id>/connect-family')
+    def connect_supporter_to_family(contact_id):
+        """Add a case-specific connection without duplicating the person."""
+        require_capability(('family_admin', 'fundraiser'))
+        source = db.session.scalar(scoped_contacts_statement().where(
+            Contact.id == contact_id))
+        if source is None:
+            abort(403, 'You are not assigned to this family.')
+        family_id = request.form.get('family_id', type=int)
+        if not family_id or not can_access_family(family_id):
+            abort(403, 'You are not assigned to this family.')
+        family = db.get_or_404(Family, family_id)
+        if family.status == 'Closed':
+            abort(400, 'Reopen the case before starting new operations.')
+        relationship = field('relationship') or 'Other'
+        if relationship not in RELATIONSHIPS + list(LEGACY_RELATIONSHIPS):
+            abort(400, 'Choose a valid relationship.')
+        parent_choice = field('parent_contact_id')
+        parent_connection = field('parent_connection')
+        parent_contact_id = None
+        if parent_choice:
+            if parent_connection not in ('Son', 'Son-in-law'):
+                abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+            if parent_choice == f'family-father:{family.id}':
+                if not family.father:
+                    abort(400, 'Choose a valid family connection.')
+                parent_connection = 'F:' + parent_connection
+            elif parent_choice == f'family-inlaws:{family.id}':
+                if not family.inlaws:
+                    abort(400, 'Choose a valid family connection.')
+                parent_connection = 'I:' + parent_connection
+            else:
+                try:
+                    parent_contact_id = int(parent_choice)
+                except ValueError:
+                    abort(400, 'Choose a valid family connection.')
+                parent = db.session.scalar(scoped_contacts_statement().where(
+                    Contact.id == parent_contact_id,
+                    Contact.family_id == family.id))
+                if parent is None:
+                    abort(400, 'Choose a valid parent supporter.')
+        else:
+            parent_connection = ''
+        institution_id = request.form.get('institution_id', type=int)
+        institution = None
+        if institution_id:
+            institution = db.session.scalar(select(Institution).join(
+                PersonAffiliation,
+                PersonAffiliation.institution_id == Institution.id
+            ).where(
+                Institution.id == institution_id,
+                Institution.kind.in_(('Shul', 'Yeshivah')),
+                PersonAffiliation.person_type == 'family',
+                PersonAffiliation.person_id == family.id,
+            ))
+            if institution is None:
+                abort(400, 'Choose a shul or yeshivah connected to this family.')
+        identity_key = source.supporter_key or supporter_key(
+            source.name, source.phone, f'legacy:{source.id}')
+        duplicate = db.session.scalar(select(Contact.id).where(
+            Contact.family_id == family.id,
+            Contact.supporter_key == identity_key))
+        if duplicate:
+            flash('This supporter is already connected to this case.')
+            return redirect(url_for('supporter_detail', contact_id=source.id))
+
+        contact = Contact(
+            family_id=family.id,
+            name=source.name,
+            relationship=relationship,
+            phone=source.phone,
+            email=source.email,
+            home_phone=source.home_phone,
+            cell_phone=source.cell_phone,
+            home_address=source.home_address,
+            city=source.city,
+            state=source.state,
+            zip_code=source.zip_code,
+            workplace=source.workplace,
+            work_phone=source.work_phone,
+            notes=source.notes,
+            supporter_key=identity_key,
+            parent_contact_id=parent_contact_id,
+            parent_connection=parent_connection,
+            monthly_cents=0,
+            pledge_frequency='Monthly',
+            status='To contact',
+        )
+        db.session.add(contact)
+        db.session.flush()
+        if institution is not None:
+            db.session.add(PersonAffiliation(
+                institution_id=institution.id,
+                person_type='supporter',
+                person_id=contact.id,
+                note='Supporter case connection',
+            ))
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        user = current_user()
+        db.session.add(link_model(
+            contact_id=contact.id,
+            side='Community',
+            relationship=relationship,
+            assigned_to=user.id if user and user.role == 'fundraiser' else None,
+            permission='Not requested',
+            preference='',
+            verified=False,
+        ))
+        sync_followup = app.extensions.get('sync_supporter_followup_task')
+        if sync_followup:
+            sync_followup(contact)
+        audit(f'Connected existing supporter: {source.name}', family.id)
+        db.session.commit()
+        flash('Supporter connected to the additional family.')
+        return redirect(url_for('supporter_detail', contact_id=contact.id))
 
     @app.get('/approvals')
     def approvals():
