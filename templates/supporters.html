@@ -4,6 +4,7 @@
 <div>
 <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
 <h1>{{ _('Supporters') }}</h1>
+{% if selected_family_id %}{% for family in families %}{% if family.id == selected_family_id %}<p><strong>{{ _('Applicant') }}:</strong> {{ family.name }}</p>{% endif %}{% endfor %}{% endif %}
 <p>{{ _('Assigned supporter relationships, pledges, receipts, and follow-up.') }}</p>
 </div>
 <div class="row-actions no-print"><a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Import people') }}</a><button type="button" onclick="window.print()">{{ _('Print list') }}</button></div>
