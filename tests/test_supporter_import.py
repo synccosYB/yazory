@@ -2,6 +2,7 @@ from app_entry import create_app
 from io import BytesIO
 
 import pytest
+from sqlalchemy import event
 
 from app import Contact, Family, SupporterProfile, db
 
@@ -88,3 +89,30 @@ def test_wide_contact_export_uses_local_name_and_first_available_phone(app, clie
         assert first.email == 'gold@example.test'
         assert fallback.name == 'יעקב שווארטץ'
         assert fallback.email == 'second@example.test'
+
+
+def test_large_import_checks_existing_profiles_in_bulk(app, client):
+    token = csrf(client)
+    rows = ['Name,Phone,Email'] + [
+        f'Person {number},845555{number:04d},person{number}@example.test'
+        for number in range(1000)
+    ]
+    profile_selects = []
+
+    def count_profile_selects(_conn, _cursor, statement, _parameters, _context, _many):
+        normalized = statement.lower().lstrip()
+        if normalized.startswith('select') and 'supporter_profile' in normalized:
+            profile_selects.append(statement)
+
+    with app.app_context():
+        event.listen(db.engine, 'before_cursor_execute', count_profile_selects)
+        try:
+            response = client.post('/supporter-directory', data={
+                'csrf': token,
+                'file': (BytesIO(('\n'.join(rows) + '\n').encode()), 'large.csv'),
+            }, content_type='multipart/form-data')
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', count_profile_selects)
+
+    assert response.status_code == 200
+    assert len(profile_selects) <= 3
