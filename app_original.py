@@ -34,6 +34,7 @@ class Family(db.Model):
     name = db.Column(db.String(160), nullable=False)
     spouse = db.Column(db.String(160), default='')
     phone = db.Column(db.String(80), default='')
+    email = db.Column(db.String(254), default='', index=True)
     address = db.Column(db.String(300), default='')
     city = db.Column(db.String(120), default='')
     state = db.Column(db.String(80), default='')
@@ -702,6 +703,7 @@ def create_app(test_config=None):
                 db.session.execute(text(f'ALTER TABLE staff_user ADD COLUMN {column} {definition}'))
         family_columns = {column['name'] for column in inspect(db.engine).get_columns('family')}
         for column, definition in {
+            'email': 'VARCHAR(254)',
             'city': 'VARCHAR(120)',
             'state': 'VARCHAR(80)',
             'zip_code': 'VARCHAR(20)',
@@ -1201,7 +1203,10 @@ def create_app(test_config=None):
                             'supporter_logout', 'supporter_portal_update_pledge',
                             'supporter_portal_donate', 'supporter_portal_manage_payment',
                             'supporter_portal_receipt',
-                            'native_payment_submit', 'native_payment_success')
+                            'native_payment_submit', 'native_payment_success',
+                            'applicant_login', 'applicant_login_link',
+                            'applicant_portal', 'applicant_send_message',
+                            'applicant_logout')
         if request.endpoint in ('static', 'health', 'set_language'):
             return
         if request.method == 'POST' and request.endpoint not in ('stripe_webhook', 'resend_webhook'):
@@ -1757,7 +1762,7 @@ def create_app(test_config=None):
 
     def intake_form(family, title, error=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
-            ('name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
+            ('name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
         if error:
             budget.update(request.form)
@@ -1859,8 +1864,11 @@ def create_app(test_config=None):
                 yeshivah_history = submitted_yeshivah_history()
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
-            limits = {'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
-            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
+            limits = {'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
+            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
+            family.email = family.email.lower()
+            if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
+                return intake_form(None, 'New family intake', 'Enter a valid applicant email address.'), 400
             for key in ('yeshivah', 'weekday_shul', 'shabbos_shul'):
                 setattr(family, key, institution_field(key))
             if yeshivah_history is not None:
@@ -1888,9 +1896,12 @@ def create_app(test_config=None):
                 yeshivah_history = submitted_yeshivah_history()
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
-            limits = {'circumstances':5000, 'inlaws_family':1000, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
-            for key in ['name','spouse','phone','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances']:
+            limits = {'circumstances':5000, 'inlaws_family':1000, 'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
+            for key in ['name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
+            family.email = family.email.lower()
+            if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
+                return intake_form(family, 'Edit family profile', 'Enter a valid applicant email address.'), 400
             for key in ('yeshivah', 'weekday_shul', 'shabbos_shul'):
                 setattr(family, key, institution_field(key))
             if yeshivah_history is not None:
@@ -3764,7 +3775,9 @@ def create_app(test_config=None):
     @app.cli.command('migrate-db')
     def migrate_db():
         """Add tables absent from a legacy deployment; never drop or rewrite data."""
-        db.create_all()
+        ensure_schema()
+        for hook in app.extensions.get('init_db_hooks', ()):
+            hook()
         print('Database migration completed. Existing records preserved.')
 
     with app.app_context():
