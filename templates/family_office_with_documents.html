@@ -1,2 +1,2 @@
 {% extends 'family_office.html' %}
-{% block content %}{{ super() }}{% include '_documents.html' %}{% endblock %}
+{% block content %}{% if family.status=='Declined' and family.denial_reason %}<section class="card padded"><strong>{{ _('Reason for denial') }}</strong><p class="preserve">{{ family.denial_reason }}</p></section>{% endif %}{{ super() }}{% include '_documents.html' %}{% endblock %}

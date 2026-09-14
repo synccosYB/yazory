@@ -4,7 +4,7 @@
 <body class="print-report" data-print-report="true">
 <main>
   <div class="report-actions no-print"><a class="button secondary" href="{{ url_for('family_detail', family_id=family.id) }}">{{ _('Back to profile') }}</a><button type="button" data-print>{{ _('Print / Save PDF') }}</button></div>
-  <header class="report-header"><div><div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} · {{ _('FAMILY PROFILE REPORT') }}</div><h1>{{ family.name }}</h1><p>{{ family.full_address or _('Address not entered') }} · {{ family.phone or _('Phone not entered') }}</p></div><div class="report-meta"><strong>{{ _(family.status) }}</strong><span>{{ _('Generated') }} {{ generated_at|eastern_time('%m/%d/%Y %I:%M %p %Z') }}</span></div></header>
+  <header class="report-header"><div><div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} · {{ _('FAMILY PROFILE REPORT') }}</div><h1>{{ family.name }}</h1><p>{{ family.full_address or _('Address not entered') }} · {{ family.phone or _('Phone not entered') }}</p>{% if family.status=='Declined' and family.denial_reason %}<p><strong>{{ _('Reason for denial') }}:</strong> {{ family.denial_reason }}</p>{% endif %}</div><div class="report-meta"><strong>{{ _(family.status) }}</strong><span>{{ _('Generated') }} {{ generated_at|eastern_time('%m/%d/%Y %I:%M %p %Z') }}</span></div></header>
 
   <form class="report-filters no-print" method="get">
     <label>{{ _('Search all lists') }}<input name="q" value="{{ query }}" placeholder="{{ _('Name, note, reference, school…') }}"></label>

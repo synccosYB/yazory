@@ -545,9 +545,10 @@ def install_workflows(app, db, entities, helpers):
         if item.kind=='unusual' and next_label=='Completed' and app.extensions['workflows'].get('import_correction'):
             app.extensions['workflows']['import_correction'](item,next_label,True)
         if item.kind=='governance' and next_label=='Approved': db.session.add(Policy(data=dict(data),source_item_id=item.id))
-        if item.kind=='case_approval' and next_label=='Approved': family.status='Under review'
+        if item.kind=='case_approval' and next_label=='Approved':
+            family.status='Under review';family.denial_reason=''
         if item.kind=='support_plan' and next_label=='Active':
-            family.status='Active'
+            family.status='Active';family.denial_reason=''
             schedule_review(item,item.id,data['review_date'])
         if item.kind=='review' and next_label=='Completed':
             if data['review_decision']=='Pause assistance':family.status='Paused'
@@ -745,6 +746,9 @@ def install_workflows(app, db, entities, helpers):
             db.session.add(Decision(item_id=item.id,revision=item.revision,stage=item.stage,actor_id=actor().id,role=role,action=action,note=note))
             if action=='Return':item.revision+=1;item.stage=0
             else:item.disposition='Rejected'
+            if action=='Reject' and item.kind=='case_approval':
+                family=db.session.get(Family,item.family_id)
+                family.status='Declined';family.denial_reason=note
             if item.kind=='expense' and item.data.get('expense_id'):
                 db.session.get(Expense,item.data['expense_id']).status='Requested' if action=='Return' else 'Declined'
         elif action=='Advance':

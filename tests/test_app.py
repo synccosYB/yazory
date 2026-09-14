@@ -55,6 +55,25 @@ def test_case_and_expense_workflow(app, client):
         assert expense.payment_reference=='CHECK-123'
         assert len(db.session.scalars(db.select(Audit).where(Audit.family_id==family_id)).all())==8
 
+def test_declined_case_requires_and_displays_reason(app, client):
+    assert post(client, '/families/new', {'name':'Declined family'}).status_code == 302
+    with app.app_context():
+        family_id = db.session.scalar(db.select(Family.id).where(Family.name == 'Declined family'))
+    base = f'/families/{family_id}'
+    assert post(client, base+'/status', {'status':'Under review'}).status_code == 302
+    assert post(client, base+'/status', {'status':'Declined'}).status_code == 400
+    assert post(client, base+'/status', {
+        'status':'Declined', 'denial_reason':'Income exceeds the program limit.'}).status_code == 302
+    with app.app_context():
+        family = db.session.get(Family, family_id)
+        assert family.status == 'Declined'
+        assert family.denial_reason == 'Income exceeds the program limit.'
+    assert 'Income exceeds the program limit.' in client.get('/families').text
+    assert 'Income exceeds the program limit.' in client.get(base).text
+    assert post(client, base+'/status', {'status':'Under review'}).status_code == 302
+    with app.app_context():
+        assert db.session.get(Family, family_id).denial_reason == ''
+
 def test_add_and_view_provider_expense_without_edit_mode(app, client):
     assert post(client, '/families/new', {'name':'Provider expense family'}).status_code == 302
     with app.app_context():
