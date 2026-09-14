@@ -1,10 +1,11 @@
 {% from 'macros.html' import token with context %}
-<section class="card padded" id="children-schools">
-  <h2>{{ _("Children & their spouses") }}</h2>
-  <p>{{ _("Mark which children are married and record the name of each child’s spouse.") }}</p>
+<section class="card padded family-children-card" id="children-schools">
+  <div class="section-heading family-children-heading"><div><h2>{{ _("Children & their spouses") }}</h2>
+  <p>{{ _("Mark which children are married and record the name of each child’s spouse.") }}</p></div><strong class="count">{{ family.children|length }}</strong></div>
+  <div class="child-records">
   {% for c in family.children %}
-  <details data-page-item>
-    <summary>✎ {{ c.name }} · {{ _('Age') }} {{ c.age }}{% if c.married %} · {{ _('Spouse') }}: {{ c.spouse_name or _('Not entered') }}{% endif %}</summary>
+  <details class="child-record" data-page-item>
+    <summary><span class="child-record-name">{{ c.name }}</span><span class="child-record-facts"><span>{{ _('Age') }} <bdi dir="ltr">{{ c.age }}</bdi></span>{% if c.grade %}<span>{{ _('Grade') }} {{ c.grade }}</span>{% endif %}{% if c.school %}<span>{{ _('School') }}: {{ c.school }}</span>{% endif %}{% if c.married %}<span>{{ _('Spouse') }}: {{ c.spouse_name or _('Not entered') }}</span>{% endif %}</span><span class="child-record-edit">✎ {{ _('Edit') }}</span></summary>
     <form method="post" action="/children/{{ c.id }}">
       {{ token(csrf) }}
       <div class="form-grid">
@@ -20,7 +21,8 @@
     </form>
   </details>
   {% else %}<p class="empty">{{ _("Add the children, then mark which children are married and enter their spouses.") }}</p>{% endfor %}
-  <details><summary>{{ _("+ Add child") }}</summary><form method="post" action="/families/{{ family.id }}/children">{{ token(csrf) }}
+  </div>
+  <details class="add-child-record"><summary>{{ _("+ Add child") }}</summary><form method="post" action="/families/{{ family.id }}/children">{{ token(csrf) }}
     <div class="form-grid">
       <label>{{ _("Child name *") }}<input name="name" required maxlength="160"></label><label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required></label><label>{{ _("Grade") }}<input name="grade" maxlength="80"></label><label>{{ _("School") }}<input name="school" maxlength="160"></label><label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300"></label>
       <label>{{ _("Married?") }}<select name="married"><option value="no">{{ _('No') }}</option><option value="yes">{{ _('Yes') }}</option></select></label><label>{{ _("Spouse name") }}<input name="spouse_name" maxlength="160"></label>
