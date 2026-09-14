@@ -9,13 +9,14 @@ from email.utils import getaddresses
 from io import BytesIO, StringIO
 
 import app_original as _app
-from flask import current_app, has_request_context, jsonify, session
+from flask import Response, current_app, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
-                            message_status, normalize_phone)
+                            message_status, normalize_phone,
+                            validate_webhook_signature)
 
 
 class SupporterProfile(_app.db.Model):
@@ -1700,19 +1701,51 @@ def create_app(test_config=None):
 
     def communication_row(contact, kind, subject='', body='', status='completed',
                           scheduled_for=None, email_message=None,
-                          provider_message_id='', delivery_error=''):
+                          provider_message_id='', delivery_error='',
+                          direction='outbound'):
         now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
         row = SupporterCommunication(
             contact_id=contact.id, family_id=contact.family_id,
             staff_user_id=task_user().id if task_user() else None,
             email_message_id=email_message.id if email_message else None,
-            kind=kind, subject=subject, body=body, status=status,
+            kind=kind, direction=direction, subject=subject, body=body, status=status,
             provider_message_id=provider_message_id or '',
             delivery_error=delivery_error or '',
             scheduled_for=scheduled_for,
             completed_at=now if status == 'completed' else None)
         _app.db.session.add(row)
         return row
+
+    def contact_for_inbound_phone(sender, channel):
+        """Match a reply to the supporter most recently contacted on this channel."""
+        try:
+            sender = normalize_phone(sender.replace('whatsapp:', '', 1))
+        except ValueError:
+            return None
+        matches = []
+        for contact in _app.db.session.scalars(select(_app.Contact)):
+            for value in (contact.cell_phone, contact.phone, contact.home_phone,
+                          contact.work_phone):
+                if not value:
+                    continue
+                try:
+                    if normalize_phone(value) == sender:
+                        matches.append(contact)
+                        break
+                except ValueError:
+                    continue
+        if not matches:
+            return None
+        contact_ids = [contact.id for contact in matches]
+        latest = _app.db.session.scalar(select(SupporterCommunication).where(
+            SupporterCommunication.contact_id.in_(contact_ids),
+            SupporterCommunication.kind == channel,
+            SupporterCommunication.direction == 'outbound',
+        ).order_by(SupporterCommunication.created_at.desc(),
+                   SupporterCommunication.id.desc()))
+        if latest:
+            return next(contact for contact in matches if contact.id == latest.contact_id)
+        return min(matches, key=lambda contact: contact.id)
 
     def parse_communication_time(value):
         try:
@@ -1879,6 +1912,8 @@ def create_app(test_config=None):
             sms_from=app.config['TWILIO_SMS_FROM'],
             messaging_service_sid=twilio_service_sid(),
             whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'],
+            inbound_webhook_url=(app.config.get('APP_BASE_URL', '').rstrip('/') +
+                                 _app.url_for('twilio_incoming_message')),
             test_delivery=test_delivery,
             test_delivery_error=test_delivery_error)
 
@@ -1940,6 +1975,38 @@ def create_app(test_config=None):
                 f'Twilio accepted the test message. Reference: {provider_id}. '
                 'Check the delivery status below.')
         return _app.redirect(_app.url_for('twilio_setup'))
+
+    @app.post('/twilio/incoming-message')
+    def twilio_incoming_message():
+        signature = _app.request.headers.get('X-Twilio-Signature', '')
+        public_base = app.config.get('APP_BASE_URL', '').rstrip('/')
+        webhook_url = (public_base + _app.request.full_path.rstrip('?')
+                       if public_base else _app.request.url)
+        if not validate_webhook_signature(
+                app.config['TWILIO_AUTH_TOKEN'], webhook_url,
+                _app.request.form, signature):
+            _app.abort(403)
+
+        provider_id = (_app.request.form.get('MessageSid') or
+                       _app.request.form.get('SmsSid') or '').strip()[:100]
+        if provider_id and _app.db.session.scalar(select(
+                SupporterCommunication.id).where(
+                    SupporterCommunication.provider_message_id == provider_id)):
+            return Response('<Response></Response>', mimetype='application/xml')
+
+        sender = _app.request.form.get('From', '').strip()[:80]
+        body = _app.request.form.get('Body', '').strip()[:1600]
+        channel = 'whatsapp' if sender.startswith('whatsapp:') else 'sms'
+        contact = contact_for_inbound_phone(sender, channel)
+        if contact:
+            communication_row(
+                contact, channel,
+                'Incoming WhatsApp message' if channel == 'whatsapp'
+                else 'Incoming text message',
+                body, status='completed', provider_message_id=provider_id,
+                direction='inbound')
+            _app.db.session.commit()
+        return Response('<Response></Response>', mimetype='application/xml')
 
     @app.get('/communications')
     def communications():
