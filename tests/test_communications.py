@@ -417,6 +417,31 @@ def test_valid_twilio_reply_is_saved_once_in_supporter_history(monkeypatch):
         assert rows[0].body == 'Yes, please call after six.'
 
 
+def test_valid_twilio_reply_from_applicant_is_saved_in_family_messages(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    app.config.update(TESTING=False, DEMO=False, TWILIO_AUTH_TOKEN='secret')
+    monkeypatch.setattr('app.validate_webhook_signature', lambda *args: True)
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).where(Family.name == 'Test family'))
+        family.phone = '3479854847'
+        db.session.commit()
+        family_id = family.id
+
+    response = client.post('/twilio/incoming-message', data={
+        'From': '+13479854847', 'To': '+12513063232',
+        'Body': 'Applicant reply', 'MessageSid': 'SM' + 'c' * 32})
+
+    assert response.status_code == 200
+    with app.app_context():
+        from applicant_portal import ApplicantMessage
+        row = db.session.scalar(db.select(ApplicantMessage))
+        assert row.family_id == family_id
+        assert row.direction == 'applicant'
+        assert row.status == 'unread'
+        assert row.body == 'Applicant reply'
+        assert row.provider_message_id == 'SM' + 'c' * 32
+
+
 def test_twilio_reply_rejects_invalid_signature(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)
     app.config.update(TESTING=False, DEMO=False, TWILIO_AUTH_TOKEN='secret')
