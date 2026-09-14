@@ -67,3 +67,24 @@ def test_imported_profile_connects_once_to_a_case(app, client):
             Contact.supporter_key == 'phone:8455551300')).all()
         assert len(contacts) == 1
         assert contacts[0].email == 'person@example.test'
+
+
+def test_wide_contact_export_uses_local_name_and_first_available_phone(app, client):
+    data = (
+        'Account #,English Name,Yiddish/Hebrew Name,Phone 1,Phone 2,Phone 3,Email 1,Email 2\n'
+        '260,Zvi Hersh Gold,צבי הירש גאלד,8456375221,8452389207,,gold@example.test,\n'
+        '695,Yakov Schwerts,יעקב שווארטץ,,8455551919,,,second@example.test\n'
+    ).encode()
+    response = client.post('/supporter-directory', data={
+        'csrf': csrf(client), 'file': (BytesIO(data), 'wide-contacts.csv')},
+        content_type='multipart/form-data')
+    assert response.status_code == 200
+    with app.app_context():
+        first = db.session.scalar(db.select(SupporterProfile).where(
+            SupporterProfile.normalized_phone == '8456375221'))
+        fallback = db.session.scalar(db.select(SupporterProfile).where(
+            SupporterProfile.normalized_phone == '8455551919'))
+        assert first.name == 'צבי הירש גאלד'
+        assert first.email == 'gold@example.test'
+        assert fallback.name == 'יעקב שווארטץ'
+        assert fallback.email == 'second@example.test'
