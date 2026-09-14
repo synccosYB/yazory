@@ -4,7 +4,8 @@ import re
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import select
 
-RELATIONS=['Sibling','Child of sibling','Uncle / aunt','First cousin','Second cousin','Child of first cousin','Parent’s first cousin','Parent','Friend','Other']
+UNCLE_RELATIONS=["Applicant’s uncle — father’s brother","Applicant’s uncle — mother’s brother","Applicant’s uncle — father’s sister’s husband","Applicant’s uncle — mother’s sister’s husband"]
+RELATIONS=['Sibling','Child of sibling','Uncle / aunt',*UNCLE_RELATIONS,'First cousin','Second cousin','Child of first cousin','Parent’s first cousin','Parent','Friend','Other']
 SIDES=['Husband','Wife','Community']
 PERMISSIONS=['Not requested','Permitted','Do not contact']
 PREFERENCES=['Phone','Text message','Email','Through family']
@@ -174,7 +175,7 @@ def install_network(app,db,entities,helpers):
                 while cursor:
                     if cursor in seen:abort(400,'Family connections cannot contain a cycle.')
                     seen.add(cursor);node=db.session.get(Link,cursor);person=db.session.get(Contact,cursor);cursor=node.parent_id if node else person.parent_contact_id if person else None
-                expected={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt'},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
+                expected={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt',*UNCLE_RELATIONS},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
                 if relation in expected and (pl.relationship if pl else p.relationship) not in expected[relation]:abort(400,'The relationship does not match the selected family connection.')
             elif relation in ('Nephew','Child of sibling','First cousin','Second cousin','Child of first cousin','Parent’s first cousin'):
                 abort(400,'Choose the relative this person connects through.')
@@ -187,7 +188,7 @@ def install_network(app,db,entities,helpers):
             if permission not in PERMISSIONS or (preference and preference not in PREFERENCES):abort(400,'Choose a valid option.')
             before={k:getattr(link,k,None) for k in ('parent_id','side','relationship','assigned_to','permission','verified')}
             if any(x.parent_id==contact.id and x.side!=side for x in links.values()):abort(400,'Update the connected relatives before changing sides.')
-            expected_children={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt'},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
+            expected_children={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt',*UNCLE_RELATIONS},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
             if any(x.parent_id==contact.id and x.relationship in expected_children and relation not in expected_children[x.relationship] for x in links.values()):abort(400,'Update the connected relatives before changing the relationship.')
             connection=value('parent_connection') or contact.parent_connection
             if connection and connection not in ('Son','Son-in-law'):abort(400,'Choose a valid option.')
@@ -206,7 +207,7 @@ def install_network(app,db,entities,helpers):
                 pid=link.parent_id if link else c.parent_contact_id
                 if (pid if pid in visible else None)!=parent or c.id in seen:continue
                 seen.add(c.id);rows.append({'contact':c,'link':link,'depth':depth,'through':visible.get(pid),
-                  'grade':'A' if link and link.relationship=='Sibling' else 'B' if link and link.relationship in ('Nephew','Child of sibling','Uncle / aunt') else 'C' if link and link.relationship=='First cousin' else 'D' if link and link.relationship=='Second cousin' else ''})
+                  'grade':'A' if link and link.relationship=='Sibling' else 'B' if link and link.relationship in ('Nephew','Child of sibling','Uncle / aunt',*UNCLE_RELATIONS) else 'C' if link and link.relationship=='First cousin' else 'D' if link and link.relationship=='Second cousin' else ''})
                 walk(c.id,depth+1,seen)
         walk(None,0,set())
         staff=[u for u in db.session.scalars(select(User).order_by(User.email)) if u.role in ('fundraiser','family_admin','organization_admin') and

@@ -276,6 +276,21 @@ def test_nephew_is_available_as_applicant_relationship(app, client, language, la
         contact = db.session.scalar(db.select(Contact).where(Contact.name == 'Sibling child'))
         assert contact.relationship == 'Nephew'
 
+
+@pytest.mark.parametrize('language,labels', [
+    ('en', ["Applicant’s uncle — father’s brother", "Applicant’s uncle — mother’s brother",
+            "Applicant’s uncle — father’s sister’s husband", "Applicant’s uncle — mother’s sister’s husband"]),
+    ('he', ['דוד של הפונה — אח של אביו', 'דוד של הפונה — אח של אמו',
+            'דוד של הפונה — בעל אחות אביו', 'דוד של הפונה — בעל אחות אמו']),
+    ('yi', ['פעטער פונעם אפליקאנט — טאטע׳ס ברודער', 'פעטער פונעם אפליקאנט — מאמע׳ס ברודער',
+            'פעטער פונעם אפליקאנט — דער מאן פון טאטע׳ס שוועסטער', 'פעטער פונעם אפליקאנט — דער מאן פון מאמע׳ס שוועסטער']),
+])
+def test_applicant_uncle_relationships_are_specific(client, language, labels):
+    client.get(f'/language/{language}?next=/families/1')
+    page = client.get('/families/1').text
+    for label in labels:
+        assert label in page
+
 def test_supporter_donation_frequency_is_saved_and_used_in_monthly_total(app, client):
     assert post(client, '/families/1/contacts', {
         'name':'Weekly donor', 'relationship':'Friend', 'status':'Pledged',

@@ -93,6 +93,17 @@ if 'Shul friend' not in _app.RELATIONSHIPS:
     insert_at = _app.RELATIONSHIPS.index('Friend') if 'Friend' in _app.RELATIONSHIPS else len(_app.RELATIONSHIPS)
     _app.RELATIONSHIPS.insert(insert_at, 'Shul friend')
 
+UNCLE_RELATIONSHIPS = [
+    "Applicant’s uncle — father’s brother",
+    "Applicant’s uncle — mother’s brother",
+    "Applicant’s uncle — father’s sister’s husband",
+    "Applicant’s uncle — mother’s sister’s husband",
+]
+for _relationship in reversed(UNCLE_RELATIONSHIPS):
+    if _relationship not in _app.RELATIONSHIPS:
+        _app.RELATIONSHIPS.insert(
+            _app.RELATIONSHIPS.index('First cousin'), _relationship)
+
 
 class ShulRabbi(_app.db.Model):
     """Exactly one rabbi assignment for a shared shul record."""

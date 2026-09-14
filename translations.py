@@ -5,6 +5,10 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    "Applicant’s uncle — father’s brother": {'he': 'דוד של הפונה — אח של אביו', 'yi': 'פעטער פונעם אפליקאנט — טאטע׳ס ברודער'},
+    "Applicant’s uncle — mother’s brother": {'he': 'דוד של הפונה — אח של אמו', 'yi': 'פעטער פונעם אפליקאנט — מאמע׳ס ברודער'},
+    "Applicant’s uncle — father’s sister’s husband": {'he': 'דוד של הפונה — בעל אחות אביו', 'yi': 'פעטער פונעם אפליקאנט — דער מאן פון טאטע׳ס שוועסטער'},
+    "Applicant’s uncle — mother’s sister’s husband": {'he': 'דוד של הפונה — בעל אחות אמו', 'yi': 'פעטער פונעם אפליקאנט — דער מאן פון מאמע׳ס שוועסטער'},
     '+ Connect to another family': {'he': '+ חיבור למשפחה נוספת', 'yi': '+ פארבינדן צו נאך א משפחה'},
     'Connect family': {'he': 'חיבור המשפחה', 'yi': 'פארבינד די משפחה'},
     'Shul or yeshivah connection': {'he': 'קשר דרך בית מדרש או ישיבה', 'yi': 'קשר דורך א שול אדער ישיבה'},
