@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const pages = ['/', '/families', '/communications', '/operations'];
+const pages = ['/', '/families', '/families/1', '/communications', '/operations'];
 const viewports = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
@@ -40,6 +40,20 @@ for (const locale of ['he', 'yi']) {
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
     await page.screenshot({ path: testInfo.outputPath(`${locale}-mobile-communications.png`), fullPage: true });
+  });
+}
+
+for (const locale of ['he', 'yi']) {
+  test(`${locale} family profile keeps its operational controls`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/language/${locale}?next=/families/1`);
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+    await expect(page.locator('.profile-record-actions')).toBeVisible();
+    await expect(page.locator('.profile-summary')).toBeVisible();
+    const overflow = await page.evaluate(() =>
+      document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath(`${locale}-mobile-family-profile.png`), fullPage: true });
   });
 }
 

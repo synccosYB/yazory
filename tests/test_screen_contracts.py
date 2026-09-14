@@ -76,3 +76,15 @@ def test_family_name_is_the_only_profile_link_in_family_table():
     assert macro.count('href="/families/{{ f.id }}"') == 1
     assert '_("View →")' not in macro
     assert 'colspan="4"' in macro
+
+
+def test_family_profile_actions_and_summary_reflow_without_losing_controls():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    script = (root / 'static/pages.js').read_text()
+    css = (root / 'static/style.css').read_text()
+    assert "staff_applicant_messages" in template
+    assert "family.id }}/edit" in template
+    assert "profileStatus.addEventListener('change'" in script
+    assert ".profile-sheet-layout{display:flex;flex-direction:column}" in css
+    assert ".page-panels{flex-wrap:nowrap;overflow-x:auto" in css

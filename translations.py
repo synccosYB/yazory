@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Applicant messages': {'he': 'הודעות הפונה', 'yi': 'מעסעדזשעס פונעם אפליקאנט'},
     'All cases': {'he': 'כל התיקים', 'yi': 'אלע משפחות'},
     'Every family in the system': {'he': 'כל המשפחות במערכת', 'yi': 'אלע משפחות אין דער סיסטעם'},
     "Applicant’s uncle — father’s brother": {'he': 'דוד של הפונה — אח של אביו', 'yi': 'פעטער פונעם אפליקאנט — טאטע׳ס ברודער'},
