@@ -1105,6 +1105,7 @@ def create_app(test_config=None):
             created = updated = duplicates = skipped = 0
             seen = set()
             errors = []
+            candidates = []
             for row in rows:
                 phone = normalized_profile_phone(row['phone'])
                 if not row['name'] or not phone:
@@ -1116,8 +1117,19 @@ def create_app(test_config=None):
                     errors.append(f"Row {row['row']}: duplicate phone number in this file.")
                     continue
                 seen.add(phone)
-                profile = _app.db.session.scalar(select(SupporterProfile).where(
-                    SupporterProfile.normalized_phone == phone))
+                candidates.append((row, phone))
+
+            # Fetch every possible duplicate at once.  Looking up one profile
+            # per spreadsheet row made production imports exceed Gunicorn's
+            # request timeout on larger contact lists.
+            existing_profiles = {
+                profile.normalized_phone: profile for profile in
+                _app.db.session.scalars(select(SupporterProfile).where(
+                    SupporterProfile.normalized_phone.in_(
+                        [phone for _, phone in candidates]))).all()
+            } if candidates else {}
+            for row, phone in candidates:
+                profile = existing_profiles.get(phone)
                 if profile:
                     duplicates += 1
                     # The upload can safely fill blanks, but never silently
