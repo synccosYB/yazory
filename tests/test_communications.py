@@ -1,9 +1,15 @@
 from app_entry import create_app
+import base64
+import hashlib
+import hmac
+import json
+import time
 from datetime import datetime
 
 from werkzeug.security import generate_password_hash
 
 import app_original as core_module
+import app as app_module
 from app import (CharityCampaign, Contact, EmailMessage, Family, Receipt, StaffTask,
                  SupporterCommunication, db)
 
@@ -238,6 +244,72 @@ def test_yiddish_supporter_email_is_delivered_rtl(monkeypatch):
     assert '<html dir="rtl">' in delivered['html']
     assert 'dir="rtl" align="right"' in delivered['html']
     assert 'direction:rtl;text-align:right' in delivered['html']
+
+
+def test_resend_inbound_reply_is_matched_to_exact_supporter_and_case(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    app.config.update(
+        EMAIL_REPLY_DOMAIN='reply.yaazory.org',
+        RESEND_API_KEY='test-api-key',
+        RESEND_WEBHOOK_SECRET='whsec_' + base64.b64encode(b'webhook-secret').decode())
+    with app.app_context():
+        message = EmailMessage(
+            kind='supporter_initial_contact', recipient='supporter@example.test',
+            subject='Can we speak?', text_body='What time works?', status='sent')
+        db.session.add(message)
+        db.session.flush()
+        db.session.add(SupporterCommunication(
+            contact_id=contact_id, family_id=db.session.get(Contact, contact_id).family_id,
+            email_message_id=message.id, kind='initial_email', direction='outbound',
+            subject=message.subject, body=message.text_body, status='completed'))
+        db.session.commit()
+        message_id = message.id
+    reference = hmac.new(b'test', str(message_id).encode(), hashlib.sha256).hexdigest()[:20]
+    monkeypatch.setattr(app_module, 'retrieve_received_email', lambda key, email_id: {
+        'id': email_id,
+        'to': [f'reply+{message_id}-{reference}@reply.yaazory.org'],
+        'from': 'Test Supporter <supporter@example.test>',
+        'subject': 'Re: Can we speak?',
+        'text': 'Tomorrow evening works for me.',
+        'attachments': [{'filename': 'schedule.pdf'}],
+    })
+    event = json.dumps({
+        'type': 'email.received',
+        'data': {'email_id': 'received-email-1'},
+    }, separators=(',', ':')).encode()
+    timestamp = str(int(time.time()))
+    event_id = 'msg_inbound_1'
+    signature = base64.b64encode(hmac.new(
+        b'webhook-secret', event_id.encode() + b'.' + timestamp.encode() + b'.' + event,
+        hashlib.sha256).digest()).decode()
+    headers = {
+        'svix-id': event_id, 'svix-timestamp': timestamp,
+        'svix-signature': f'v1,{signature}', 'content-type': 'application/json'}
+    response = client.post('/resend/webhook', data=event, headers=headers)
+    assert response.status_code == 200
+    assert response.json == {'matched': True, 'received': True}
+    # Resend retries are idempotent.
+    duplicate = client.post('/resend/webhook', data=event, headers=headers)
+    assert duplicate.json == {'duplicate': True, 'received': True}
+    with app.app_context():
+        reply = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.kind == 'email_reply'))
+        assert reply.contact_id == contact_id
+        assert reply.direction == 'inbound'
+        assert reply.status == 'received'
+        assert 'Tomorrow evening works for me.' in reply.body
+        assert 'schedule.pdf' in reply.body
+        reply_id = reply.id
+    inbox = client.get(f'/communications?contact_id={contact_id}')
+    assert 'New email replies' in inbox.text
+    assert 'Tomorrow evening works for me.' in inbox.text
+    assert 'Mark handled' in inbox.text
+    handled = post(client, f'/communications/replies/{reply_id}/handled', {})
+    assert handled.status_code == 302
+    with app.app_context():
+        assert db.session.get(SupporterCommunication, reply_id).status == 'handled'
+    assert 'Tomorrow evening works for me.' not in client.get(handled.location).text.split(
+        'New email replies', 1)[1].split('Outreach workflow', 1)[0]
 
 
 def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):

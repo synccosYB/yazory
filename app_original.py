@@ -466,6 +466,8 @@ def create_app(test_config=None):
                       ADMIN_EMAIL=admin_email, ADMIN_PASSWORD_HASH=password_hash,
                       RESEND_API_KEY=os.getenv('RESEND_API_KEY', ''),
                       EMAIL_FROM=os.getenv('EMAIL_FROM', ''),
+                      EMAIL_REPLY_DOMAIN=os.getenv('EMAIL_REPLY_DOMAIN', '').strip().lower(),
+                      RESEND_WEBHOOK_SECRET=os.getenv('RESEND_WEBHOOK_SECRET', ''),
                       APP_BASE_URL=os.getenv('APP_BASE_URL', '').rstrip('/'),
                       STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY', ''),
                       STRIPE_PUBLISHABLE_KEY=os.getenv('STRIPE_PUBLISHABLE_KEY', ''),
@@ -608,8 +610,17 @@ def create_app(test_config=None):
             message.status = 'preview'
             message.error = 'Email delivery is disabled in preview mode.'
             return message
-        provider_id, error = deliver(app.config['RESEND_API_KEY'], app.config['EMAIL_FROM'],
-                                     recipient, subject, html, body)
+        delivery_options = {}
+        reply_domain = app.config.get('EMAIL_REPLY_DOMAIN', '')
+        if reply_domain:
+            signature = hmac.new(
+                app.config['SECRET_KEY'].encode(), str(message.id).encode(),
+                hashlib.sha256).hexdigest()[:20]
+            delivery_options['reply_to'] = (
+                f'reply+{message.id}-{signature}@{reply_domain}')
+        provider_id, error = deliver(
+            app.config['RESEND_API_KEY'], app.config['EMAIL_FROM'], recipient,
+            subject, html, body, **delivery_options)
         message.provider_id = provider_id or ''
         message.error = error or ''
         message.status = 'failed' if error else 'sent'
@@ -1184,7 +1195,7 @@ def create_app(test_config=None):
     def security():
         public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
                             'reset_password', 'accept_invitation', 'about', 'privacy',
-                            'terms', 'donation_policy', 'stripe_webhook',
+                            'terms', 'donation_policy', 'stripe_webhook', 'resend_webhook',
                             'stripe_success', 'stripe_cancel', 'sms_consent', 'supporter_login',
                             'supporter_login_link', 'supporter_portal',
                             'supporter_logout', 'supporter_portal_update_pledge',
@@ -1193,7 +1204,7 @@ def create_app(test_config=None):
                             'native_payment_submit', 'native_payment_success')
         if request.endpoint in ('static', 'health', 'set_language'):
             return
-        if request.method == 'POST' and request.endpoint != 'stripe_webhook':
+        if request.method == 'POST' and request.endpoint not in ('stripe_webhook', 'resend_webhook'):
             if not session.get('csrf') or not hmac.compare_digest(
                     session.get('csrf', ''), request.form.get('csrf', '')):
                 abort(400, 'Your form expired. Reload the page and try again.')

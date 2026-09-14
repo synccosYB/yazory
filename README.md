@@ -55,6 +55,8 @@ Deployment intentionally refuses to start without all of these Replit Secrets:
 | `APP_BASE_URL` | Public origin used in secure email links, for example `https://yazory.replit.app` |
 | `RESEND_API_KEY` | Resend API key for transactional email |
 | `EMAIL_FROM` | Verified sender, for example `Yazory <notifications@example.org>` |
+| `EMAIL_REPLY_DOMAIN` | Resend inbound domain used for secure per-message reply addresses, for example `reply.example.org` |
+| `RESEND_WEBHOOK_SECRET` | Signing secret for the Resend `email.received` webhook at `/resend/webhook` |
 | `STRIPE_SECRET_KEY` | Yazory account live secret key; use a test key outside production |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for the `/stripe/webhook` endpoint |
 | `STRIPE_CONNECT_COUNTRY` | Connected-account country; defaults to `US` |

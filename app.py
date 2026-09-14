@@ -2,11 +2,14 @@ import json
 import os
 import re
 import csv
+import hashlib
+import hmac
 from decimal import Decimal, InvalidOperation
+from email.utils import getaddresses
 from io import BytesIO, StringIO
 
 import app_original as _app
-from flask import current_app, has_request_context, session
+from flask import current_app, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
@@ -361,11 +364,24 @@ class SupporterCommunication(_app.db.Model):
     receipt = _app.db.relationship('Receipt')
 
 
+class ResendWebhookEvent(_app.db.Model):
+    """Deduplicate Resend's at-least-once delivery and manual replays."""
+    __tablename__ = 'resend_webhook_event'
+    event_id = _app.db.Column(_app.db.String(200), primary_key=True)
+    email_id = _app.db.Column(_app.db.String(200), nullable=True, unique=True, index=True)
+    event_type = _app.db.Column(_app.db.String(80), nullable=False, index=True)
+    received_at = _app.db.Column(
+        _app.db.DateTime, nullable=False,
+        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+
+
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
 from supporter_portal import register_supporter_portal  # noqa: E402
 from ai_email import (draft_initial_email, fallback_initial_email,
                       initial_email_subject)  # noqa: E402
+from inbound_email import (html_to_text, retrieve_received_email,
+                           verify_webhook)  # noqa: E402
 
 
 def _normalize_rabbi_name(name):
@@ -1707,10 +1723,12 @@ def create_app(test_config=None):
         if repaired_email:
             _app.db.session.commit()
         due = [row for row in history if row.status == 'scheduled']
+        email_replies = [row for row in history
+                         if row.kind == 'email_reply' and row.status == 'received']
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
-            history=history, latest=latest, due=due,
+            history=history, latest=latest, due=due, email_replies=email_replies,
             pledge_delivery=pledge_delivery,
             pledge_frequencies=_app.PLEDGE_FREQUENCIES,
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
@@ -1813,6 +1831,103 @@ def create_app(test_config=None):
     def communications():
         return render_communications()
 
+    @app.post('/resend/webhook')
+    def resend_webhook():
+        """Receive a verified supporter reply and add it to the case timeline."""
+        raw_payload = _app.request.get_data(cache=False)
+        signature_headers = {
+            'svix-id': _app.request.headers.get('svix-id', ''),
+            'svix-timestamp': _app.request.headers.get('svix-timestamp', ''),
+            'svix-signature': _app.request.headers.get('svix-signature', ''),
+        }
+        try:
+            event = verify_webhook(
+                raw_payload, signature_headers,
+                app.config.get('RESEND_WEBHOOK_SECRET', ''))
+        except ValueError:
+            _app.abort(400, 'Invalid webhook signature.')
+
+        event_id = signature_headers['svix-id']
+        event_type = event.get('type', '')
+        data = event.get('data') or {}
+        email_id = data.get('email_id', '') if event_type == 'email.received' else None
+        if _app.db.session.get(ResendWebhookEvent, event_id) or (
+                email_id and _app.db.session.scalar(select(ResendWebhookEvent).where(
+                    ResendWebhookEvent.email_id == email_id))):
+            return jsonify({'received': True, 'duplicate': True})
+        if event_type != 'email.received':
+            _app.db.session.add(ResendWebhookEvent(
+                event_id=event_id, event_type=event_type or 'unknown'))
+            _app.db.session.commit()
+            return jsonify({'received': True, 'ignored': True})
+
+        try:
+            inbound = retrieve_received_email(app.config['RESEND_API_KEY'], email_id)
+        except ValueError as exc:
+            app.logger.warning('Could not retrieve Resend inbound email %s: %s', email_id, exc)
+            # A non-2xx response makes Resend retry after a temporary API failure.
+            return jsonify({'received': False, 'error': 'Email retrieval failed.'}), 503
+
+        reply_domain = app.config.get('EMAIL_REPLY_DOMAIN', '')
+        recipients = inbound.get('to') or data.get('to') or []
+        if isinstance(recipients, str):
+            recipients = [recipients]
+        message = None
+        if reply_domain:
+            reply_pattern = re.compile(
+                rf'^reply\+(\d+)-([0-9a-f]{{20}})@{re.escape(reply_domain)}$', re.I)
+            for address in (item[1].lower() for item in getaddresses(recipients)):
+                match = reply_pattern.fullmatch(address)
+                if not match:
+                    continue
+                candidate = _app.db.session.get(_app.EmailMessage, int(match.group(1)))
+                expected = hmac.new(
+                    app.config['SECRET_KEY'].encode(), match.group(1).encode(),
+                    hashlib.sha256).hexdigest()[:20]
+                if candidate and hmac.compare_digest(expected, match.group(2).lower()):
+                    message = candidate
+                    break
+
+        timeline = (_app.db.session.scalar(select(SupporterCommunication).where(
+            SupporterCommunication.email_message_id == message.id).order_by(
+                SupporterCommunication.id.desc())) if message else None)
+        sender_values = inbound.get('from') or data.get('from') or ''
+        sender = next((address.lower() for _, address in getaddresses(
+            [sender_values] if isinstance(sender_values, str) else sender_values)), '')
+        # The signed per-message address identifies the case; requiring the same
+        # sender prevents a leaked reply address from adding mail to its timeline.
+        if not timeline or not sender or sender != message.recipient.strip().lower():
+            _app.db.session.add(ResendWebhookEvent(
+                event_id=event_id, email_id=email_id, event_type=event_type))
+            _app.db.session.commit()
+            return jsonify({'received': True, 'unmatched': True})
+
+        body = (inbound.get('text') or html_to_text(inbound.get('html')) or
+                '[Email reply contained no readable text.]')[:50000]
+        attachments = inbound.get('attachments') or []
+        if attachments:
+            names = ', '.join(str(item.get('filename') or 'attachment')[:255]
+                              for item in attachments[:20])
+            body += f'\n\nAttachments: {names}'
+        now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+        _app.db.session.add(SupporterCommunication(
+            contact_id=timeline.contact_id, family_id=timeline.family_id,
+            kind='email_reply', direction='inbound',
+            subject=(inbound.get('subject') or data.get('subject') or 'Email reply')[:300],
+            body=body, status='received', provider_message_id=email_id[:100],
+            completed_at=now))
+        task = _app.db.session.scalar(select(StaffTask).where(
+            StaffTask.source_contact_id == timeline.contact_id))
+        if task:
+            task.status = 'To do'
+            task.description = 'Supporter replied by email. Review the reply in Communications.'
+            task.due_date = now.date()
+            task.completed_at = None
+        _app.db.session.add(ResendWebhookEvent(
+            event_id=event_id, email_id=email_id, event_type=event_type))
+        _app.db.session.commit()
+        return jsonify({'received': True, 'matched': True})
+
     @app.post('/contacts/<int:contact_id>/communications/initial-email/draft')
     def draft_supporter_initial_email(contact_id):
         contact = communication_contact(contact_id)
@@ -1832,6 +1947,19 @@ def create_app(test_config=None):
             '{staff_name}', staff.name or 'the Yazory team')
         return render_communications(
             ai_contact=contact, ai_subject=initial_email_subject(language), ai_body=body)
+
+    @app.post('/communications/replies/<int:reply_id>/handled')
+    def handle_supporter_email_reply(reply_id):
+        reply = _app.db.get_or_404(SupporterCommunication, reply_id)
+        if reply.kind != 'email_reply' or reply.direction != 'inbound':
+            _app.abort(404)
+        communication_contact(reply.contact_id)
+        reply.status = 'handled'
+        reply.completed_at = _app.datetime.now(
+            _app.timezone.utc).replace(tzinfo=None)
+        _app.db.session.commit()
+        _app.flash('Email reply marked as handled.')
+        return _app.redirect(_app.url_for('communications', contact_id=reply.contact_id))
 
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):
