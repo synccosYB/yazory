@@ -10,7 +10,7 @@
 
 <section class="card padded no-print">
   <h2>{{ _('Upload contacts') }}</h2>
-  <p>{{ _('Use a CSV or Excel file with columns named Name, Phone, and Email. Name and phone are required; email is optional.') }}</p>
+  <p>{{ _('Upload a CSV or Excel contact sheet. The system recognizes Name or English and Yiddish/Hebrew Name, Phone 1–3, and Email 1–2. A name and at least one phone number are required.') }}</p>
   <form method="post" enctype="multipart/form-data" class="compact-form">
     {{ token(csrf) }}
     <label>{{ _('CSV or Excel file') }}
