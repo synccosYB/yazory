@@ -1,5 +1,8 @@
 """Small Twilio Messaging client used for SMS and WhatsApp delivery."""
 
+import base64
+import hashlib
+import hmac
 import re
 
 import requests
@@ -11,6 +14,20 @@ TWILIO_ACCOUNT_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}.j
 TWILIO_NUMBERS_API = "https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json"
 TWILIO_SERVICES_API = "https://messaging.twilio.com/v1/Services"
 TWILIO_WHATSAPP_SENDERS_API = "https://messaging.twilio.com/v2/Channels/Senders"
+
+
+def validate_webhook_signature(auth_token, url, params, signature):
+    """Validate a form-encoded webhook using Twilio's HMAC-SHA1 scheme."""
+    if not auth_token or not url or not signature:
+        return False
+    value = url
+    for key in sorted(params):
+        for item in sorted(params.getlist(key)):
+            value += key + item
+    expected = base64.b64encode(hmac.new(
+        auth_token.encode('utf-8'), value.encode('utf-8'),
+        hashlib.sha1).digest()).decode('ascii')
+    return hmac.compare_digest(expected, signature)
 
 
 def _request(method, url, account_sid, auth_token, **kwargs):
