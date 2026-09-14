@@ -1197,6 +1197,26 @@ def create_app(test_config=None):
             pledge_frequency=existing.pledge_frequency if existing else 'Monthly',
             status=existing.status if existing else 'To contact')
         _app.db.session.add(contact)
+        _app.db.session.flush()
+
+        # The case's current Circle of Support is backed by both Contact and
+        # SupporterLink.  Imports used to create only the legacy Contact row,
+        # which left the person invisible to workflow-aware/fundraiser views.
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        user = _app.db.session.get(
+            _app.StaffUser, _app.session.get('user_id')) if _app.session.get('user_id') else None
+        _app.db.session.add(link_model(
+            contact_id=contact.id,
+            side='Community',
+            relationship=relationship,
+            assigned_to=user.id if user and user.role == 'fundraiser' else None,
+            permission='Not requested',
+            preference='',
+            verified=False,
+        ))
+        sync_followup = app.extensions.get('sync_supporter_followup_task')
+        if sync_followup:
+            sync_followup(contact)
         _app.db.session.commit()
         _app.flash('Person connected to the case. You can now complete the profile.')
         return _app.redirect(_app.url_for('edit_contact', contact_id=contact.id))
