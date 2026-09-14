@@ -58,3 +58,13 @@ def test_supporter_tree_names_link_to_profiles_and_table_is_searchable():
     assert 'id="supporter-network-table"' in template
     assert "url_for('supporter_detail',contact_id=row.contact.id)" in template
     assert "url_for('supporter_detail',contact_id=row.through.id)" in template
+
+
+def test_dashboard_uses_translated_labels_and_keeps_preview_rows_visible():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/dashboard.html').read_text()
+    script = (root / 'static/pages.js').read_text()
+    assert 'אלע cases' not in template
+    assert '_("All cases")' in template
+    assert 'class="overview-grid dashboard-overview"' in template
+    assert "dashboard-overview table" in script
