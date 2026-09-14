@@ -80,6 +80,12 @@ def test_applicant_and_assigned_staff_share_private_thread(app):
     communications = client.get('/communications')
     assert 'New applicant messages' in communications.text
     assert 'I need help with a document.' in communications.text
+    assert 'Reply to applicant' in communications.text
+    reply = client.post(f'/families/{family_id}/messages', data={
+        'csrf': 'staff-csrf', 'body': 'Replying directly from Communications.',
+        'return_to': 'communications'})
+    assert reply.status_code == 302
+    assert reply.location.endswith('/communications#applicant-messages')
     with app.app_context():
         incoming_id = db.session.scalar(db.select(ApplicantMessage).where(
             ApplicantMessage.direction == 'applicant')).id
@@ -95,11 +101,12 @@ def test_applicant_and_assigned_staff_share_private_thread(app):
         state['applicant_family_id'] = family_id
         state['csrf'] = 'portal-csrf'
     portal = client.get('/applicant')
+    assert 'Replying directly from Communications.' in portal.text
     assert 'We received your message.' in portal.text
     with app.app_context():
         assert [row.direction for row in db.session.scalars(
             db.select(ApplicantMessage).order_by(ApplicantMessage.id))] == [
-                'applicant', 'staff']
+                'applicant', 'staff', 'staff']
 
 
 def test_direct_applicant_email_reply_enters_communications(app, monkeypatch):

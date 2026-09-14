@@ -195,6 +195,8 @@ def register_applicant_portal(app):
                                       action='Sent applicant portal message', family_id=family.id))
         core.db.session.commit()
         flash('Message sent to the applicant portal.', 'success')
+        if request.form.get('return_to') == 'communications':
+            return redirect(url_for('communications', _anchor='applicant-messages'))
         return redirect(url_for('staff_applicant_messages', family_id=family.id))
 
     @app.post('/communications/applicant-messages/<int:message_id>/handled')
