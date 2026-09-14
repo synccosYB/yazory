@@ -180,3 +180,24 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 .inline-pledge-form{display:flex;align-items:center;gap:6px;min-width:310px}.inline-pledge-form select{width:auto;min-width:92px;margin:0;padding:6px}.pledge-amount-input{display:flex;align-items:center;border:1px solid #cbd6df;background:var(--surface);border-radius:4px;padding-inline-start:7px}.pledge-amount-input:focus-within{outline:2px solid #d2ad5b;outline-offset:2px}.pledge-amount-input input{width:82px;border:0;margin:0;padding:6px 6px 6px 2px;outline:0}.print-only{display:none}@media print{.print-only{display:inline}.no-print{display:none!important}}
 .communication-pledge-form{display:grid;grid-template-columns:minmax(170px,1.5fr) minmax(105px,.7fr) minmax(110px,.8fr) auto;gap:6px;align-items:end;padding:8px;background:var(--gold-soft);border-radius:6px}.communication-pledge-form label{margin:0}.communication-pledge-form input,.communication-pledge-form select{margin-top:2px;padding:6px}@media(max-width:950px){.communication-pledge-form{grid-template-columns:1fr 1fr}.communication-pledge-form button{width:100%}}
 .communication-recipient{margin:0 0 7px;color:var(--ink)}.communication-recipient span{display:block;color:var(--muted);font-size:10px;font-weight:700}
+
+/* The outreach queue becomes readable cards when zoom or a narrow viewport
+   leaves too little room for its action-heavy table. */
+@media(max-width:900px){
+  .outreach-workflow-card .table-wrap{overflow:visible}
+  .outreach-workflow-table{display:block;min-width:0}
+  .outreach-workflow-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  .outreach-workflow-table tbody,.outreach-workflow-table tr,.outreach-workflow-table td{display:block;width:100%}
+  .outreach-workflow-table tr{padding:10px 12px;border-bottom:1px solid var(--line)}
+  .outreach-workflow-table td{display:grid;grid-template-columns:minmax(90px,30%) minmax(0,1fr);gap:10px;padding:7px 0;border:0}
+  .outreach-workflow-table td::before{content:attr(data-label);color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;overflow-wrap:anywhere}
+  [dir=rtl] .outreach-workflow-table td::before{letter-spacing:0}
+  .outreach-workflow-table .outreach-actions{display:block}
+  .outreach-workflow-table .outreach-actions::before{display:block;margin-bottom:7px}
+  .outreach-action-grid>details[open]{min-width:0}
+  .outreach-action-grid>details form{max-width:100%}
+}
+@media(max-width:520px){
+  .outreach-workflow-table td{grid-template-columns:1fr;gap:3px}
+  .communication-pledge-form{grid-template-columns:1fr}
+}

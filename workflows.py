@@ -102,7 +102,16 @@ def install_workflows(app, db, entities, helpers):
         if item.data.get('escalation_user'): ids.add(item.data['escalation_user'])
         for uid in ids:
             user=db.session.get(StaffUser,uid)
-            if user and readable(item,user): db.session.add(Notice(item_id=item.id,user_id=uid,message=message))
+            if not user or not readable(item,user):
+                continue
+            existing=db.session.scalar(select(Notice).where(
+                Notice.item_id==item.id,Notice.user_id==uid,
+                Notice.read_at.is_(None)).order_by(Notice.id.desc()))
+            if existing:
+                existing.message=message
+                existing.at=now()
+            else:
+                db.session.add(Notice(item_id=item.id,user_id=uid,message=message))
 
     def save():
         try: db.session.commit()
@@ -638,7 +647,10 @@ def install_workflows(app, db, entities, helpers):
         items=[w for w in items if not (w.kind=='collection' and w.data.get('abcharity_donation_id')
             and (not app.extensions['workflows'].get('import_consistent') or app.extensions['workflows']['import_consistent'](w)))]
         all_items=items
-        if view=='open':items=[w for w in items if w.disposition=='Open']
+        actionable=lambda w: (w.disposition=='Open' and (
+            w.owner_id==user.id or can_sign(w) or
+            w.data.get('escalation_user')==user.id))
+        if view=='open':items=[w for w in items if actionable(w)]
         elif view=='mine':items=[w for w in items if w.owner_id==user.id and w.disposition=='Open']
         elif view=='approvals':items=[w for w in items if can_sign(w)]
         elif view=='overdue':items=[w for w in items if w.disposition=='Open' and w.due<date.today()]
@@ -658,7 +670,7 @@ def install_workflows(app, db, entities, helpers):
         return render_template('operations.html',title='Operations',catalog=CATALOG,items=items[(page-1)*8:page*8],queue=queue,
             kind=kind,selected_family=fid,view=view,page=page,pages=pages,staff={u.id:u.email for u in db.session.scalars(select(StaffUser))},
             families=accessible_families,today=date.today(),notices=notices,
-            counts={'open':sum(w.disposition=='Open' for w in all_items),'mine':sum(w.disposition=='Open' and w.owner_id==user.id for w in all_items),
+            counts={'open':sum(actionable(w) for w in all_items),'mine':sum(w.disposition=='Open' and w.owner_id==user.id for w in all_items),
                     'overdue':sum(w.disposition=='Open' and w.due<date.today() for w in all_items),'approvals':sum(can_sign(w) for w in all_items)})
 
     @app.route('/operations/new/<kind>',methods=['GET','POST'])

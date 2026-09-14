@@ -1,0 +1,10 @@
+{
+  "name": "yazory-visual-regressions",
+  "private": true,
+  "scripts": {
+    "test:visual": "playwright test tests/visual"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

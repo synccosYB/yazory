@@ -1,0 +1,35 @@
+from pathlib import Path
+import re
+
+from app_entry import create_app
+
+
+def test_communications_mobile_cards_have_localized_field_labels():
+    app = create_app({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+        'SECRET_KEY': 'screen-contract-test',
+    })
+    client = app.test_client()
+
+    for language, direction in [('en', 'ltr'), ('he', 'rtl'), ('yi', 'rtl')]:
+        client.get(f'/language/{language}?next=/communications')
+        page = client.get('/communications').text
+        assert f'dir="{direction}"' in page
+    # The isolated app has no supporter rows, so verify the repeated-row source
+    # independently. Jinja translates each label in the active request.
+    source = (Path(__file__).resolve().parents[1] / 'templates/communications.html').read_text()
+    labels = re.findall(r"data-label=\"\{\{ _\('([^']+)'\) \}\}\"", source)
+    assert labels == ['Supporter', 'Family', 'Contact', 'Current step', 'Actions']
+
+
+def test_visual_ci_covers_required_layout_modes():
+    root = Path(__file__).resolve().parents[1]
+    visual_test = (root / 'tests/visual/layout.spec.js').read_text()
+    workflow = (root / '.github/workflows/ci.yml').read_text()
+
+    for mode in ('desktop', 'mobile', 'zoom-200'):
+        assert mode in visual_test
+    for locale in ("'he'", "'yi'"):
+        assert locale in visual_test
+    assert 'npm run test:visual' in workflow

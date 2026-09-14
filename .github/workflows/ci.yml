@@ -19,3 +19,38 @@ jobs:
         run: python -m py_compile app.py app_original.py native_payments.py stripe_gateway.py
       - name: Run tests
         run: python -m pytest -q
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements.txt
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Start demo application
+        run: gunicorn --bind 127.0.0.1:5010 'app_entry:create_app()' > /tmp/yazory-visual-server.log 2>&1 &
+      - name: Wait for application
+        run: |
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:5010/health && exit 0
+            sleep 1
+          done
+          cat /tmp/yazory-visual-server.log
+          exit 1
+      - name: Check desktop, mobile, zoom and RTL layouts
+        run: npm run test:visual
+      - name: Upload rendered screens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-results
+          path: |
+            test-results
+            playwright-report
+          retention-days: 14

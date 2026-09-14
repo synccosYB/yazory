@@ -137,6 +137,25 @@ def test_independent_approvals_stale_updates_and_revision_history(env):
     assert env.client('outsider').get(f'/operations/{w}').status_code==403
 
 
+def test_action_queue_only_shows_actionable_work_and_notices_are_deduplicated(env):
+    w=env.create('governance',{
+        'legal_name':'Yazory','banking':'Verified','policies':'Policy',
+        'large_limit':'5000','cash_limit':'100',
+        'review_date':(env.today+timedelta(days=365)).isoformat()})
+    finance_queue=env.client('finance').get('/operations')
+    assert f'#{w} · governance' not in finance_queue.text
+    assert f'#{w} · governance' in env.client('finance').get('/operations?view=all').text
+    assert env.act(w).status_code==302
+    finance_queue=env.client('finance').get('/operations')
+    assert f'#{w} · governance' in finance_queue.text
+    with env.app.app_context():
+        Notice=env.M['WorkflowNotice']
+        owner_notices=db.session.scalars(db.select(Notice).where(
+            Notice.item_id==w,Notice.user_id==env.ids['owner'],
+            Notice.read_at.is_(None))).all()
+        assert len(owner_notices)==1
+
+
 def test_no_budget_or_funds_cannot_pay_and_legacy_cannot_bypass(env):
     r=env.client().post(f'/families/{env.fid}/status',data={'csrf':'test','status':'Active'})
     assert r.status_code==302 and '/operations' in r.location
