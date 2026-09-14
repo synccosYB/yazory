@@ -68,7 +68,15 @@ def test_imported_profile_connects_once_to_a_case(app, client):
             Contact.supporter_key == 'phone:8455551300')).all()
         assert len(contacts) == 1
         assert contacts[0].email == 'person@example.test'
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        link = db.session.get(link_model, contacts[0].id)
+        assert link is not None
+        assert link.side == 'Community'
+        assert link.relationship == 'Friend'
 
+    case_page = client.get(f'/families/{family_id}')
+    assert case_page.status_code == 200
+    assert 'Imported Person' in case_page.text
 
 def test_wide_contact_export_uses_local_name_and_first_available_phone(app, client):
     data = (
