@@ -180,8 +180,19 @@ def install_network(app,db,entities,helpers):
                 except ValueError as exc:
                     abort(409, str(exc))
             link=links.get(contact.id) or Link(contact_id=contact.id)
-            parent=request.form.get('parent_id',type=int)
-            if parent:
+            parent_choice=value('parent_id')
+            parent=None
+            ancestor_prefix=''
+            if parent_choice in ('family-father','family-inlaws'):
+                ancestor = family.father if parent_choice == 'family-father' else family.inlaws
+                if not ancestor:
+                    abort(400,'That family connection has not been entered on the applicant profile.')
+                ancestor_prefix = 'F:' if parent_choice == 'family-father' else 'I:'
+            elif parent_choice:
+                try:
+                    parent=int(parent_choice)
+                except ValueError:
+                    abort(400,'Choose a valid family connection.')
                 p=db.session.get(Contact,parent);pl=db.session.get(Link,parent)
                 if not p or p.family_id!=family_id or (pl and pl.side!=side):abort(400,'Choose a parent connection on the same side of this family.')
                 seen={contact.id};cursor=parent
@@ -190,7 +201,7 @@ def install_network(app,db,entities,helpers):
                     seen.add(cursor);node=db.session.get(Link,cursor);person=db.session.get(Contact,cursor);cursor=node.parent_id if node else person.parent_contact_id if person else None
                 expected={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt',*UNCLE_RELATIONS},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
                 if relation in expected and (pl.relationship if pl else p.relationship) not in expected[relation]:abort(400,'The relationship does not match the selected family connection.')
-            elif relation in ('Nephew','Child of sibling','First cousin','Second cousin','Child of first cousin','Parent’s first cousin'):
+            elif not ancestor_prefix and relation in ('Nephew','Child of sibling','First cousin','Second cousin','Child of first cousin','Parent’s first cousin'):
                 abort(400,'Choose the relative this person connects through.')
             uid=request.form.get('assigned_to',type=int)
             if uid:
@@ -200,17 +211,24 @@ def install_network(app,db,entities,helpers):
             permission=value('permission',True);preference=value('preference')
             if permission not in PERMISSIONS or (preference and preference not in PREFERENCES):abort(400,'Choose a valid option.')
             before={k:getattr(link,k,None) for k in ('parent_id','side','relationship','assigned_to','permission','verified')}
+            before['parent_connection']=contact.parent_connection
             if any(x.parent_id==contact.id and x.side!=side for x in links.values()):abort(400,'Update the connected relatives before changing sides.')
             expected_children={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt',*UNCLE_RELATIONS},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
             if any(x.parent_id==contact.id and x.relationship in expected_children and relation not in expected_children[x.relationship] for x in links.values()):abort(400,'Update the connected relatives before changing the relationship.')
             connection=value('parent_connection') or contact.parent_connection
-            if connection and connection not in ('Son','Son-in-law'):abort(400,'Choose a valid option.')
-            contact.parent_contact_id=parent;contact.parent_connection=connection if parent else ''
+            if ancestor_prefix and connection.startswith(('F:','I:')):
+                connection=connection[2:]
+            if (parent or ancestor_prefix) and connection not in ('Son','Son-in-law'):
+                abort(400,'Choose whether this person is a son or son-in-law.')
+            if not parent and not ancestor_prefix:
+                connection=''
+            contact.parent_contact_id=parent
+            contact.parent_connection=(ancestor_prefix+connection if ancestor_prefix else connection)
             link.parent_id=parent;link.side=side;link.relationship=relation;link.assigned_to=uid
             link.permission=permission;link.preference=preference;link.introduced_by=value('introduced_by');link.verified=value('verified')=='yes'
             if permission=='Do not contact':contact.status='Paused'
             db.session.add(link);emit(family_id,'Supporter relationship updated',{'contact_id':contact.id,'before':before,
-                'after':{'parent_id':parent,'side':side,'relationship':relation,'assigned_to':uid,'permission':permission,'verified':link.verified}})
+                'after':{'parent_id':parent,'parent_connection':contact.parent_connection,'side':side,'relationship':relation,'assigned_to':uid,'permission':permission,'verified':link.verified}})
             db.session.commit();flash('Supporter network saved.');return redirect(url_for('supporter_network',family_id=family_id))
         if user.role=='fundraiser':contacts=[c for c in contacts if c.id in links and links[c.id].assigned_to==user.id]
         rows=[];visible={c.id:c for c in contacts}

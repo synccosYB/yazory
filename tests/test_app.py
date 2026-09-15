@@ -397,6 +397,41 @@ def test_supporter_can_connect_to_applicant_father_or_father_in_law(app, client)
     assert 'value="family-father" selected' in edit
     assert 'value="Son" selected' in edit
 
+    app.config['DEMO'] = False
+    with app.app_context():
+        admin = StaffUser(
+            email='network-admin@example.test', password_hash='unused',
+            role='organization_admin', status='active')
+        db.session.add(admin)
+        db.session.commit()
+        admin_id = admin.id
+    with client.session_transaction() as session:
+        session['user_id'] = admin_id
+
+    network_edit = client.get(f'/families/1/network?edit={father_side_id}').text
+    assert 'value="family-father" selected' in network_edit
+    assert 'value="Son" selected' in network_edit
+
+    response = post(client, '/families/1/network', {
+        'contact_id': str(father_side_id),
+        'name': 'Father side brother', 'phone': '',
+        'side': 'Husband', 'relationship': 'Sibling',
+        'parent_id': 'family-father', 'parent_connection': 'Son',
+        'permission': 'Not requested', 'preference': '',
+        'introduced_by': '', 'verified': '', 'assigned_to': '',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        father_side = db.session.get(Contact, father_side_id)
+        assert father_side.parent_contact_id is None
+        assert father_side.parent_connection == 'F:Son'
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        assert db.session.get(link_model, father_side_id).parent_id is None
+
+    network_page = client.get('/families/1/network').text
+    assert 'Applicant father name' in network_page
+    assert 'Applicant’s father' in network_page
+
 def test_supporter_relationships_use_current_heimish_yiddish(client):
     client.get('/language/yi')
     page = client.get('/supporters').text
