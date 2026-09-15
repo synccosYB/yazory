@@ -50,6 +50,39 @@ if(initialEmailDraft){
   initialEmailDraft.scrollIntoView({block:'start'});
   initialEmailDraft.focus({preventScroll:true});
 }
+
+// Shared mobile application shell and table accessibility for every staff page.
+(()=>{
+  const sidebar=document.querySelector('.sidebar');
+  const openButton=document.querySelector('[data-nav-open]');
+  const closeButtons=document.querySelectorAll('[data-nav-close]');
+  const backdrop=document.querySelector('.mobile-nav-backdrop');
+  if(sidebar&&openButton&&backdrop){
+    const setOpen=open=>{
+      document.body.classList.toggle('mobile-nav-visible',open);
+      openButton.setAttribute('aria-expanded',String(open));
+      backdrop.hidden=!open;
+      if(open)sidebar.querySelector('.mobile-nav-close')?.focus();
+      else if(document.activeElement?.matches('[data-nav-close]'))openButton.focus();
+    };
+    openButton.addEventListener('click',()=>setOpen(true));
+    closeButtons.forEach(button=>button.addEventListener('click',()=>setOpen(false)));
+    sidebar.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>setOpen(false)));
+    document.addEventListener('keydown',event=>{if(event.key==='Escape')setOpen(false);});
+    matchMedia('(min-width: 751px)').addEventListener('change',event=>{if(event.matches)setOpen(false);});
+  }
+
+  document.querySelectorAll('.table-wrap table').forEach(table=>{
+    const headings=[...table.querySelectorAll('thead th')].map(cell=>cell.textContent.trim());
+    table.querySelectorAll('tbody tr').forEach(row=>{
+      [...row.cells].forEach((cell,index)=>{
+        if(!cell.dataset.label&&headings[index])cell.dataset.label=headings[index];
+      });
+    });
+    table.parentElement.setAttribute('tabindex','0');
+    table.parentElement.setAttribute('role','region');
+  });
+})();
 if(supporterEmailBody&&supporterEmailSubject&&supporterEmailPreviewBody&&supporterEmailPreviewSubject){
   const updateSupporterEmailPreview=()=>{
     supporterEmailPreviewSubject.textContent=supporterEmailSubject.value||'—';
