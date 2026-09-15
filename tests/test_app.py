@@ -615,11 +615,23 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
                   'inlaws_maiden_name', 'inlaws_family', 'rabbi', 'rabbi_phone',
-                  'weekday_shul', 'shabbos_shul', 'circumstances'):
+                  'weekday_shul', 'shabbos_shul', 'askonim', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
     assert 'name="rabbi"' in edit.text
+
+def test_case_askonim_are_saved_and_shown(app, client):
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'askonim': 'R. Example\nR. Second',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Family, 1).askonim == 'R. Example\nR. Second'
+    profile = client.get('/families/1').text
+    assert 'R. Example' in profile
+    assert '/families/1/edit?field=askonim' in profile
 
 def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):
     response = post(client, '/families/1/edit', {
