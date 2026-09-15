@@ -1808,13 +1808,20 @@ def create_app(test_config=None):
             }
         pledge = pledges[0]
         campaign = _app.db.session.scalar(select(_app.CharityCampaign).where(
-            _app.CharityCampaign.family_id == pledge.family_id,
-            _app.CharityCampaign.public_url != '').order_by(
+            _app.CharityCampaign.family_id == pledge.family_id).order_by(
                 _app.CharityCampaign.id.desc()))
         if campaign and campaign.public_url:
             return {'kind': 'ABCharity', 'url': campaign.public_url,
                     'pledges': pledges,
                     'reason': f'One family pledge · campaign {campaign.external_id}'}
+        if campaign:
+            return {
+                'kind': 'ABCharity link missing',
+                'url': '',
+                'pledges': pledges,
+                'family_id': pledge.family_id,
+                'reason': 'Add the public ABCharity campaign link before sending this pledge.',
+            }
         return {
             'kind': 'Yazory',
             'url': _app.url_for('supporter_donation', contact_id=contact.id,
@@ -2344,6 +2351,12 @@ def create_app(test_config=None):
             _app.abort(400, 'Enter the pledge amount before sending it.')
         subject = 'Your Yazory pledge confirmation'
         delivery = supporter_pledge_delivery(contact)
+        if not delivery['url']:
+            _app.flash(
+                'Add the public ABCharity campaign link before sending this pledge.',
+                'error')
+            return _app.redirect(_app.url_for(
+                'charity_donations', family_id=delivery['family_id']))
         family_lines = '\n'.join(
             f'- {row.family.name}: ${row.monthly_cents / 100:,.2f} '
             f'{({"Weekly": "each week", "Monthly": "each month", "One time": "one time"}.get(row.pledge_frequency, row.pledge_frequency))}'

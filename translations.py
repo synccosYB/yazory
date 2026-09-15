@@ -388,6 +388,8 @@ _EXTRA = {
     'Open public ABCharity campaign': {'he': 'פתיחת קמפיין ABCharity הציבורי', 'yi': 'עפן דעם פובליקן ABCharity קאמפיין'},
     'Enter a valid campaign ID, name, public ABCharity link and currency.': {'he': 'הזינו מזהה קמפיין, שם, קישור ציבורי של ABCharity ומטבע תקינים.', 'yi': 'לייגט אריין א גילטיגן קאמפיין נומער, נאמען, פובליקן ABCharity לינק און וואלוטע.'},
     'Enter the public ABCharity campaign link for this family before sending the pledge.': {'he': 'הזינו את הקישור הציבורי של קמפיין ABCharity למשפחה לפני שליחת ההתחייבות.', 'yi': 'לייגט אריין דעם פובליקן ABCharity קאמפיין לינק פאר דער משפחה איידער מען שיקט דעם פלעדזש.'},
+    'ABCharity link missing': {'he': 'חסר קישור ABCharity', 'yi': 'דער ABCharity לינק פעלט'},
+    'Add the public ABCharity campaign link before sending this pledge.': {'he': 'הוסיפו את הקישור הציבורי של קמפיין ABCharity לפני שליחת ההתחייבות.', 'yi': 'לייגט אריין דעם פובליקן ABCharity קאמפיין לינק איידער מען שיקט דעם פלעדזש.'},
 }
 
 _EXTRA.update({

@@ -166,6 +166,20 @@ def test_missing_abcharity_campaign_falls_back_to_yazory(monkeypatch):
         assert f'/supporters/{contact_id}/donate' in message.text_body
 
 
+def test_connected_campaign_without_public_url_blocks_wrong_pledge_link(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        campaign = db.session.scalar(db.select(CharityCampaign))
+        campaign.public_url = ''
+        db.session.commit()
+    response = post(client, f'/contacts/{contact_id}/communications/pledge', {})
+    assert response.status_code == 302
+    assert response.location.endswith('/families/1/donations')
+    with app.app_context():
+        assert db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'pledge_confirmation')) is None
+
+
 def test_supporter_communication_link_opens_only_that_supporter(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     with app.app_context():
