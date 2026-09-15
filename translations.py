@@ -493,6 +493,10 @@ _EXTRA.update({
     'Applicant communication history': {'he': 'היסטוריית תקשורת עם פונים', 'yi': 'קאמיוניקאציע היסטאריע מיט פונים'},
     'Every portal message and direct applicant email reply.': {'he': 'כל הודעת פורטל ותשובת אימייל ישירה מהפונה.', 'yi': 'יעדער פארטאל מעסעדזש און דירעקטע אימעיל תשובה פונעם פונה.'},
     'Supporter communication history': {'he': 'היסטוריית תקשורת עם תומכים', 'yi': 'קאמיוניקאציע היסטאריע מיט העלפער'},
+    'Missing profile information': {'he': 'פרטי פרופיל חסרים', 'yi': 'פעלנדיגע פראפיל אינפארמאציע'},
+    'Supporters awaiting contact': {'he': 'תומכים הממתינים ליצירת קשר', 'yi': 'העלפער וואס ווארטן אויף א קאנטאקט'},
+    'Pending expense requests': {'he': 'בקשות הוצאה בהמתנה', 'yi': 'אומפארטיגע בקשות פאר הוצאות'},
+    'Complete or review the profile': {'he': 'השלמת הפרופיל או בדיקתו', 'yi': 'פארענדיג אדער איבערקוק דעם פראפיל'},
 })
 
 # Expose extension labels through the canonical catalog as well as the runtime
