@@ -147,6 +147,33 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 .profile-linked-row,.profile-linked-contacts small{display:block}.profile-linked-contacts{font-weight:400}.profile-linked-contacts>summary{cursor:pointer;color:var(--blue);font-weight:700}
 @media(max-width:1150px){.profile-record-main{grid-template-columns:1fr auto}.profile-record-metrics{grid-column:1/-1}}@media(max-width:650px){.profile-record-metrics{grid-template-columns:repeat(2,1fr)}.shul-contact-editor .form-grid{grid-template-columns:1fr}}
 @media(max-width:850px){.profile-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.profile-summary>div{border-inline-end:0}.profile-status-control{justify-content:flex-start}}@media(max-width:600px){.profile-record-actions{justify-content:flex-start}.profile-record-actions .button,.profile-record-actions details{flex:1}.profile-record-actions .button,.profile-more-actions>summary{width:100%}.profile-status-control{align-items:stretch}.profile-status-control select,.profile-status-control button,.profile-status-control label{width:100%}.profile-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Use the desktop profile canvas efficiently; reserve full-width rows for real notes only. */
+@media(min-width:1101px){
+  body[data-page-tabs] main{max-width:none;padding:14px 18px 24px}
+  body[data-page-tabs] .profile-record-header{padding:9px 12px;margin-bottom:6px}
+  body[data-page-tabs] .profile-record-main{display:flex;align-items:center;justify-content:flex-start;gap:14px}
+  body[data-page-tabs] .profile-record-identity{flex:0 1 auto;min-width:360px}
+  body[data-page-tabs] .profile-record-metrics{display:block;flex:0 0 auto;width:auto;border:0}
+  body[data-page-tabs] .profile-record-metrics>div{display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fafbfc;white-space:nowrap}
+  body[data-page-tabs] .profile-record-metrics small{display:inline;margin:0}
+  body[data-page-tabs] .profile-record-actions{flex:0 0 auto;margin-inline-start:auto}
+  body[data-page-tabs] .profile-status-control{margin-top:6px;padding:6px 8px}
+  body[data-page-tabs] .profile-record-header>.profile-status-control{width:max-content;max-width:100%;margin-inline-start:auto}
+  body[data-page-tabs] .page-panels{margin-bottom:8px}
+  body[data-page-tabs] .profile-household-sheet{padding:9px 12px}
+  body[data-page-tabs] .profile-household-sheet>h2{padding-bottom:5px}
+  body[data-page-tabs] .profile-summary{padding:7px 9px}
+  body[data-page-tabs] .profile-summary h3{margin-bottom:3px;padding-bottom:4px}
+  body[data-page-tabs] .profile-summary>div{padding:4px 8px}
+  body[data-page-tabs] .profile-household-sheet .profile-sheet-layout .details{grid-template-columns:repeat(3,minmax(0,1fr));gap:0 10px}
+  body[data-page-tabs] .profile-household-sheet .details>div{display:block;padding:5px 3px}
+  body[data-page-tabs] .profile-household-sheet .details>.profile-askan{grid-column:auto}
+  body[data-page-tabs] .profile-household-sheet .details dt{padding:0 2px 2px}
+  body[data-page-tabs] .profile-household-sheet .details dd{min-height:29px;padding:4px 7px}
+  body[data-page-tabs] .profile-household-sheet .details .profile-circumstances{grid-column:1/-1;display:grid;grid-template-columns:minmax(150px,.25fr) minmax(0,1.75fr);margin-top:5px;padding:6px 8px}
+  body[data-page-tabs] .profile-household-sheet .details .profile-circumstances dd{min-height:36px}
+}
 .selected-family-funds{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:7px;padding:8px 10px;border-inline-start:3px solid var(--gold);border-radius:4px;background:var(--gold-soft)}.selected-family-funds[hidden]{display:none}.selected-family-funds small{color:var(--ink)}.selected-family-funds strong{direction:ltr;unicode-bidi:isolate;font-size:16px;color:var(--navy);font-variant-numeric:tabular-nums}
 .supporter-inline-edit > summary{width:max-content;cursor:pointer;list-style:none}
 .supporter-inline-edit > summary::-webkit-details-marker{display:none}
