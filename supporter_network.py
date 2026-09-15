@@ -122,6 +122,9 @@ def install_network(app,db,entities,helpers):
             workplace=workplace,work_phone=work_phone,notes=notes,
             supporter_key=key,monthly_cents=0,pledge_frequency='Monthly',status='To contact')
         db.session.add(contact);db.session.flush()
+        identity = app.extensions.get('supporter_identity')
+        if identity:
+            identity['attach'](contact)
 
         grade=value('grade')
         year_from=year_to=None
@@ -161,11 +164,21 @@ def install_network(app,db,entities,helpers):
             key=helpers['supporter_key'](name,contact.phone,old_key)
             duplicate=db.session.scalar(select(Contact.id).where(Contact.family_id==family_id,Contact.supporter_key==key,Contact.id!=contact.id)) if key.startswith('phone:') else None
             if duplicate:abort(400,'This supporter is already connected to this case.')
-            if old_key:
+            identity = app.extensions.get('supporter_identity')
+            if old_key and not identity:
                 for sibling in db.session.scalars(select(Contact).where(Contact.supporter_key==old_key)):
                     sibling.name=name;sibling.phone=contact.phone;sibling.supporter_key=key
             contact.supporter_key=key
             contact.relationship=relation;db.session.add(contact);db.session.flush()
+            if identity:
+                personal = {
+                    'name': name, 'phone': contact.phone,
+                    'supporter_key': key,
+                }
+                try:
+                    identity['update'](contact, personal)
+                except ValueError as exc:
+                    abort(409, str(exc))
             link=links.get(contact.id) or Link(contact_id=contact.id)
             parent=request.form.get('parent_id',type=int)
             if parent:

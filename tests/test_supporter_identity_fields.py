@@ -1,7 +1,8 @@
 from app_entry import create_app
 import pytest
 
-from app import Contact, Family, Institution, PersonAffiliation, db
+from app import (Contact, Family, Institution, PersonAffiliation,
+                 SupporterPerson, db)
 
 
 @pytest.fixture
@@ -58,6 +59,10 @@ def test_supporter_identity_details_save_display_and_sync(app, client):
     with app.app_context():
         first = db.session.get(Contact, first_id)
         second = db.session.get(Contact, second_id)
+        assert first.person_id == second.person_id
+        person = db.session.get(SupporterPerson, first.person_id)
+        assert person.name == 'Yoel Teitelbaum'
+        assert person.email == 'yoel@example.test'
         for contact in (first, second):
             assert contact.cell_phone == '845-555-2000'
             assert contact.home_phone == '845-555-3000'

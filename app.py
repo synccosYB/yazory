@@ -1028,9 +1028,108 @@ def create_app(test_config=None):
         twilio_config.update({key: test_config[key] for key in twilio_config if key in test_config})
     app.config.update(twilio_config)
 
+    personal_fields = (
+        'name', 'phone', 'email', 'home_phone', 'cell_phone',
+        'home_address', 'city', 'state', 'zip_code', 'workplace',
+        'work_phone', 'notes')
+
+    def sync_person_snapshots(person):
+        """Maintain old Contact readers while SupporterPerson is authoritative."""
+        contacts = _app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.person_id == person.id)).all()
+        for row in contacts:
+            for field_name in personal_fields:
+                setattr(row, field_name, getattr(person, field_name) or '')
+            row.supporter_key = person.identity_key
+
+    def attach_supporter_person(contact, source=None):
+        """Attach a case connection to exactly one canonical person."""
+        if source is not None and source.person_id is None:
+            attach_supporter_person(source)
+        if source is not None and source.person_id is not None:
+            contact.person_id = source.person_id
+            person = _app.db.session.get(SupporterPerson, source.person_id)
+        elif contact.person_id is not None:
+            person = _app.db.session.get(SupporterPerson, contact.person_id)
+        else:
+            identity_key = contact.supporter_key or f'legacy:{contact.id}'
+            person = _app.db.session.scalar(select(SupporterPerson).where(
+                SupporterPerson.identity_key == identity_key))
+            # A household phone is not proof that two relatives in the same
+            # case are one person. Across cases it is the intended shared
+            # identity; within one case preserve distinct people.
+            if person is not None and _app.db.session.scalar(select(_app.Contact.id).where(
+                    _app.Contact.person_id == person.id,
+                    _app.Contact.family_id == contact.family_id,
+                    _app.Contact.id != contact.id)):
+                identity_key = f'legacy:{contact.id}'
+                person = None
+            if person is None:
+                person = SupporterPerson(
+                    identity_key=identity_key,
+                    **{field_name: (getattr(contact, field_name, '') or '')
+                       for field_name in personal_fields})
+                _app.db.session.add(person)
+                _app.db.session.flush()
+            else:
+                # Backfills may encounter an older sparse case copy first.
+                for field_name in personal_fields:
+                    if not getattr(person, field_name) and getattr(contact, field_name, ''):
+                        setattr(person, field_name, getattr(contact, field_name))
+            contact.person_id = person.id
+            if not identity_key.startswith('legacy:'):
+                represented_families = set(_app.db.session.scalars(select(
+                    _app.Contact.family_id).where(
+                        _app.Contact.person_id == person.id)).all())
+                # Repair unsynchronized legacy copies of this identity, but
+                # never collapse two people within the same case.
+                candidates = _app.db.session.scalars(select(_app.Contact).where(
+                    _app.Contact.person_id.is_(None),
+                    _app.Contact.supporter_key == identity_key,
+                    _app.Contact.id != contact.id).order_by(_app.Contact.id)).all()
+                represented_families.add(contact.family_id)
+                for candidate in candidates:
+                    if candidate.family_id not in represented_families:
+                        candidate.person_id = person.id
+                        represented_families.add(candidate.family_id)
+        sync_person_snapshots(person)
+        return person
+
+    def update_supporter_person(contact, values):
+        """Update one person once, then refresh every connected case snapshot."""
+        person = attach_supporter_person(contact)
+        identity_key = values.pop('supporter_key', person.identity_key)
+        collision = _app.db.session.scalar(select(SupporterPerson.id).where(
+            SupporterPerson.identity_key == identity_key,
+            SupporterPerson.id != person.id))
+        if collision:
+            raise ValueError('That phone number already belongs to another person.')
+        person.identity_key = identity_key
+        for field_name in personal_fields:
+            if field_name in values:
+                setattr(person, field_name, values[field_name] or '')
+        sync_person_snapshots(person)
+        return person
+
+    app.extensions['supporter_identity'] = {
+        'attach': attach_supporter_person,
+        'update': update_supporter_person,
+        'sync': sync_person_snapshots,
+    }
+
     def ensure_extension_schema():
         """Create and migrate models supplied by this compatibility layer."""
         _app.db.create_all()
+        contact_columns = {
+            column['name'] for column in _app.inspect(_app.db.engine).get_columns('contact')
+        }
+        if 'person_id' not in contact_columns:
+            _app.db.session.execute(text(
+                'ALTER TABLE contact ADD COLUMN person_id INTEGER REFERENCES supporter_person(id)'
+            ))
+        _app.db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_contact_person_id ON contact (person_id)'
+        ))
         task_columns = {
             column['name'] for column in _app.inspect(_app.db.engine).get_columns('staff_task')
         }
@@ -1055,8 +1154,14 @@ def create_app(test_config=None):
             'ON staff_task (source_contact_id)'
         ))
         _app.db.session.commit()
-        # Seed the shared directory from existing case contacts. A phone number
-        # is the sole unique identity; names and email addresses remain editable.
+        # Convert every legacy case copy into a link to one canonical person.
+        # This is additive: financial/history rows continue pointing at Contact.
+        for contact in _app.db.session.scalars(select(_app.Contact).order_by(
+                _app.Contact.id)).all():
+            attach_supporter_person(contact)
+        _app.db.session.commit()
+
+        # Keep the import staging directory populated for the existing UI.
         existing_profiles = {
             row.normalized_phone: row for row in
             _app.db.session.scalars(select(SupporterProfile)).all()
@@ -1210,6 +1315,7 @@ def create_app(test_config=None):
             status=existing.status if existing else 'To contact')
         _app.db.session.add(contact)
         _app.db.session.flush()
+        attach_supporter_person(contact, source=existing)
 
         # The case's current Circle of Support is backed by both Contact and
         # SupporterLink.  Imports used to create only the legacy Contact row,
@@ -1270,12 +1376,19 @@ def create_app(test_config=None):
             profile.phone = phone[:80]
             profile.normalized_phone = normalized
             profile.email = email[:254]
-            for contact in linked_contacts:
-                contact.name = profile.name
-                contact.phone = profile.phone
-                contact.cell_phone = profile.phone
-                contact.email = profile.email
-                contact.supporter_key = new_key
+            if linked_contacts:
+                try:
+                    update_supporter_person(linked_contacts[0], {
+                        'name': profile.name, 'phone': profile.phone,
+                        'cell_phone': profile.phone, 'email': profile.email,
+                        'supporter_key': new_key,
+                    })
+                except ValueError as exc:
+                    _app.db.session.rollback()
+                    _app.flash(str(exc), 'error')
+                    return _app.render_template(
+                        'supporter_profile_edit.html', title='Edit imported person',
+                        profile=profile), 409
             _app.db.session.commit()
             _app.flash('Person updated everywhere they are connected.')
             return _app.redirect(_app.url_for('supporter_directory'))
@@ -1878,7 +1991,7 @@ def create_app(test_config=None):
                                  row.email_message.recipient.strip())
             ), '')
             if sent_address:
-                contact.email = sent_address[:254]
+                update_supporter_person(contact, {'email': sent_address[:254]})
                 repaired_email = True
         if repaired_email:
             _app.db.session.commit()
@@ -2222,7 +2335,7 @@ def create_app(test_config=None):
             contact, 'initial_email', subject, body,
             status='completed' if message.status == 'sent' else message.status,
             email_message=message)
-        contact.email = recipient_email
+        update_supporter_person(contact, {'email': recipient_email})
         contact.status = 'To contact'
         task = _app.db.session.scalar(select(StaffTask).where(
             StaffTask.source_contact_id == contact.id))
@@ -2327,9 +2440,10 @@ def create_app(test_config=None):
             contact, channel, 'WhatsApp message' if channel == 'whatsapp' else 'Text message',
             body, status=status, provider_message_id=provider_id,
             delivery_error=error)
-        contact.cell_phone = normalized
+        phone_values = {'cell_phone': normalized}
         if not contact.phone:
-            contact.phone = normalized
+            phone_values['phone'] = normalized
+        update_supporter_person(contact, phone_values)
         add_audit(
             f'{"Sent" if status == "completed" else "Prepared" if status == "preview" else "Failed"} '
             f'{channel} message: {contact.name}')

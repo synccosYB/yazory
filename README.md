@@ -75,6 +75,19 @@ Initialize the configured database once:
 APP_ENV=production flask --app 'app:create_app()' init-db
 ```
 
+After pulling an update into an existing production database, run the additive
+migration before publishing:
+
+```sh
+python -m flask --app 'app_entry:create_app()' migrate-db
+```
+
+The supporter-identity migration creates one `supporter_person` record for each
+real helper and links every case-specific `contact` row through `person_id`.
+Existing contacts, pledges, receipts, donations, tasks, and affiliations are
+preserved. Helpers sharing a household phone inside the same case remain
+distinct; an identity already connected across different cases is consolidated.
+
 The publishing command in `.replit` sets `APP_ENV=production`, runs the additive `init-db` upgrade, and then starts Gunicorn on port 5000. This prevents a newly deployed page from querying tables or columns that the existing database does not yet have. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL.
 
 The configured bootstrap identity is created idempotently as the owner organization administrator and its existing password hash is never overwritten. Organization administrators create additional individual staff accounts and manage explicit family assignments. Table creation is idempotent and preserves existing records; use versioned migrations for future column changes. This is an initial application, not a completed production launch. Before real operational use, complete password recovery and durable login rate limiting, database backup/restore verification, deployment validation, and the organization's data retention/access policies. The activity log is application history, not a tamper-proof financial ledger. New children and donor contact identity details currently cannot be edited or deleted; family profiles and pledge status/amount can be edited.

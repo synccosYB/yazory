@@ -201,9 +201,35 @@ class Child(db.Model):
     married = db.Column(db.Boolean, default=False, nullable=False)
     spouse_name = db.Column(db.String(160), default='')
 
+class SupporterPerson(db.Model):
+    """One authoritative personal record shared by every case connection."""
+    __tablename__ = 'supporter_person'
+    id = db.Column(db.Integer, primary_key=True)
+    identity_key = db.Column(db.String(200), nullable=False, unique=True, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    phone = db.Column(db.String(80), nullable=False, default='')
+    email = db.Column(db.String(254), nullable=False, default='')
+    home_phone = db.Column(db.String(80), nullable=False, default='')
+    cell_phone = db.Column(db.String(80), nullable=False, default='')
+    home_address = db.Column(db.String(240), nullable=False, default='')
+    city = db.Column(db.String(120), nullable=False, default='')
+    state = db.Column(db.String(80), nullable=False, default='')
+    zip_code = db.Column(db.String(20), nullable=False, default='')
+    workplace = db.Column(db.String(160), nullable=False, default='')
+    work_phone = db.Column(db.String(80), nullable=False, default='')
+    notes = db.Column(db.Text, nullable=False, default='')
+    created_at = db.Column(db.DateTime, nullable=False,
+                           default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+
 class Contact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False)
+    # Canonical personal details live in supporter_person. Contact is the
+    # person's case-specific relationship/pledge/status record; the personal
+    # columns below remain synchronized compatibility snapshots.
+    person_id = db.Column(db.Integer, db.ForeignKey('supporter_person.id'),
+                          nullable=True, index=True)
     name = db.Column(db.String(160), nullable=False)
     relationship = db.Column(db.String(80), nullable=False)
     phone = db.Column(db.String(80), default='')
@@ -2307,6 +2333,9 @@ def create_app(test_config=None):
                           pledge_frequency=pledge_frequency, status=status)
         db.session.add(contact)
         db.session.flush()
+        identity = app.extensions.get('supporter_identity')
+        if identity:
+            identity['attach'](contact)
         sync_followup = app.extensions.get('sync_supporter_followup_task')
         if sync_followup:
             sync_followup(contact)
@@ -2415,22 +2444,27 @@ def create_app(test_config=None):
             phone = cell_phone or home_phone or field('phone', limit=80)
             email = optional_email_field()
             new_key = supporter_key(name, phone, contact.supporter_key)
-            linked = db.session.scalars(select(Contact).where(
-                Contact.supporter_key == contact.supporter_key)).all() if contact.supporter_key else [contact]
-            for linked_contact in linked:
-                linked_contact.name = name
-                linked_contact.phone = phone
-                linked_contact.email = email
-                linked_contact.home_phone = home_phone
-                linked_contact.cell_phone = cell_phone
-                linked_contact.home_address = field('home_address', limit=240)
-                linked_contact.city = field('city', limit=120)
-                linked_contact.state = field('state', limit=80)
-                linked_contact.zip_code = field('zip_code', limit=20)
-                linked_contact.workplace = field('workplace', limit=160)
-                linked_contact.work_phone = field('work_phone', limit=80)
-                linked_contact.notes = field('notes', limit=5000)
-                linked_contact.supporter_key = new_key
+            personal = dict(
+                name=name, phone=phone, email=email, home_phone=home_phone,
+                cell_phone=cell_phone,
+                home_address=field('home_address', limit=240),
+                city=field('city', limit=120), state=field('state', limit=80),
+                zip_code=field('zip_code', limit=20),
+                workplace=field('workplace', limit=160),
+                work_phone=field('work_phone', limit=80),
+                notes=field('notes', limit=5000), supporter_key=new_key)
+            identity = app.extensions.get('supporter_identity')
+            if identity:
+                try:
+                    identity['update'](contact, personal)
+                except ValueError as exc:
+                    abort(409, str(exc))
+            else:
+                linked = db.session.scalars(select(Contact).where(
+                    Contact.supporter_key == contact.supporter_key)).all() if contact.supporter_key else [contact]
+                for linked_contact in linked:
+                    for key, value in personal.items():
+                        setattr(linked_contact, key, value)
             contact.status = status
             contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
             contact.pledge_frequency = pledge_frequency
@@ -2463,17 +2497,26 @@ def create_app(test_config=None):
         if parent_connection not in ('Son', 'Son-in-law'):
             abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
         spouse_connection = 'Son-in-law' if parent_connection == 'Son' else 'Son'
-        db.session.add(Contact(
+        child_contact = Contact(
             family_id=contact.family_id, name=name, relationship='Nephew',
             phone=phone, supporter_key=supporter_key(name, phone),
             parent_contact_id=contact.id, parent_connection=parent_connection,
-            monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
+            monthly_cents=0, pledge_frequency='Monthly', status='To contact')
+        db.session.add(child_contact)
+        new_contacts = [child_contact]
         if spouse_name:
-            db.session.add(Contact(
+            spouse_contact = Contact(
                 family_id=contact.family_id, name=spouse_name, relationship='Nephew',
                 phone='', supporter_key=supporter_key(spouse_name, ''),
                 parent_contact_id=contact.id, parent_connection=spouse_connection,
-                monthly_cents=0, pledge_frequency='Monthly', status='To contact'))
+                monthly_cents=0, pledge_frequency='Monthly', status='To contact')
+            db.session.add(spouse_contact)
+            new_contacts.append(spouse_contact)
+        db.session.flush()
+        identity = app.extensions.get('supporter_identity')
+        if identity:
+            for new_contact in new_contacts:
+                identity['attach'](new_contact)
         audit(f'Added child as supporter under: {contact.name}', contact.family_id)
         db.session.commit()
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
@@ -2730,6 +2773,9 @@ def create_app(test_config=None):
                     status='Contacted')
                 db.session.add(contact)
                 db.session.flush()
+                identity = app.extensions.get('supporter_identity')
+                if identity:
+                    identity['attach'](contact)
                 audit(f'Added supporter from manual donation: {donor_name}', family.id)
         else:
             contact_id = request.form.get('contact_id', type=int)
@@ -2995,6 +3041,7 @@ def create_app(test_config=None):
 
         contact = Contact(
             family_id=family.id,
+            person_id=source.person_id,
             name=source.name,
             relationship=relationship,
             phone=source.phone,
@@ -3017,6 +3064,9 @@ def create_app(test_config=None):
         )
         db.session.add(contact)
         db.session.flush()
+        identity = app.extensions.get('supporter_identity')
+        if identity:
+            identity['attach'](contact, source=source)
         if institution is not None:
             db.session.add(PersonAffiliation(
                 institution_id=institution.id,
@@ -3327,6 +3377,9 @@ def create_app(test_config=None):
                           status='To contact')
         db.session.add(contact)
         db.session.flush()
+        identity = app.extensions.get('supporter_identity')
+        if identity:
+            identity['attach'](contact)
         grade = field('grade', required=institution.kind == 'Yeshivah', limit=80)
         year_from = year_to = None
         if institution.kind == 'Yeshivah':

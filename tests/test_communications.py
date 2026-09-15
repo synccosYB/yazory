@@ -69,7 +69,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'data-communication-filter="overdue"' in page.text
     assert 'id="communication-callbacks"' in page.text
     assert 'class="outreach-actions"><div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260914-communication-metric-panels-v2' in page.text
+    assert 'pages.js?v=20260915-mobile-all-pages-v1' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
