@@ -1,0 +1,58 @@
+/* Compact family-profile action summary, isolated from the main design system. */
+.profile-attention {
+  border: 1px solid #e1d5b8;
+  border-radius: 7px;
+  background: var(--gold-soft);
+  padding: 9px 10px;
+}
+.profile-attention h3 {
+  font-size: 15px;
+  margin: 0 0 4px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--gold);
+}
+.profile-attention > a,
+.profile-attention-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  padding: 7px 3px;
+  border-bottom: 1px solid #e5dcc7;
+  color: var(--ink);
+}
+.profile-attention > a:hover { color: var(--navy); }
+.profile-attention strong {
+  min-width: 24px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--navy);
+}
+.profile-attention .profile-attention-next {
+  display: block;
+  margin-top: 7px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--navy);
+  color: #fff;
+  font-weight: 700;
+}
+.profile-attention .profile-attention-next:hover {
+  color: #fff;
+  background: #24527d;
+}
+@media (min-width: 851px) {
+  .profile-sheet-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 2.4fr) minmax(230px, .6fr);
+    gap: 10px;
+  }
+  .profile-summary { grid-column: 1 / -1; order: initial; }
+  .profile-household-sheet .profile-sheet-layout .details { grid-column: 1; }
+  .profile-attention { grid-column: 2; }
+}
+@media (max-width: 850px) {
+  .profile-attention { order: 0; }
+  .profile-household-sheet .profile-sheet-layout .details { order: 1; }
+}
