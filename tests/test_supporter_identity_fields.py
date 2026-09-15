@@ -1,5 +1,7 @@
 from app_entry import create_app
 import pytest
+import sqlite3
+from sqlalchemy import inspect
 
 from app import (Contact, Family, Institution, PersonAffiliation,
                  SupporterPerson, db)
@@ -26,6 +28,33 @@ def _post(client, path, data):
     with client.session_transaction() as session:
         csrf = session['csrf']
     return client.post(path, data={**data, 'csrf': csrf})
+
+
+def test_migrate_legacy_contact_schema_adds_person_id_before_contact_queries(
+        monkeypatch, tmp_path):
+    database = tmp_path / 'legacy.db'
+    connection = sqlite3.connect(database)
+    connection.execute(
+        'CREATE TABLE contact ('
+        'id INTEGER PRIMARY KEY, family_id INTEGER NOT NULL, '
+        'name VARCHAR(160) NOT NULL, relationship VARCHAR(80) NOT NULL, '
+        "phone VARCHAR(80) DEFAULT '', monthly_cents INTEGER NOT NULL DEFAULT 0, "
+        "status VARCHAR(30) NOT NULL DEFAULT 'To contact')")
+    connection.commit()
+    connection.close()
+    for key in ('APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL',
+                'ADMIN_PASSWORD_HASH', 'SESSION_SECRET'):
+        monkeypatch.delenv(key, raising=False)
+
+    legacy_app = create_app({
+        'TESTING': True,
+        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{database}',
+        'SECRET_KEY': 'test-only',
+    })
+
+    with legacy_app.app_context():
+        columns = {column['name'] for column in inspect(db.engine).get_columns('contact')}
+        assert 'person_id' in columns
 
 
 def test_supporter_identity_details_save_display_and_sync(app, client):

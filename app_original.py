@@ -775,6 +775,17 @@ def create_app(test_config=None):
             if column not in child_columns:
                 db.session.execute(text(f'ALTER TABLE child ADD COLUMN {column} {definition}'))
         contact_columns = {column['name'] for column in inspect(db.engine).get_columns('contact')}
+        # Contact is mapped with person_id in current code. Add the column
+        # before any ORM query selects Contact during the remaining legacy
+        # data repairs, otherwise an older production database fails before
+        # the extension migration hook can run.
+        if 'person_id' not in contact_columns:
+            db.session.execute(text(
+                'ALTER TABLE contact ADD COLUMN person_id INTEGER REFERENCES supporter_person(id)'
+            ))
+            db.session.execute(text(
+                'CREATE INDEX IF NOT EXISTS ix_contact_person_id ON contact (person_id)'
+            ))
         if 'supporter_key' not in contact_columns:
             db.session.execute(text(
                 "ALTER TABLE contact ADD COLUMN supporter_key VARCHAR(200) DEFAULT '' NOT NULL"
