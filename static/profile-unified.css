@@ -1,0 +1,306 @@
+/* Shared geometry for the family profile's saved and editing states. */
+body[data-endpoint="family_detail"] main,
+body[data-endpoint="edit_family"] main,
+body[data-endpoint="new_family"] main {
+  max-width: 1460px;
+  margin-inline: auto;
+  padding-block: 14px 22px;
+}
+
+/* Both modes begin with the same compact identity band. */
+body[data-endpoint="family_detail"] .profile-record-header,
+body[data-endpoint="edit_family"] .intake-applicant,
+body[data-endpoint="new_family"] .intake-applicant {
+  border-top: 3px solid var(--gold);
+  border-radius: 7px;
+  margin-bottom: 9px;
+  padding: 11px 14px;
+  box-shadow: none;
+}
+
+body[data-endpoint="family_detail"] .profile-record-main {
+  grid-template-columns: minmax(360px, 1fr) auto minmax(360px, auto);
+  gap: 12px;
+}
+
+body[data-endpoint="family_detail"] .profile-record-identity h1,
+body[data-endpoint="edit_family"] .intake-title h1,
+body[data-endpoint="new_family"] .intake-title h1 {
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+body[data-endpoint="family_detail"] .profile-record-contact {
+  gap: 8px 14px;
+}
+
+body[data-endpoint="family_detail"] .profile-record-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+/* The edit identity fields stay on a dense row instead of making a tall card. */
+body[data-endpoint="edit_family"] .intake-applicant,
+body[data-endpoint="new_family"] .intake-applicant {
+  position: static;
+}
+
+body[data-endpoint="edit_family"] .applicant-grid,
+body[data-endpoint="new_family"] .applicant-grid {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.4fr) minmax(170px, 1.1fr) minmax(190px, 1.25fr) minmax(175px, 1.2fr) minmax(110px, .7fr) minmax(80px, .5fr) minmax(90px, .55fr);
+  gap: 8px;
+  align-items: end;
+}
+
+body[data-endpoint="edit_family"] .applicant-grid .sheet-field,
+body[data-endpoint="new_family"] .applicant-grid .sheet-field {
+  display: block;
+}
+
+body[data-endpoint="edit_family"] .applicant-grid .sheet-field > span,
+body[data-endpoint="new_family"] .applicant-grid .sheet-field > span,
+body[data-endpoint="edit_family"] .applicant-phone-field > span,
+body[data-endpoint="new_family"] .applicant-phone-field > span {
+  display: block;
+  min-height: 14px;
+  margin-bottom: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+body[data-endpoint="edit_family"] .applicant-grid input,
+body[data-endpoint="new_family"] .applicant-grid input {
+  min-height: 32px;
+  margin: 0;
+  padding-block: 5px;
+}
+
+body[data-endpoint="edit_family"] .applicant-phone-field,
+body[data-endpoint="new_family"] .applicant-phone-field {
+  min-width: 0;
+}
+
+body[data-endpoint="edit_family"] .contact-phone-list,
+body[data-endpoint="new_family"] .contact-phone-list {
+  gap: 4px;
+}
+
+body[data-endpoint="edit_family"] .contact-phone-row,
+body[data-endpoint="new_family"] .contact-phone-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+body[data-endpoint="edit_family"] [data-add-phone],
+body[data-endpoint="new_family"] [data-add-phone] {
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+/* Tabs occupy exactly the same band in read and edit modes. */
+body[data-endpoint="family_detail"] .page-panels,
+body[data-endpoint="edit_family"] .intake-section-bar,
+body[data-endpoint="new_family"] .intake-section-bar {
+  margin: 0 0 9px;
+  min-height: 37px;
+}
+
+body[data-endpoint="family_detail"] .page-panels > *,
+body[data-endpoint="edit_family"] .intake-section-bar button,
+body[data-endpoint="new_family"] .intake-section-bar button {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 11px;
+}
+
+/* Saved values and edit controls share the same three-column field rhythm. */
+body[data-endpoint="family_detail"] .profile-household-sheet {
+  padding: 10px 12px 12px;
+}
+
+body[data-endpoint="family_detail"] .profile-household-sheet .profile-sheet-layout .details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+body[data-endpoint="family_detail"] .profile-household-sheet .details > div {
+  display: block;
+  padding: 6px 2px;
+}
+
+body[data-endpoint="family_detail"] .profile-household-sheet .details dt {
+  min-height: 14px;
+  padding: 0 2px 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+body[data-endpoint="family_detail"] .profile-household-sheet .details dd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+}
+
+body[data-endpoint="family_detail"] .profile-household-sheet .details .profile-askan {
+  grid-column: span 1;
+}
+
+body[data-endpoint="family_detail"] .profile-household-sheet .details .profile-circumstances {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(150px, .28fr) minmax(0, 1.72fr);
+  padding: 7px 8px;
+}
+
+body[data-endpoint="edit_family"] .intake-workspace,
+body[data-endpoint="new_family"] .intake-workspace {
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 10px;
+}
+
+body[data-endpoint="edit_family"] .intake-editor,
+body[data-endpoint="new_family"] .intake-editor {
+  min-height: 0;
+  padding: 10px 12px;
+}
+
+body[data-endpoint="edit_family"] .sheet-grid,
+body[data-endpoint="new_family"] .sheet-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 14px;
+}
+
+body[data-endpoint="edit_family"] .sheet-field,
+body[data-endpoint="new_family"] .sheet-field,
+body[data-endpoint="edit_family"] .institution-picker .sheet-field,
+body[data-endpoint="new_family"] .institution-picker .sheet-field {
+  display: block;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+body[data-endpoint="edit_family"] .sheet-field > span,
+body[data-endpoint="new_family"] .sheet-field > span {
+  display: block;
+  min-height: 14px;
+  margin-bottom: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+body[data-endpoint="edit_family"] .sheet-field input,
+body[data-endpoint="edit_family"] .sheet-field select,
+body[data-endpoint="new_family"] .sheet-field input,
+body[data-endpoint="new_family"] .sheet-field select {
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  padding-block: 5px;
+}
+
+body[data-endpoint="edit_family"] .sheet-fieldset,
+body[data-endpoint="new_family"] .sheet-fieldset {
+  margin: 9px 0 0;
+  padding: 5px 10px 8px;
+  border-color: var(--line);
+}
+
+body[data-endpoint="edit_family"] .circumstances-field,
+body[data-endpoint="new_family"] .circumstances-field {
+  margin-top: 9px;
+  padding: 7px 9px;
+}
+
+body[data-endpoint="edit_family"] .circumstances-field textarea,
+body[data-endpoint="new_family"] .circumstances-field textarea {
+  min-height: 54px;
+}
+
+body[data-endpoint="edit_family"] .intake-summary,
+body[data-endpoint="new_family"] .intake-summary,
+body[data-endpoint="family_detail"] .profile-attention {
+  position: sticky;
+  top: 70px;
+  padding: 10px 11px;
+}
+
+body[data-endpoint="family_detail"] .profile-sheet-layout {
+  grid-template-columns: minmax(0, 1fr) 230px;
+}
+
+body[data-endpoint="family_detail"] .profile-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  width: 100%;
+  padding: 8px 10px;
+}
+
+body[data-endpoint="family_detail"] .profile-summary h3 {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  padding-bottom: 4px;
+}
+
+body[data-endpoint="family_detail"] .profile-summary > div {
+  display: block;
+  padding: 5px 9px;
+  border-bottom: 0;
+  border-inline-end: 1px solid var(--line);
+}
+
+body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
+  border-inline-end: 0;
+}
+
+@media (max-width: 1280px) {
+  body[data-endpoint="edit_family"] .applicant-grid,
+  body[data-endpoint="new_family"] .applicant-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  body[data-endpoint="family_detail"] .profile-record-main {
+    grid-template-columns: minmax(320px, 1fr) auto;
+  }
+  body[data-endpoint="family_detail"] .profile-record-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 960px) {
+  body[data-endpoint="edit_family"] .intake-workspace,
+  body[data-endpoint="new_family"] .intake-workspace,
+  body[data-endpoint="family_detail"] .profile-sheet-layout {
+    grid-template-columns: 1fr;
+  }
+  body[data-endpoint="edit_family"] .intake-summary,
+  body[data-endpoint="new_family"] .intake-summary,
+  body[data-endpoint="family_detail"] .profile-attention {
+    position: static;
+  }
+  body[data-endpoint="edit_family"] .sheet-grid,
+  body[data-endpoint="new_family"] .sheet-grid,
+  body[data-endpoint="family_detail"] .profile-household-sheet .profile-sheet-layout .details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  body[data-endpoint="edit_family"] .applicant-grid,
+  body[data-endpoint="new_family"] .applicant-grid,
+  body[data-endpoint="edit_family"] .sheet-grid,
+  body[data-endpoint="new_family"] .sheet-grid,
+  body[data-endpoint="family_detail"] .profile-household-sheet .profile-sheet-layout .details,
+  body[data-endpoint="family_detail"] .profile-record-main {
+    grid-template-columns: 1fr;
+  }
+  body[data-endpoint="family_detail"] .profile-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  body[data-endpoint="family_detail"] .profile-household-sheet .details .profile-circumstances {
+    grid-template-columns: 1fr;
+  }
+}
