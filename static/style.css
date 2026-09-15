@@ -153,17 +153,16 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
   body[data-page-tabs] main{max-width:none;padding:14px 18px 24px}
   body[data-page-tabs] .profile-record-header{padding:9px 12px;margin-bottom:6px}
   body[data-page-tabs] .profile-record-main{display:flex;align-items:center;justify-content:flex-start;gap:14px}
-  body[data-page-tabs] .profile-record-identity{display:flex;align-items:center;gap:8px 12px;flex:1 1 auto;min-width:0;white-space:nowrap}
-  body[data-page-tabs] .profile-record-identity .eyebrow,
-  body[data-page-tabs] .profile-record-identity h1{flex:0 0 auto;margin:0}
-  body[data-page-tabs] .profile-record-contact{flex:1 1 auto;flex-wrap:nowrap;min-width:0}
-  body[data-page-tabs] .profile-record-contact>span{white-space:nowrap}
+  body[data-page-tabs] .profile-record-identity{flex:1 1 auto;min-width:360px}
   body[data-page-tabs] .profile-record-metrics{display:block;flex:0 0 auto;width:auto;border:0}
   body[data-page-tabs] .profile-record-metrics>div{display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fafbfc;white-space:nowrap}
   body[data-page-tabs] .profile-record-metrics small{display:inline;margin:0}
-  body[data-page-tabs] .profile-record-actions{flex:0 0 auto;margin-inline-start:auto}
+  body[data-page-tabs] .profile-record-actions{flex:0 0 auto;margin-inline-start:auto;flex-wrap:nowrap}
+  body[data-page-tabs] .profile-record-actions>.profile-status-control{width:auto;margin:0;padding:5px 7px;border-top:0;flex-wrap:nowrap}
+  body[data-page-tabs] .profile-record-actions>.profile-status-control label,
+  body[data-page-tabs] .profile-record-actions>.profile-status-control select,
+  body[data-page-tabs] .profile-record-actions>.profile-status-control button{flex:0 0 auto;white-space:nowrap}
   body[data-page-tabs] .profile-status-control{margin-top:6px;padding:6px 8px}
-  body[data-page-tabs] .profile-record-header>.profile-status-control{width:max-content;max-width:100%;margin-inline-start:auto}
   body[data-page-tabs] .page-panels{margin-bottom:8px}
   body[data-page-tabs] .profile-household-sheet{padding:9px 12px}
   body[data-page-tabs] .profile-household-sheet>h2{padding-bottom:5px}
