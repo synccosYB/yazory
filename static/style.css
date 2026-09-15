@@ -153,7 +153,11 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
   body[data-page-tabs] main{max-width:none;padding:14px 18px 24px}
   body[data-page-tabs] .profile-record-header{padding:9px 12px;margin-bottom:6px}
   body[data-page-tabs] .profile-record-main{display:flex;align-items:center;justify-content:flex-start;gap:14px}
-  body[data-page-tabs] .profile-record-identity{flex:0 1 auto;min-width:360px}
+  body[data-page-tabs] .profile-record-identity{display:flex;align-items:center;gap:8px 12px;flex:1 1 auto;min-width:0;white-space:nowrap}
+  body[data-page-tabs] .profile-record-identity .eyebrow,
+  body[data-page-tabs] .profile-record-identity h1{flex:0 0 auto;margin:0}
+  body[data-page-tabs] .profile-record-contact{flex:1 1 auto;flex-wrap:nowrap;min-width:0}
+  body[data-page-tabs] .profile-record-contact>span{white-space:nowrap}
   body[data-page-tabs] .profile-record-metrics{display:block;flex:0 0 auto;width:auto;border:0}
   body[data-page-tabs] .profile-record-metrics>div{display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fafbfc;white-space:nowrap}
   body[data-page-tabs] .profile-record-metrics small{display:inline;margin:0}
@@ -169,6 +173,9 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
   body[data-page-tabs] .profile-household-sheet .profile-sheet-layout .details{grid-template-columns:repeat(3,minmax(0,1fr));gap:0 10px}
   body[data-page-tabs] .profile-household-sheet .details>div{display:block;padding:5px 3px}
   body[data-page-tabs] .profile-household-sheet .details>.profile-askan{grid-column:auto}
+  body[data-page-tabs] .profile-askan dd{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+  body[data-page-tabs] .profile-askan-details{display:flex;align-items:center;gap:4px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  body[data-page-tabs] .profile-askan-details span{white-space:nowrap}
   body[data-page-tabs] .profile-household-sheet .details dt{padding:0 2px 2px}
   body[data-page-tabs] .profile-household-sheet .details dd{min-height:29px;padding:4px 7px}
   body[data-page-tabs] .profile-household-sheet .details .profile-circumstances{grid-column:1/-1;display:grid;grid-template-columns:minmax(150px,.25fr) minmax(0,1.75fr);margin-top:5px;padding:6px 8px}
