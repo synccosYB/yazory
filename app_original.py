@@ -50,6 +50,7 @@ class Family(db.Model):
     yeshivah = db.Column(db.String(160), default='')
     shul_gabbai = db.Column(db.String(160), default='')
     shul_gabbai_phone = db.Column(db.String(80), default='')
+    askonim = db.Column(db.Text, default='')
     circumstances = db.Column(db.Text, default='')
     status = db.Column(db.String(30), default='Intake', nullable=False)
     gabbais = db.relationship('ShulGabbai', backref='family', lazy=True,
@@ -713,6 +714,7 @@ def create_app(test_config=None):
             'yeshivah': 'VARCHAR(160)',
             'shul_gabbai': 'VARCHAR(160)',
             'shul_gabbai_phone': 'VARCHAR(80)',
+            'askonim': 'TEXT',
         }.items():
             if column not in family_columns:
                 db.session.execute(text(
@@ -1867,7 +1869,7 @@ def create_app(test_config=None):
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
             limits = {'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
-            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
+            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, askonim=field('askonim', limit=5000), circumstances=field('circumstances', limit=5000))
             family.email = family.email.lower()
             if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
                 return intake_form(None, 'New family intake', 'Enter a valid applicant email address.'), 400
@@ -1898,8 +1900,8 @@ def create_app(test_config=None):
                 yeshivah_history = submitted_yeshivah_history()
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
-            limits = {'circumstances':5000, 'inlaws_family':1000, 'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
-            for key in ['name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances']:
+            limits = {'askonim':5000, 'circumstances':5000, 'inlaws_family':1000, 'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
+            for key in ['name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','askonim','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
             family.email = family.email.lower()
             if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
