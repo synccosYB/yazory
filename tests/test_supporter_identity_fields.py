@@ -112,6 +112,29 @@ def test_clearing_cell_phone_does_not_redisplay_home_phone_as_cell(app, client):
     assert 'name="cell_phone" value=""' in edit
 
 
+def test_edit_with_parent_requires_role_without_leaving_edit_form(app, client):
+    with app.app_context():
+        family = Family(name='Hierarchy edit family')
+        db.session.add(family)
+        db.session.flush()
+        parent = Contact(family_id=family.id, name='Parent', relationship='Sibling')
+        child = Contact(family_id=family.id, name='Child', relationship='Nephew')
+        db.session.add_all([parent, child])
+        db.session.commit()
+        parent_id, child_id = parent.id, child.id
+
+    response = _post(client, f'/contacts/{child_id}/edit', {
+        'name': 'Child', 'relationship': 'Nephew',
+        'parent_contact_id': str(parent_id), 'parent_connection': '',
+        'monthly': '0', 'pledge_frequency': 'Monthly', 'status': 'To contact',
+    })
+
+    assert response.status_code == 400
+    assert '<form class="card padded" method="post">' in response.text
+    assert 'Choose whether this person is a son or son-in-law' in response.text
+    assert 'Back to overview' not in response.text
+
+
 def test_existing_supporter_can_be_connected_to_another_family(app, client):
     with app.app_context():
         first_family = Family(name='First connected family')

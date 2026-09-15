@@ -2308,6 +2308,15 @@ def create_app(test_config=None):
             descendants.update(pending)
         possible_parents = [row for row in possible_parents
                             if row.id not in descendants and contact_visible(row)]
+
+        def render_parent_connection_error(message):
+            # Keep validation on the edit screen. Sending this common legacy-data
+            # case through the global 400 handler strands the user on a dead end.
+            flash(message, 'error')
+            return render_template(
+                'supporter_edit.html', title='Edit supporter', contact=contact,
+                possible_parents=possible_parents), 400
+
         if request.method == 'POST':
             relationship = field('relationship', True)
             status = field('status', True)
@@ -2324,7 +2333,8 @@ def create_app(test_config=None):
                 if not ancestor:
                     abort(400, 'That family connection has not been entered on the applicant profile.')
                 if parent_connection not in ('Son', 'Son-in-law'):
-                    abort(400, 'Choose whether this person is a son or son-in-law.')
+                    return render_parent_connection_error(
+                        'Choose whether this person is a son or son-in-law.')
                 parent_connection = ('F:' if parent_choice == 'family-father' else 'I:') + parent_connection
             elif parent_choice:
                 try:
@@ -2334,7 +2344,8 @@ def create_app(test_config=None):
                 if not any(row.id == parent_contact_id for row in possible_parents):
                     abort(400, 'Choose a valid parent supporter.')
             if parent_contact_id and parent_connection not in ('Son', 'Son-in-law'):
-                abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
+                return render_parent_connection_error(
+                    'Choose whether this person is a son or son-in-law of the selected supporter.')
             if not parent_choice:
                 parent_connection = ''
             name = field('name', True)
