@@ -2,8 +2,9 @@
 body[data-endpoint="family_detail"] main,
 body[data-endpoint="edit_family"] main,
 body[data-endpoint="new_family"] main {
-  max-width: 1460px;
-  margin-inline: auto;
+  max-width: none;
+  width: 100%;
+  margin-inline: 0;
   padding-block: 14px 22px;
 }
 
@@ -19,7 +20,7 @@ body[data-endpoint="new_family"] .intake-applicant {
 }
 
 body[data-endpoint="family_detail"] .profile-record-main {
-  grid-template-columns: minmax(360px, 1fr) auto minmax(360px, auto);
+  grid-template-columns: minmax(500px, 1fr) minmax(170px, auto) minmax(500px, auto);
   gap: 12px;
 }
 
@@ -32,6 +33,100 @@ body[data-endpoint="new_family"] .intake-title h1 {
 
 body[data-endpoint="family_detail"] .profile-record-contact {
   gap: 8px 14px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  min-height: 31px;
+  overflow: visible;
+}
+
+body[data-endpoint="family_detail"] .profile-record-identity {
+  min-width: 0;
+}
+
+body[data-endpoint="family_detail"] .profile-record-contact > span {
+  min-width: 0;
+  max-width: 38%;
+}
+
+body[data-endpoint="family_detail"] .profile-record-contact bdi[title] {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-endpoint="family_detail"] .profile-contact-address {
+  flex: 1 1 320px;
+}
+
+body[data-endpoint="family_detail"] .profile-contact-email {
+  flex: 0 1 230px;
+}
+
+body[data-endpoint="family_detail"] .profile-contact-phones {
+  flex: 0 0 auto;
+  max-width: none;
+  position: relative;
+}
+
+body[data-endpoint="family_detail"] .profile-extra-phones,
+body[data-endpoint="family_detail"] .case-denial-details {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+body[data-endpoint="family_detail"] .profile-extra-phones > summary,
+body[data-endpoint="family_detail"] .case-denial-details > summary {
+  list-style: none;
+  color: var(--blue);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+body[data-endpoint="family_detail"] .profile-extra-phones > summary::-webkit-details-marker,
+body[data-endpoint="family_detail"] .case-denial-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+body[data-endpoint="family_detail"] .profile-extra-phones > div,
+body[data-endpoint="family_detail"] .case-denial-details > p {
+  position: absolute;
+  z-index: 20;
+  inset-inline-end: 0;
+  top: calc(100% + 5px);
+  min-width: 210px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 24px #17385f24;
+  white-space: normal;
+}
+
+body[data-endpoint="family_detail"] .profile-extra-phones a {
+  display: block;
+  padding: 5px 0;
+}
+
+body[data-endpoint="family_detail"] .profile-record-metrics > div {
+  min-height: 43px;
+}
+
+body[data-endpoint="family_detail"] .case-denial-details {
+  display: inline-block;
+  margin-inline-start: 7px;
+  font-size: 10px;
+}
+
+body[data-endpoint="family_detail"] .case-denial-details > p {
+  width: 300px;
+  max-width: 70vw;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 body[data-endpoint="family_detail"] .profile-record-actions {
@@ -264,6 +359,10 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
   }
   body[data-endpoint="family_detail"] .profile-record-main {
     grid-template-columns: minmax(320px, 1fr) auto;
+  }
+  body[data-endpoint="family_detail"] .profile-record-contact {
+    flex-wrap: wrap;
+    white-space: normal;
   }
   body[data-endpoint="family_detail"] .profile-record-actions {
     grid-column: 1 / -1;

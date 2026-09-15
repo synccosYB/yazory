@@ -6,13 +6,13 @@
       <div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} {{ _("· FAMILY PROFILE") }}</div>
       <h1><bdi dir="auto">{{ family.name }}</bdi> {{ pencil(family.id, 'name', 'Family / individual name') }}</h1>
       <div class="profile-record-contact">
-        <span><bdi dir="ltr">{{ family.email or _('Email not entered') }}</bdi> {{ pencil(family.id, 'email', 'Applicant email') }}</span>
-        <span><bdi dir="ltr">{{ family.full_address or _('Address not entered') }}</bdi> {{ pencil(family.id, 'address', 'Address') }}</span>
-        {% set profile_phones=family_phone_values(family) %}{% for phone in profile_phones %}<span><bdi dir="ltr">{{ phone }}</bdi>{{ pencil(family.id, 'phone', 'Phone') }}</span>{% else %}<span>{{ _('Phone not entered') }} {{ pencil(family.id, 'phone', 'Phone') }}</span>{% endfor %}
+        <span class="profile-contact-email"><bdi dir="ltr" title="{{ family.email or _('Email not entered') }}">{{ family.email or _('Email not entered') }}</bdi> {{ pencil(family.id, 'email', 'Applicant email') }}</span>
+        <span class="profile-contact-address"><bdi dir="ltr" title="{{ family.full_address or _('Address not entered') }}">{{ family.full_address or _('Address not entered') }}</bdi> {{ pencil(family.id, 'address', 'Address') }}</span>
+        {% set profile_phones=family_phone_values(family) %}<span class="profile-contact-phones">{% if profile_phones %}<bdi dir="ltr">{{ profile_phones[0] }}</bdi>{{ pencil(family.id, 'phone', 'Phone') }}{% if profile_phones|length > 1 %}<details class="profile-extra-phones"><summary aria-label="{{ _('Phone') }}">+{{ profile_phones|length - 1 }}</summary><div>{% for phone in profile_phones[1:] %}<a href="tel:{{ phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"><bdi dir="ltr">{{ phone }}</bdi></a>{% endfor %}</div></details>{% endif %}{% else %}{{ _('Phone not entered') }} {{ pencil(family.id, 'phone', 'Phone') }}{% endif %}</span>
       </div>
     </div>
     <div class="profile-record-metrics">
-      <div><small>{{ _('Status') }}</small>{{ badge(family.status) }}{% if family.status=='Declined' and family.denial_reason %}<small class="case-denial-reason">{{ _('Reason for denial') }}: {{ family.denial_reason }}</small>{% endif %}</div>
+      <div><small>{{ _('Status') }}</small>{{ badge(family.status) }}{% if family.status=='Declined' and family.denial_reason %}<details class="case-denial-details"><summary>{{ _('Reason for denial') }}</summary><p>{{ family.denial_reason }}</p></details>{% endif %}</div>
     </div>
     <div class="profile-record-actions">
       <a class="button secondary" href="{{ url_for('staff_applicant_messages', family_id=family.id) }}">{{ _('Applicant messages') }}</a>
