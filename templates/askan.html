@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card padded"><div class="eyebrow">{{ _('ASKAN PROFILE') }}</div><h1>{{ askan.name }}</h1><dl class="details"><div><dt>{{ _('Phone') }}</dt><dd><bdi dir="ltr">{{ askan.phone|phone if askan.phone else _('Not entered') }}</bdi></dd></div><div><dt>{{ _('Email') }}</dt><dd>{% if askan.email %}<a href="mailto:{{ askan.email }}"><bdi dir="ltr">{{ askan.email }}</bdi></a>{% else %}{{ _('Not entered') }}{% endif %}</dd></div></dl></section>
+<section class="card padded"><h2>{{ _('Cases assigned to this askan') }}</h2><div class="table-wrap"><table><thead><tr><th>{{ _('Case') }}</th><th>{{ _('Family / individual name') }}</th><th>{{ _('Status') }}</th></tr></thead><tbody>{% for family in families %}<tr><td><a href="{{ url_for('family_detail', family_id=family.id) }}">YZ-{{ '%04d'|format(family.id) }}</a></td><td><a href="{{ url_for('family_detail', family_id=family.id) }}">{{ family.name }}</a></td><td>{{ _(family.status) }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

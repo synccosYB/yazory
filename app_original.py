@@ -51,6 +51,7 @@ class Family(db.Model):
     shul_gabbai = db.Column(db.String(160), default='')
     shul_gabbai_phone = db.Column(db.String(80), default='')
     askonim = db.Column(db.Text, default='')
+    designated_askan_id = db.Column(db.Integer, db.ForeignKey('askan.id'), nullable=True, index=True)
     circumstances = db.Column(db.Text, default='')
     status = db.Column(db.String(30), default='Intake', nullable=False)
     gabbais = db.relationship('ShulGabbai', backref='family', lazy=True,
@@ -74,6 +75,15 @@ class Family(db.Model):
         if not self.intake_record:
             return None
         return (self.intake_record.data or {}).get('children_count')
+
+class Askan(db.Model):
+    """A reusable askan profile that may be designated for several cases."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    phone = db.Column(db.String(80), nullable=False, default='')
+    email = db.Column(db.String(254), nullable=False, default='', index=True)
+    families = db.relationship('Family', backref='designated_askan', lazy=True,
+                               foreign_keys='Family.designated_askan_id')
 
 class HouseholdIntake(db.Model):
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
@@ -715,11 +725,11 @@ def create_app(test_config=None):
             'shul_gabbai': 'VARCHAR(160)',
             'shul_gabbai_phone': 'VARCHAR(80)',
             'askonim': 'TEXT',
+            'designated_askan_id': 'INTEGER',
         }.items():
             if column not in family_columns:
-                db.session.execute(text(
-                    f"ALTER TABLE family ADD COLUMN {column} {definition} DEFAULT ''"
-                ))
+                default = '' if column == 'designated_askan_id' else " DEFAULT ''"
+                db.session.execute(text(f"ALTER TABLE family ADD COLUMN {column} {definition}{default}"))
         # Move the original single gabbai fields into the repeatable list once.
         for family in db.session.scalars(select(Family)).all():
             if not family.gabbais and (family.shul_gabbai or family.shul_gabbai_phone):
@@ -1767,6 +1777,12 @@ def create_app(test_config=None):
     def intake_form(family, title, error=None):
         values = dict(request.form) if error else ({key: getattr(family, key) for key in
             ('name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
+        if family and not error:
+            values.update({
+                'askan_name': family.designated_askan.name if family.designated_askan else '',
+                'askan_phone': family.designated_askan.phone if family.designated_askan else '',
+                'askan_email': family.designated_askan.email if family.designated_askan else '',
+            })
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
         if error:
             budget.update(request.form)
@@ -1859,6 +1875,29 @@ def create_app(test_config=None):
                 db.session.add(record)
             record.data = data
 
+    def save_designated_askan(family):
+        """Assign one structured askan profile to the case, reusing known people."""
+        name = field('askan_name', limit=160)
+        phone = field('askan_phone', limit=80)
+        email = optional_email_field('askan_email')
+        if not name:
+            if phone or email:
+                raise ValueError('Enter the designated askan name.')
+            family.designated_askan = None
+            return
+
+        askan = family.designated_askan
+        if askan is None and email:
+            askan = db.session.scalar(select(Askan).where(func.lower(Askan.email) == email.lower()))
+        if askan is None and phone:
+            askan = db.session.scalar(select(Askan).where(
+                func.lower(Askan.name) == name.lower(), Askan.phone == phone))
+        if askan is None:
+            askan = Askan(name=name)
+            db.session.add(askan)
+        askan.name, askan.phone, askan.email = name, phone, email
+        family.designated_askan = askan
+
     @app.route('/families/new', methods=['GET', 'POST'])
     def new_family():
         require_capability(('organization_admin', 'office_employee'))
@@ -1869,7 +1908,7 @@ def create_app(test_config=None):
             except ValueError as exc:
                 return intake_form(None, 'New family intake', str(exc)), 400
             limits = {'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
-            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, askonim=field('askonim', limit=5000), circumstances=field('circumstances', limit=5000))
+            family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
             family.email = family.email.lower()
             if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
                 return intake_form(None, 'New family intake', 'Enter a valid applicant email address.'), 400
@@ -1878,6 +1917,10 @@ def create_app(test_config=None):
             if yeshivah_history is not None:
                 family.yeshivah = yeshivah_history[0]['name'] if yeshivah_history else ''
             db.session.add(family)
+            try:
+                save_designated_askan(family)
+            except ValueError as exc:
+                return intake_form(None, 'New family intake', str(exc)), 400
             db.session.flush()
             connect_family_profile_directories(family, yeshivah_history)
             save_intake(family, intake_data)
@@ -1900,8 +1943,8 @@ def create_app(test_config=None):
                 yeshivah_history = submitted_yeshivah_history()
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
-            limits = {'askonim':5000, 'circumstances':5000, 'inlaws_family':1000, 'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
-            for key in ['name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','askonim','circumstances']:
+            limits = {'circumstances':5000, 'inlaws_family':1000, 'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
+            for key in ['name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
             family.email = family.email.lower()
             if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
@@ -1910,6 +1953,10 @@ def create_app(test_config=None):
                 setattr(family, key, institution_field(key))
             if yeshivah_history is not None:
                 family.yeshivah = yeshivah_history[0]['name'] if yeshivah_history else ''
+            try:
+                save_designated_askan(family)
+            except ValueError as exc:
+                return intake_form(family, 'Edit family profile', str(exc)), 400
             connect_family_profile_directories(family, yeshivah_history)
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
@@ -1928,6 +1975,16 @@ def create_app(test_config=None):
             return redirect(url_for('family_detail', family_id=family.id,
                                     _anchor=profile_section))
         return intake_form(family, 'Edit family profile')
+
+    @app.get('/askonim/<int:askan_id>')
+    def askan_detail(askan_id):
+        require_capability(('family_admin', 'office_employee'))
+        askan = db.get_or_404(Askan, askan_id)
+        families = [family for family in askan.families if can_access_family(family.id)]
+        if not families:
+            abort(404)
+        return render_template('askan.html', title=askan.name, askan=askan,
+                               families=families)
 
     @app.get('/families/<int:family_id>')
     def family_detail(family_id):

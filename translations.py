@@ -5,8 +5,13 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
-    'Askonim for this case': {'he': 'עסקנים לתיק זה', 'yi': 'עסקנים פאר דעם תיק'},
-    'Enter the askonim involved with this case.': {'he': 'הזינו את העסקנים המעורבים בתיק זה.', 'yi': 'לייגט אריין די עסקנים וואס זענען פארמישט אין דעם תיק.'},
+    'Designated askan for this case': {'he': 'עסקן אחראי לתיק זה', 'yi': 'עסקן פאר דעם תיק'},
+    'Askan name': {'he': 'שם העסקן', 'yi': 'נאמען פונעם עסקן'},
+    'Askan phone': {'he': 'טלפון העסקן', 'yi': 'טעלעפאן פונעם עסקן'},
+    'Askan email address': {'he': 'כתובת אימייל של העסקן', 'yi': 'אימעיל אדרעס פונעם עסקן'},
+    'Cases assigned to this askan': {'he': 'תיקים שהוקצו לעסקן זה', 'yi': 'תיקים צוגעטיילט צו דעם עסקן'},
+    'ASKAN PROFILE': {'he': 'פרופיל עסקן', 'yi': 'עסקן פראופייל'},
+    'Enter the designated askan name.': {'he': 'הזינו את שם העסקן האחראי.', 'yi': 'לייגט אריין דעם נאמען פונעם עסקן.'},
     'Applicant messages': {'he': 'הודעות הפונה', 'yi': 'מעסעדזשעס פונעם אפליקאנט'},
     'All cases': {'he': 'כל התיקים', 'yi': 'אלע משפחות'},
     'Every family in the system': {'he': 'כל המשפחות במערכת', 'yi': 'אלע משפחות אין דער סיסטעם'},

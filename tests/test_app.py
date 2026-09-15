@@ -4,7 +4,7 @@ import sqlite3
 from datetime import date
 
 import pytest
-from app import db, Family, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation, HelperPerson, HelperPhone, ShulHelperAssociation
+from app import db, Family, Askan, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation, HelperPerson, HelperPhone, ShulHelperAssociation
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -615,23 +615,41 @@ def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
     for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
                   'inlaws_maiden_name', 'inlaws_family', 'rabbi', 'rabbi_phone',
-                  'weekday_shul', 'shabbos_shul', 'askonim', 'circumstances'):
+                  'weekday_shul', 'shabbos_shul', 'askan_name', 'circumstances'):
         assert f'/families/1/edit?field={field}' in profile
     edit = client.get('/families/1/edit?field=rabbi')
     assert edit.status_code == 200
     assert 'name="rabbi"' in edit.text
 
-def test_case_askonim_are_saved_and_shown(app, client):
+def test_designated_askan_profile_is_saved_linked_and_shown(app, client):
     response = post(client, '/families/1/edit', {
         'name': 'Sample family',
-        'askonim': 'R. Example\nR. Second',
+        'askan_name': 'R. Example',
+        'askan_phone': '845-555-0199',
+        'askan_email': 'askan@example.org',
     })
     assert response.status_code == 302
     with app.app_context():
-        assert db.session.get(Family, 1).askonim == 'R. Example\nR. Second'
+        family = db.session.get(Family, 1)
+        assert family.designated_askan.name == 'R. Example'
+        assert family.designated_askan.phone == '845-555-0199'
+        assert family.designated_askan.email == 'askan@example.org'
+        askan_id = family.designated_askan.id
     profile = client.get('/families/1').text
     assert 'R. Example' in profile
-    assert '/families/1/edit?field=askonim' in profile
+    assert '(845) 555-0199' in profile
+    assert 'askan@example.org' in profile
+    assert '/families/1/edit?field=askan_name' in profile
+    askan_profile = client.get(f'/askonim/{askan_id}')
+    assert askan_profile.status_code == 200
+    assert 'R. Example' in askan_profile.text and 'Sample family' in askan_profile.text
+
+    second = post(client, '/families/new', {
+        'name': 'Second family', 'askan_name': 'R. Example',
+        'askan_phone': '845-555-0199', 'askan_email': 'askan@example.org'})
+    assert second.status_code == 302
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count(Askan.id))) == 1
 
 def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):
     response = post(client, '/families/1/edit', {
