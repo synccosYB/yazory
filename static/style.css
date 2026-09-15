@@ -228,9 +228,9 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
   .sidebar .brand img{height:72px}
   .sidebar .brand-caption{display:block;margin:0 0 10px;padding:0;background:transparent;color:#dbe5ef}
   .sidebar .nav-label{display:block;margin:8px 12px 3px}
-  .sidebar nav.grouped-nav{display:grid;overflow:visible;width:100%;gap:4px;margin:0}
+  .sidebar nav.grouped-nav{display:grid!important;grid-template-columns:minmax(0,1fr)!important;overflow:visible!important;width:100%;gap:4px;margin:0}
   .sidebar .nav-group{width:100%;margin:0}
-  .sidebar .nav-group summary{padding:11px 12px}
+  .sidebar .nav-group summary{padding:11px 12px;white-space:normal}
   .sidebar .nav-group a{font-size:13px;padding:11px 12px;margin:2px 0;white-space:normal}
   .sidebar-bottom{display:flex;margin-top:auto}
 
