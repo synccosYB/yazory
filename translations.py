@@ -5,6 +5,8 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Askonim for this case': {'he': 'עסקנים לתיק זה', 'yi': 'עסקנים פאר דעם תיק'},
+    'Enter the askonim involved with this case.': {'he': 'הזינו את העסקנים המעורבים בתיק זה.', 'yi': 'לייגט אריין די עסקנים וואס זענען פארמישט אין דעם תיק.'},
     'Applicant messages': {'he': 'הודעות הפונה', 'yi': 'מעסעדזשעס פונעם אפליקאנט'},
     'All cases': {'he': 'כל התיקים', 'yi': 'אלע משפחות'},
     'Every family in the system': {'he': 'כל המשפחות במערכת', 'yi': 'אלע משפחות אין דער סיסטעם'},
