@@ -57,6 +57,7 @@ body[data-endpoint="family_detail"] .profile-record-contact {
   white-space: nowrap;
   min-height: 31px;
   overflow: visible;
+  justify-content: flex-end;
 }
 
 body[data-endpoint="family_detail"] .profile-record-identity {
@@ -65,7 +66,8 @@ body[data-endpoint="family_detail"] .profile-record-identity {
 
 body[data-endpoint="family_detail"] .profile-record-contact > span {
   min-width: 0;
-  max-width: 38%;
+  max-width: 320px;
+  flex: 0 1 auto;
 }
 
 body[data-endpoint="family_detail"] .profile-record-contact bdi[title] {
@@ -77,7 +79,7 @@ body[data-endpoint="family_detail"] .profile-record-contact bdi[title] {
 }
 
 body[data-endpoint="family_detail"] .profile-contact-address {
-  flex: 1 1 320px;
+  flex: 0 1 320px;
 }
 
 body[data-endpoint="family_detail"] .profile-contact-email {
