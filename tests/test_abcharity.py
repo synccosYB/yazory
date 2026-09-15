@@ -93,6 +93,8 @@ def test_profile_collected_total_uses_abcharity_net(setup):
     body=client.get('/families/1').text
     assert '$17.95' in body
     assert '$18.50' not in body
+    assert 'data-panel-href="/families/1/donations"' in body
+    assert 'ABCharity donations' in body
     assert connect(client).status_code==302
     body=client.get('/families/1/donations').text
     assert 'An encrypted API key is saved for this family.' in body
