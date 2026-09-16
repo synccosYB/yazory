@@ -3132,19 +3132,36 @@ def create_app(test_config=None):
         received_totals = dict(db.session.execute(select(
             Receipt.family_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
         ).where(Receipt.family_id.in_(family_ids)).group_by(Receipt.family_id)).all()) if family_ids else {}
+        # Reuse one CASE expression in both SELECT and GROUP BY.  Constructing
+        # it twice gives PostgreSQL separate bind parameters for otherwise
+        # identical expressions, which can make it reject the grouped query
+        # with "column expense.category must appear in the GROUP BY clause".
+        organization_expense = case(
+            (Expense.category == 'Organization expense', True),
+            else_=False,
+        )
         expense_totals = {(family_id, status, is_org): total
             for family_id, status, is_org, total in db.session.execute(select(
                 Expense.family_id, Expense.status,
-                case((Expense.category == 'Organization expense', True), else_=False).label('is_org'),
+                organization_expense.label('is_org'),
                 func.coalesce(func.sum(Expense.amount_cents), 0),
             ).where(Expense.family_id.in_(family_ids)).group_by(
                 Expense.family_id, Expense.status,
-                case((Expense.category == 'Organization expense', True), else_=False)
+                organization_expense
             )).all()} if family_ids else {}
         rows = []
         for family in families:
             totals = budget_totals(family, budget_records.get(family.id))
-            pledged = sum(c.monthly_equivalent_cents for c in family.contacts if c.status == 'Pledged')
+            # Historic rows may predate the NOT NULL pledge defaults.  A
+            # malformed old row must not take the entire organization report
+            # down; treat its missing amount/frequency as the model defaults.
+            pledged = sum(
+                (round((c.monthly_cents or 0) * 52 / 12)
+                 if c.pledge_frequency == 'Weekly' else
+                 0 if c.pledge_frequency == 'One time' else
+                 (c.monthly_cents or 0))
+                for c in family.contacts if c.status == 'Pledged'
+            )
             received = received_totals.get(family.id, 0)
             approved = expense_totals.get((family.id, 'Approved', False), 0)
             paid = expense_totals.get((family.id, 'Paid', False), 0)
