@@ -50,3 +50,25 @@ def test_negative_money_keeps_ltr_order_in_rtl_views(tmp_path):
     assert '<bdi class="money-value" dir="ltr">$-1.00</bdi>' in payouts
     profile = client.get(f'/families/{family_id}').text
     assert '<bdi class="money-value" dir="ltr">$-1.00</bdi>' in profile
+
+
+def test_organization_report_counts_direct_family_payouts(tmp_path):
+    app = create_app({'TESTING': True, 'DEMO': True,
+                      'SQLALCHEMY_DATABASE_URI': f'sqlite:///{tmp_path / "org-report.sqlite"}'})
+    with app.app_context():
+        family = db.session.scalar(db.select(Family))
+        db.session.add(ApplicantPayout(
+            family_id=family.id, method='check', amount_cents=900_000,
+            payee_name='Applicant', mailing_address='1 Main St',
+            check_number='100', check_date=date.today(), status='created'))
+        db.session.add(ApplicantPayout(
+            family_id=family.id, method='check', amount_cents=100_000,
+            payee_name='Applicant', mailing_address='1 Main St',
+            check_number='101', check_date=date.today(), status='voided'))
+        db.session.commit()
+
+        totals = app.extensions['workflows']['financials'](family.id)
+
+    assert totals['assistance'] == 900_000
+    assert totals['balance'] == -900_000
+    assert totals['available'] == -900_000
