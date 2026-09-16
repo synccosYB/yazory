@@ -46,7 +46,7 @@ def test_public_policy_links_are_present(public_app):
     response = app.test_client().get('/about')
     for path in (b'/privacy', b'/terms', b'/sms-consent', b'/donation-policy'):
         assert path in response.data
-    assert b'support@synccos.com' in response.data
+    assert b'info@yaazory.org' in response.data
 
 
 def test_public_landing_explains_fund_trust_and_family_privacy(public_app):
