@@ -36,8 +36,14 @@ REVIEW_FIELDS = (
     ('Preparer phone','preparer_phone'),('Preparer email','preparer_email'),('Applicant / family name','applicant_name'),
     ('Spouse name','spouse_name'),('Address','address'),('City','city'),('State','state'),('ZIP code','zip_code'),
     ('Phone','phone'),('Email','email'),('Children at home','children_count'),('Married children','married_children_count'),
-    ('Father','father'),('Father-in-law','father_in_law'),('Family Rav','family_rav'),('Weekday shul','weekday_shul'),
-    ('Shabbos shul','shabbos_shul'),('Applicant employment','employment'),('Spouse employment','spouse_employment'),
+    ('Father','father'),('Father-in-law','father_in_law'),('Mother-in-law’s maiden family','mother_in_law_maiden_family'),
+    ('In-law family / network','in_law_family_network'),('Kehillah / community','kehillah'),
+    ('Family Rav','family_rav'),('Family Rav phone','family_rav_phone'),('Rav’s gabbai','rav_gabbai'),
+    ('Rav’s gabbai phone','rav_gabbai_phone'),('Weekday shul','weekday_shul'),('Weekday shul Rav','weekday_shul_rav'),
+    ('Weekday shul gabbai','weekday_shul_gabbai'),('Weekday shul gabbai phone','weekday_shul_gabbai_phone'),
+    ('Same shul on weekdays and Shabbos','same_shul'),('Shabbos shul','shabbos_shul'),('Shabbos shul Rav','shabbos_shul_rav'),
+    ('Shabbos shul gabbai','shabbos_shul_gabbai'),('Shabbos shul gabbai phone','shabbos_shul_gabbai_phone'),
+    ('Applicant employment','employment'),('Spouse employment','spouse_employment'),
     ('Total monthly income','monthly_income'),('Housing','housing'),('Food','food'),('Tuition','tuition'),('Utilities','utilities'),
     ('Medical','medical'),('Debt payments','debt_payments'),('Other expenses','other_expenses'),('Current assistance','current_help'),
     ('Approximate amount needed','requested_amount'),('Frequency','requested_frequency'),
@@ -49,14 +55,24 @@ def _data_from_form(existing):
     keys = (
         'preparer_role', 'preparer_name', 'preparer_relationship', 'preparer_phone', 'preparer_email',
         'applicant_name', 'spouse_name', 'address', 'city', 'state', 'zip_code', 'phone', 'email',
-        'children_count', 'married_children_count', 'father', 'father_in_law', 'family_rav',
-        'weekday_shul', 'shabbos_shul', 'employment', 'spouse_employment', 'monthly_income',
+        'children_count', 'married_children_count', 'father', 'father_in_law',
+        'mother_in_law_maiden_family', 'in_law_family_network', 'kehillah', 'family_rav',
+        'family_rav_phone', 'rav_gabbai', 'rav_gabbai_phone', 'weekday_shul',
+        'weekday_shul_rav', 'weekday_shul_gabbai', 'weekday_shul_gabbai_phone', 'shabbos_shul',
+        'shabbos_shul_rav', 'shabbos_shul_gabbai', 'shabbos_shul_gabbai_phone',
+        'employment', 'spouse_employment', 'monthly_income',
         'housing', 'food', 'tuition', 'utilities', 'medical', 'debt_payments', 'other_expenses',
         'current_help', 'circumstances', 'requested_amount', 'requested_frequency', 'other_request',
     )
     for key in keys:
         if key in request.form:
             data[key] = request.form.get(key, '').strip()[:5000]
+    data['same_shul'] = request.form.get('same_shul') == 'yes'
+    if data['same_shul']:
+        data['shabbos_shul'] = data.get('weekday_shul', '')
+        data['shabbos_shul_rav'] = data.get('weekday_shul_rav', '')
+        data['shabbos_shul_gabbai'] = data.get('weekday_shul_gabbai', '')
+        data['shabbos_shul_gabbai_phone'] = data.get('weekday_shul_gabbai_phone', '')
     data['assistance_types'] = request.form.getlist('assistance_types')
     data['certified'] = request.form.get('certified') == 'yes'
     return data
