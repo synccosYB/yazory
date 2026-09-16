@@ -363,3 +363,17 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 @media(max-width:750px){.monthly-sponsor{flex-direction:column;gap:8px}.monthly-sponsor-memorial{padding:8px 0 0;border-inline-start:0;border-top:1px solid var(--line)}.sponsorship-form .wide{grid-column:auto}.sponsorship-month{width:100%}}
 
 .public-staff-access{margin-inline-start:auto;font-size:10px;opacity:.62}.public-staff-access a{color:var(--muted)}
+/* Persistent per-user new-activity indicator and feed. */
+.notification-bell{position:relative;display:grid;place-items:center;width:2.35rem;height:2.35rem;border:1px solid var(--line);border-radius:50%;color:#8590a3;text-decoration:none;background:#fff}
+.notification-bell.has-new{color:#c8952e;border-color:#d8b05d;background:#fff9ec}
+.notification-bell b{position:absolute;inset-block-start:-.45rem;inset-inline-end:-.55rem;min-width:1.35rem;height:1.35rem;padding:0 .25rem;border-radius:1rem;display:grid;place-items:center;background:#b42318;color:#fff;font-size:.68rem;line-height:1}
+.notification-feed{overflow:hidden}
+.notification-item{display:grid;grid-template-columns:auto 1fr auto;gap:.9rem;align-items:center;padding:1rem 1.2rem;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}
+.notification-item:hover{background:#f8fafc}
+.notification-item>div{display:grid;gap:.28rem;min-width:0}
+.notification-item strong{overflow-wrap:anywhere}
+.notification-item small{color:var(--muted)}
+.notification-dot{width:.65rem;height:.65rem;border-radius:50%;background:#c8952e;box-shadow:0 0 0 4px #fff3d3}
+.notification-arrow{font-size:1.2rem;color:#8a6a25}
+.notification-empty{padding:3rem 1rem;text-align:center}
+html[dir="rtl"] .notification-arrow{transform:scaleX(-1)}

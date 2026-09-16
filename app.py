@@ -2282,6 +2282,8 @@ def create_app(test_config=None):
                 subject=(inbound.get('subject') or data.get('subject') or
                          'Email to Yazory')[:300],
                 body=body, status='unread'))
+            _app.db.session.add(_app.Audit(
+                actor=sender or 'Email sender', action='New message in Yazory inbox'))
             _app.db.session.add(ResendWebhookEvent(
                 event_id=event_id, email_id=email_id, event_type=event_type))
             _app.db.session.commit()
@@ -2325,6 +2327,9 @@ def create_app(test_config=None):
             subject=(inbound.get('subject') or data.get('subject') or 'Email reply')[:300],
             body=body, status='received', provider_message_id=email_id[:100],
             completed_at=now))
+        _app.db.session.add(_app.Audit(
+            actor=f'Supporter: {sender}', action='Supporter replied by email',
+            family_id=timeline.family_id))
         task = _app.db.session.scalar(select(StaffTask).where(
             StaffTask.source_contact_id == timeline.contact_id))
         if task:

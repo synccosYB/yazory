@@ -1393,6 +1393,10 @@ def create_app(test_config=None):
                           reference=reference, note='Processed securely by Stripe')
         db.session.add(receipt)
         db.session.flush()
+        db.session.add(Audit(
+            actor='Stripe',
+            action=f'Received Stripe donation: ${amount_cents / 100:,.2f}',
+            family_id=contact.family_id))
         g.created_receipt_ids = [*(getattr(g, 'created_receipt_ids', ()) or ()), receipt.id]
         receipt_email = donor_email or contact.email
         if receipt_email:

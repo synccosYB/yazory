@@ -5,6 +5,17 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'What’s new': {'he': 'מה חדש', 'yi': 'וואס איז ניי'},
+    'SINCE YOUR LAST VISIT': {'he': 'מאז הביקור האחרון שלך', 'yi': 'זינט אייער לעצטן באזוך'},
+    'New messages, donations, applications, approvals, and other activity appear here.': {'he': 'הודעות, תרומות, בקשות, אישורים ופעילות חדשה אחרת מופיעים כאן.', 'yi': 'נייע מעסעדזשעס, נדבות, בקשות, באשטעטיגונגען און אנדערע נייע אקטיוויטעט ערשיינען דא.'},
+    'Mark all as read': {'he': 'סימון הכול כנקרא', 'yi': 'צייכן אלעס אלס געליינט'},
+    'There is no new activity since you last checked.': {'he': 'אין פעילות חדשה מאז הבדיקה האחרונה.', 'yi': 'עס איז נישטא קיין נייע אקטיוויטעט זינט איר האט דאס לעצט איבערגעקוקט.'},
+    'Donation': {'he': 'תרומה', 'yi': 'נדבה'},
+    'Message': {'he': 'הודעה', 'yi': 'מעסעדזש'},
+    'Application': {'he': 'בקשה', 'yi': 'בקשה'},
+    'Money and approval': {'he': 'כספים ואישורים', 'yi': 'געלט און באשטעטיגונגען'},
+    'Task': {'he': 'משימה', 'yi': 'אויפגאבע'},
+    'Activity': {'he': 'פעילות', 'yi': 'אקטיוויטעט'},
     'Sponsorships': {'he': 'חסויות', 'yi': 'ספאנסארשיפס'},
     'Case sponsorships': {'he': 'חסויות לתיקים', 'yi': 'תיק ספאנסארשיפס'},
     'Case sponsorship': {'he': 'חסות לתיק', 'yi': 'תיק ספאנסארשיפ'},

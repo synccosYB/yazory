@@ -172,6 +172,9 @@ def install(app):
                 else:
                     row.status = 'Submitted'
                     row.submitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    core.db.session.add(core.Audit(
+                        actor=f'Applicant: {row.preparer_name or row.recipient_email}',
+                        action=f'New application submitted: {row.number}'))
                     core.db.session.commit()
                     return redirect(url_for('application_submitted', token=token))
             else:
