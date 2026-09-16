@@ -8,7 +8,7 @@
 </head>
 <body class="portal-body"><main class="portal-shell portal-wide">
   <header class="portal-header">
-    <img src="{{ url_for('static',filename='yazory-logo.png') }}" alt="Yazory · יעזורי">
+    <img src="{{ url_for('static',filename='yazory-logo-corrected.png') }}" alt="Yazory · יעזורו">
     <div><h1>{{ _('My donor account') }}</h1><p>{{ supporter.name }}</p></div>
     <form method="post" action="{{ url_for('supporter_logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet">{{ _('Sign out') }}</button></form>
   </header>

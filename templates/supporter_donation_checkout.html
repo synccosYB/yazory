@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static',filename='donation.css') }}">
 </head>
 <body class="portal-body"><main class="portal-shell portal-wide">
-  <header class="portal-header"><img src="{{ url_for('static',filename='yazory-logo.png') }}" alt="Yazory · יעזורי"><div><div class="eyebrow">{{ _('SECURE DONATION') }}</div><h1>{{ supporter.name }}</h1></div><a class="button secondary" href="{{ url_for('supporter_portal') }}">{{ _('Back to my account') }}</a></header>
+  <header class="portal-header"><img src="{{ url_for('static',filename='yazory-logo-corrected.png') }}" alt="Yazory · יעזורו"><div><div class="eyebrow">{{ _('SECURE DONATION') }}</div><h1>{{ supporter.name }}</h1></div><a class="button secondary" href="{{ url_for('supporter_portal') }}">{{ _('Back to my account') }}</a></header>
   <section class="card padded donation-native-card">
     <p>{{ _('Enter the donation here. Card details are secured directly by Stripe without leaving Yazory.') }}</p>
     <form id="donation-options" action="{{ url_for('native_payment_submit', contact_id=supporter.id) }}" data-stripe-key="{{ stripe_publishable_key }}">
