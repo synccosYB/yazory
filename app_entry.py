@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 import app as _base
 import app_original as _app
+from sponsorships import install as install_sponsorships
 
 
 def _family_denial_reason(family):
@@ -31,6 +32,7 @@ _app.Family.denial_reason = property(
 
 def create_app(test_config=None):
     app = _base.create_app(test_config)
+    install_sponsorships(app)
 
     @app.cli.command('translations-push')
     def translations_push():

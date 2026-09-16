@@ -1253,7 +1253,7 @@ def create_app(test_config=None):
                             'supporter_logout', 'supporter_portal_update_pledge',
                             'supporter_portal_donate', 'supporter_portal_manage_payment',
                             'supporter_portal_receipt',
-                            'native_payment_submit', 'native_payment_success',
+                            'native_payment_submit', 'native_payment_success', 'sponsorship_logo',
                             'applicant_login', 'applicant_login_link',
                             'applicant_portal', 'applicant_send_message',
                             'applicant_logout')

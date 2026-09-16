@@ -1,0 +1,12 @@
+{% if current_sponsor %}<aside class="monthly-sponsor" aria-label="{{ _('Monthly sponsor') }}">
+  {% if current_sponsor.logo_data %}<img src="{{ url_for('sponsorship_logo', sponsorship_id=current_sponsor.id) }}" alt="{{ current_sponsor.company_name or _('Sponsor logo') }}">{% endif %}
+  <div class="monthly-sponsor-main">
+    <span>{{ _('This page is sponsored this month by') }}</span>
+    {% if current_sponsor.company_name %}<strong>{{ current_sponsor.company_name }}</strong>{% endif %}
+    {% if current_sponsor.donor_name %}<b>{{ current_sponsor.donor_name }}</b>{% endif %}
+  </div>
+  {% if current_sponsor.memorial_one or current_sponsor.memorial_two %}<div class="monthly-sponsor-memorial" dir="rtl">
+    {% if current_sponsor.memorial_one %}<span>לע״נ {{ current_sponsor.memorial_one }}</span>{% endif %}
+    {% if current_sponsor.memorial_two %}<span>לע״נ {{ current_sponsor.memorial_two }}</span>{% endif %}
+  </div>{% endif %}
+</aside>{% endif %}
