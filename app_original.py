@@ -2064,8 +2064,16 @@ def create_app(test_config=None):
         contact_rows.extend((contact, False) for contact in family.contacts
                             if contact.parent_contact_id and contact.id not in included_contact_ids)
         fund_totals = case_fund_totals(family.id)
+        profile_values = (
+            family.email, family.full_address, family.phone, family.spouse,
+            family.father, family.inlaws, family.inlaws_maiden_name,
+            family.inlaws_family, family.yeshivah, family.weekday_shul,
+            family.shabbos_shul, family.circumstances,
+            family.designated_askan_id,
+        )
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                contact_rows=contact_rows,
+                               missing_profile_count=sum(not value for value in profile_values),
                                budget=budget_totals(family),
                                collected=fund_totals['collected'], sent=fund_totals['given_out'],
                                available_to_give=fund_totals['available'],
