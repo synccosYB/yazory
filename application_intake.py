@@ -86,10 +86,6 @@ def install(app):
         columns = {column['name'] for column in inspect(core.db.engine).get_columns('assistance_application')}
         if 'fund_name' not in columns:
             core.db.session.execute(text("ALTER TABLE assistance_application ADD COLUMN fund_name VARCHAR(160) NOT NULL DEFAULT ''"))
-        core.db.session.execute(text(
-            "UPDATE assistance_application SET fund_name = 'קרן ' || applicant_name "
-            "WHERE fund_name = '' AND applicant_name <> ''"
-        ))
         core.db.session.commit()
 
     app.extensions.setdefault('init_db_hooks', []).append(migrate_application_fund_name)
@@ -119,9 +115,12 @@ def install(app):
         if request.method == 'POST':
             email = request.form.get('recipient_email', '').strip().lower()
             applicant_name = request.form.get('applicant_name', '').strip()[:160]
-            fund_name = request.form.get('fund_name', '').strip()[:160] or (f'קרן {applicant_name}' if applicant_name else '')
+            fund_name = request.form.get('fund_name', '').strip()[:160]
             if not EMAIL_RE.match(email):
                 flash('Enter a valid email address.', 'error')
+                return render_template('application_request.html', title='Send application')
+            if not fund_name:
+                flash('Enter the sponsor קרן name.', 'error')
                 return render_template('application_request.html', title='Send application')
             row = AssistanceApplication(public_token=secrets.token_urlsafe(36), recipient_email=email,
                                         applicant_name=applicant_name, fund_name=fund_name, status='Sent',
@@ -162,7 +161,6 @@ def install(app):
             data = _data_from_form(row.data)
             row.data = data
             row.applicant_name = data.get('applicant_name', '')[:160]
-            row.fund_name = row.fund_name or (f'קרן {row.applicant_name}' if row.applicant_name else '')
             row.preparer_name = data.get('preparer_name', '')[:160]
             row.preparer_role = data.get('preparer_role', '')[:40]
             action = request.form.get('action', 'save')

@@ -5,4 +5,5 @@
 @media(max-width:650px){.case-sponsor{flex-direction:column;gap:8px}.case-sponsor-memorial{padding:8px 0 0;border-inline-start:0;border-top:1px solid #dfe6e1}}
 @media print{.print-report .case-sponsor{margin:10px 0;padding:7px 10px;break-inside:avoid}.print-report .case-sponsor img{width:.8in;height:.42in}.print-report .case-sponsor-main strong{font-size:12pt}.print-report .case-sponsor-main span,.print-report .case-sponsor-main b,.print-report .case-sponsor-memorial{font-size:8pt}}
 .case-sponsor-main em{font-style:normal;font-family:Georgia,serif;font-size:15px;color:#806528}
+.monthly-sponsor-main em{font-style:normal;font-family:Georgia,serif;font-size:15px;color:#806528}
 .profile-fund-name,.report-fund-name{font-family:Georgia,serif;color:#806528;font-weight:700}.profile-fund-name{margin-top:-4px}.report-fund-name{text-align:center;margin:8px 0 12px;font-size:18px}

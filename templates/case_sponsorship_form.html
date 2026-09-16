@@ -7,7 +7,7 @@
 <form class="card padded sponsorship-form" method="post" enctype="multipart/form-data">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <div class="form-grid">
-    <label>{{ _('קרן name') }}<input name="fund_name" required maxlength="160" value="{{ family.fund_name or ('קרן ' ~ family.name) }}"></label>
+    <label>{{ _('Sponsor קרן name') }}<input name="fund_name" required maxlength="160" value="{{ sponsor.fund_name if sponsor else '' }}"></label>
     <label>{{ _('Start month') }}<input type="month" name="start_month" required value="{{ sponsor.start_month if sponsor else start_month }}"></label>
     <label>{{ _('End month') }}<input type="month" name="end_month" value="{{ sponsor.end_month if sponsor else '' }}"><small>{{ _('Leave blank for an ongoing sponsorship.') }}</small></label>
     <label>{{ _('Company name') }}<input name="company_name" maxlength="160" value="{{ sponsor.company_name if sponsor else '' }}"></label>

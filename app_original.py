@@ -758,8 +758,6 @@ def create_app(test_config=None):
             if column not in family_columns:
                 default = '' if column == 'designated_askan_id' else " DEFAULT ''"
                 db.session.execute(text(f"ALTER TABLE family ADD COLUMN {column} {definition}{default}"))
-        for family in db.session.scalars(select(Family).where(Family.fund_name == '')).all():
-            family.fund_name = f'קרן {family.name}'
         # The intake module is not loaded by every migration entry point. Keep
         # its additive column upgrade here as well so the documented
         # ``app_entry:create_app() migrate-db`` command upgrades applications.
@@ -772,10 +770,6 @@ def create_app(test_config=None):
                 db.session.execute(text(
                     "ALTER TABLE assistance_application ADD COLUMN fund_name VARCHAR(160) NOT NULL DEFAULT ''"
                 ))
-            db.session.execute(text(
-                "UPDATE assistance_application SET fund_name = 'קרן ' || applicant_name "
-                "WHERE fund_name = '' AND applicant_name <> ''"
-            ))
         # Move the original single gabbai fields into the repeatable list once.
         for family in db.session.scalars(select(Family)).all():
             if not family.gabbais and (family.shul_gabbai or family.shul_gabbai_phone):
@@ -1966,7 +1960,6 @@ def create_app(test_config=None):
                 return intake_form(None, 'New family intake', str(exc)), 400
             limits = {'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80, 'inlaws_family':1000}
             family = Family(name=field('name', True), **{k: field(k, limit=limits.get(k, 160)) for k in ['spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone']}, circumstances=field('circumstances', limit=5000))
-            family.fund_name = field('fund_name', limit=160) or f'קרן {family.name}'
             family.email = family.email.lower()
             if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
                 return intake_form(None, 'New family intake', 'Enter a valid applicant email address.'), 400
@@ -2004,7 +1997,6 @@ def create_app(test_config=None):
             limits = {'circumstances':5000, 'inlaws_family':1000, 'email':254, 'address':300, 'city':120, 'state':80, 'zip_code':20, 'phone':80, 'rabbi_phone':80, 'shul_gabbai_phone':80}
             for key in ['name','fund_name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances']:
                 setattr(family, key, field(key, required=key=='name', limit=limits.get(key, 160)))
-            family.fund_name = family.fund_name or f'קרן {family.name}'
             family.email = family.email.lower()
             if family.email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', family.email):
                 return intake_form(family, 'Edit family profile', 'Enter a valid applicant email address.'), 400

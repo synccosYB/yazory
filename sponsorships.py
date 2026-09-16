@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
-from sqlalchemy import UniqueConstraint, select
+from sqlalchemy import UniqueConstraint, inspect, select, text
 
 import app_original as core
 
@@ -14,6 +14,7 @@ class MonthlySponsorship(core.db.Model):
     id = core.db.Column(core.db.Integer, primary_key=True)
     month = core.db.Column(core.db.String(7), nullable=False, index=True)
     page_key = core.db.Column(core.db.String(80), nullable=False, index=True)
+    fund_name = core.db.Column(core.db.String(160), nullable=False, default='')
     company_name = core.db.Column(core.db.String(160), nullable=False, default='')
     donor_name = core.db.Column(core.db.String(160), nullable=False, default='')
     memorial_one = core.db.Column(core.db.String(300), nullable=False, default='')
@@ -41,6 +42,7 @@ class CaseSponsorship(core.db.Model):
     family_id = core.db.Column(core.db.Integer, core.db.ForeignKey('family.id'), nullable=False, index=True)
     start_month = core.db.Column(core.db.String(7), nullable=False, index=True)
     end_month = core.db.Column(core.db.String(7), nullable=False, default='', index=True)
+    fund_name = core.db.Column(core.db.String(160), nullable=False, default='')
     company_name = core.db.Column(core.db.String(160), nullable=False, default='')
     donor_name = core.db.Column(core.db.String(160), nullable=False, default='')
     memorial_one = core.db.Column(core.db.String(300), nullable=False, default='')
@@ -124,6 +126,20 @@ def _field(name, limit):
 
 
 def install(app):
+    def migrate_sponsor_fund_names():
+        schema = inspect(core.db.engine)
+        for table_name in ('monthly_sponsorship', 'case_sponsorship'):
+            if not schema.has_table(table_name):
+                continue
+            columns = {column['name'] for column in schema.get_columns(table_name)}
+            if 'fund_name' not in columns:
+                core.db.session.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN fund_name VARCHAR(160) NOT NULL DEFAULT ''"
+                ))
+        core.db.session.commit()
+
+    app.extensions.setdefault('init_db_hooks', []).append(migrate_sponsor_fund_names)
+
     def require_admin():
         if app.config['DEMO']:
             return
@@ -195,6 +211,7 @@ def install(app):
             if row is None:
                 row = MonthlySponsorship(month=month, page_key=page_key)
                 core.db.session.add(row)
+            row.fund_name = _field('fund_name', 160)
             row.company_name, row.donor_name = _field('company_name', 160), _field('donor_name', 160)
             row.memorial_one, row.memorial_two = _field('memorial_one', 300), _field('memorial_two', 300)
             row.contact_name, row.contact_phone, row.contact_email = _field('contact_name', 160), _field('contact_phone', 80), email
@@ -210,8 +227,8 @@ def install(app):
                 row.logo_data, row.logo_mime = data, mime
             if request.form.get('remove_logo') == 'yes':
                 row.logo_data, row.logo_mime = None, ''
-            if status == 'Published' and (not row.company_name or not row.donor_name or not row.logo_data):
-                abort(400, 'Company name, donor name, and company logo are required before publishing.')
+            if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data):
+                abort(400, 'Sponsor קרן name, company name, donor name, and company logo are required before publishing.')
             core.db.session.flush()
             user_id = session.get('user_id')
             user = core.db.session.get(core.StaffUser, user_id) if user_id else None
@@ -263,7 +280,6 @@ def install(app):
                                records=records, totals=totals)
 
     def case_sponsor_form(row, family):
-        family.fund_name = _field('fund_name', 160) or f'קרן {family.name}'
         start_month = request.form.get('start_month', '').strip()
         end_month = request.form.get('end_month', '').strip()
         if not MONTH_RE.fullmatch(start_month) or (end_month and not MONTH_RE.fullmatch(end_month)):
@@ -277,6 +293,7 @@ def install(app):
         if email and not EMAIL_RE.fullmatch(email):
             abort(400, 'Enter a valid contact email address.')
         row.start_month, row.end_month, row.status = start_month, end_month, status
+        row.fund_name = _field('fund_name', 160)
         row.company_name, row.donor_name = _field('company_name', 160), _field('donor_name', 160)
         row.memorial_one, row.memorial_two = _field('memorial_one', 300), _field('memorial_two', 300)
         row.contact_name, row.contact_phone, row.contact_email = _field('contact_name', 160), _field('contact_phone', 80), email
@@ -292,8 +309,8 @@ def install(app):
             row.logo_data, row.logo_mime = data, mime
         if request.form.get('remove_logo') == 'yes':
             row.logo_data, row.logo_mime = None, ''
-        if status == 'Published' and (not row.company_name or not row.donor_name or not row.logo_data):
-            abort(400, 'Company name, donor name, and company logo are required before publishing.')
+        if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data):
+            abort(400, 'Sponsor קרן name, company name, donor name, and company logo are required before publishing.')
         open_end = end_month or '9999-12'
         conflicts = core.db.session.scalars(select(CaseSponsorship).where(
             CaseSponsorship.family_id == family.id, CaseSponsorship.id != (row.id or 0),

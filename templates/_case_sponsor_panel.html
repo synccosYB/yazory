@@ -1,5 +1,5 @@
 {% if current_case_sponsor %}<aside class="case-sponsor" aria-label="{{ _('Case sponsor') }}">
   {% if current_case_sponsor.logo_data %}<img src="{{ url_for('case_sponsorship_logo', sponsorship_id=current_case_sponsor.id) }}" alt="{{ current_case_sponsor.company_name or _('Sponsor logo') }}">{% endif %}
-  <div class="case-sponsor-main">{% if current_case_sponsor.family.fund_name %}<em dir="auto">{{ current_case_sponsor.family.fund_name }}</em>{% endif %}<span>{{ _('This family’s case is sponsored by') }}</span><strong>{{ current_case_sponsor.company_name }}</strong><b>{{ current_case_sponsor.donor_name }}</b></div>
+  <div class="case-sponsor-main">{% if current_case_sponsor.fund_name %}<em dir="auto">{{ current_case_sponsor.fund_name }}</em>{% endif %}<span>{{ _('This family’s case is sponsored by') }}</span><strong>{{ current_case_sponsor.company_name }}</strong><b>{{ current_case_sponsor.donor_name }}</b></div>
   {% if current_case_sponsor.memorial_one or current_case_sponsor.memorial_two %}<div class="case-sponsor-memorial" dir="rtl">{% if current_case_sponsor.memorial_one %}<span>לע״נ {{ current_case_sponsor.memorial_one }}</span>{% endif %}{% if current_case_sponsor.memorial_two %}<span>לע״נ {{ current_case_sponsor.memorial_two }}</span>{% endif %}</div>{% endif %}
 </aside>{% endif %}

@@ -26,7 +26,7 @@ def test_workflow_lists_every_page_and_saves_monthly_sponsor():
     assert page.status_code == 200
     assert page.text.count('/sponsorships/') >= len(PAGE_SLOTS)
     response = client.post('/sponsorships/overview', data={
-        'csrf': csrf(client), 'month': month, 'company_name': 'Acme Foods',
+        'csrf': csrf(client), 'month': month, 'fund_name': 'קרן Acme', 'company_name': 'Acme Foods',
         'donor_name': 'Mr. Donor', 'memorial_one': 'פלוני בן פלוני',
         'memorial_two': 'פלונית בת פלוני', 'contact_name': 'Office',
         'contact_phone': '8455551212', 'contact_email': 'office@example.com',
@@ -77,7 +77,6 @@ def test_case_sponsor_is_separate_and_appears_only_on_its_family_pages():
     client = app.test_client()
     with app.app_context():
         family = db.session.scalar(db.select(Family).order_by(Family.id))
-        family.fund_name = 'קרן חסד למשפחה'
         family_id = family.id
     response = client.post(f'/families/{family_id}/sponsorship', data={
         'csrf': csrf(client), 'fund_name': 'קרן חסד למשפחה',
@@ -93,6 +92,7 @@ def test_case_sponsor_is_separate_and_appears_only_on_its_family_pages():
     with app.app_context():
         row = db.session.scalar(db.select(CaseSponsorship))
         assert row.family_id == family_id and row.balance_cents == 0
+        assert row.fund_name == 'קרן חסד למשפחה'
     profile = client.get(f'/families/{family_id}')
     report = client.get(f'/families/{family_id}/print')
     assert 'Case Company' in profile.text and 'קרן חסד למשפחה' in profile.text
@@ -115,7 +115,7 @@ def test_sent_application_gets_fund_name():
     assert 'קרן ____________________' in client.get('/applications/blank/print').text
 
 
-def test_application_generates_fund_name_from_applicant_name_when_blank():
+def test_application_does_not_generate_a_fund_from_applicant_name():
     app = make_app()
     client = app.test_client()
     with app.app_context():
@@ -129,4 +129,4 @@ def test_application_generates_fund_name_from_applicant_name_when_blank():
     with app.app_context():
         saved = db.session.scalar(db.select(AssistanceApplication).where(
             AssistanceApplication.public_token == 'auto-fund-token'))
-        assert saved.fund_name == 'קרן Auto Family'
+        assert saved.fund_name == ''

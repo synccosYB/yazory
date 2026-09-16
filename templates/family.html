@@ -5,7 +5,6 @@
     <div class="profile-record-identity">
       <div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} {{ _("· FAMILY PROFILE") }}</div>
       <h1><bdi dir="auto">{{ family.name }}</bdi> {{ pencil(family.id, 'name', 'Family / individual name') }}</h1>
-      <div class="profile-fund-name" dir="auto">{{ family.fund_name }}</div>
       <div class="profile-record-contact">
         <span class="profile-contact-email"><bdi dir="ltr" title="{{ family.email or _('Email not entered') }}">{{ family.email or _('Email not entered') }}</bdi> {{ pencil(family.id, 'email', 'Applicant email') }}</span>
         <span class="profile-contact-address"><bdi dir="ltr" title="{{ family.full_address or _('Address not entered') }}">{{ family.full_address or _('Address not entered') }}</bdi> {{ pencil(family.id, 'address', 'Address') }}</span>
