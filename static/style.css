@@ -331,3 +331,16 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
   .language-switch a{padding-inline:6px}
 }
 @media(prefers-reduced-motion:reduce){.sidebar{transition:none}}
+
+/* Let every authenticated workspace screen use the full desktop canvas. */
+.workspace main {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.workspace .intake-sheet {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
