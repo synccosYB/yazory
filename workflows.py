@@ -19,9 +19,9 @@ import child_budget
 
 
 def install_workflows(app, db, entities, helpers):
-    Family, StaffUser, Assignment, Contact, Expense, Document, HouseholdBudget, CharityCampaign, CharityDonation = (
+    Family, StaffUser, Assignment, Contact, Expense, Document, HouseholdBudget, CharityCampaign, CharityDonation, ApplicantPayout = (
         entities[n] for n in ('Family','StaffUser','FamilyAssignment','Contact','Expense','Document','HouseholdBudget',
-                              'CharityCampaign','CharityDonation'))
+                              'CharityCampaign','CharityDonation','ApplicantPayout'))
     M=workflow_models(db)
     Work=M['WorkItem']; Decision=M['WorkflowDecision']; Event=M['WorkflowEvent']; Notice=M['WorkflowNotice']
     Grant=M['WorkflowRole']; Access=M['StaffAccess']; Ledger=M['LedgerEntry']; Match=M['BankMatch']
@@ -216,6 +216,13 @@ def install_workflows(app, db, entities, helpers):
 
     def financials(fid):
         entries=db.session.scalars(select(Ledger).where(Ledger.family_id==fid)).all()
+        # Checks and direct Stripe payouts are real case disbursements even
+        # when they were created outside the Operations expense workflow.
+        # The family profile has always deducted every non-voided payout; the
+        # organization report must use the same rule instead of showing those
+        # funds as still available.
+        direct_payouts=db.session.scalar(select(func.coalesce(func.sum(ApplicantPayout.amount_cents),0)).where(
+            ApplicantPayout.family_id==fid,ApplicantPayout.status!='voided')) or 0
         posted_sources={e.source_item_id for e in entries}
         posted_imports=set()
         for item in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind=='collection')):
@@ -227,7 +234,7 @@ def install_workflows(app, db, entities, helpers):
             CharityDonation.campaign_id.in_(campaign_ids))) if d.id not in posted_imports] if campaign_ids else []
         imported_gross=sum(d.amount_cents for d in imported)
         imported_net=sum(d.net_cents for d in imported)
-        balance=sum(e.amount_cents for e in entries)+imported_net
+        balance=sum(e.amount_cents for e in entries)+imported_net-direct_payouts
         reserved=0
         for item in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind.in_(['expense','emergency']),Work.disposition=='Open')):
             if (item.kind=='expense' and item.stage>=4) or (item.kind=='emergency' and item.stage>=4):
@@ -243,7 +250,7 @@ def install_workflows(app, db, entities, helpers):
                 if w.data.get('abcharity_donation_id') and any(e.source_item_id==w.id for e in entries) and not consistency(w):held=True
         return dict(balance=balance,reserved=reserved,protected_reserve=protected,held_for_review=held,available=0 if held else balance-reserved-protected,
                     collected=sum(e.amount_cents for e in entries if e.entry_type in ('Donation','Donation adjustment'))+imported_gross,
-                    assistance=-sum(e.amount_cents for e in entries if e.entry_type=='Family assistance'),
+                    assistance=-sum(e.amount_cents for e in entries if e.entry_type=='Family assistance')+direct_payouts,
                     overhead=-sum(e.amount_cents for e in entries if e.entry_type in ('Organization expense','Processing fee','Processing fee adjustment'))+(imported_gross-imported_net),
                     refunds=-sum(e.amount_cents for e in entries if e.entry_type=='Refund'),
                     imported_pending=len(imported),imported_pending_gross=imported_gross,imported_pending_net=imported_net,
