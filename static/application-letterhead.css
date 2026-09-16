@@ -1,0 +1,44 @@
+.application-letterhead-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  margin: 3px 0 0;
+  color: #53665e;
+  font-size: 12px;
+  font-style: normal;
+  text-align: left;
+}
+
+.application-letterhead-contact span,
+.application-letterhead-contact a {
+  color: inherit;
+  white-space: nowrap;
+}
+
+.application-letterhead-contact a {
+  text-decoration: none;
+}
+
+.application-letterhead-contact span:nth-child(2) {
+  border-right: 1px solid #cfd9d4;
+  padding-right: 10px;
+}
+
+.print-application .application-letterhead-contact {
+  max-width: 5.4in;
+  margin-top: 7px;
+  color: #465851;
+  font-size: 10px;
+}
+
+@media (max-width: 650px) {
+  .public-application-header .application-letterhead-contact {
+    width: 100%;
+  }
+}
+
+@media print {
+  .application-letterhead-contact a {
+    color: #465851;
+  }
+}
