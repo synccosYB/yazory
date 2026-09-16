@@ -2389,6 +2389,41 @@ def create_app(test_config=None):
         _app.flash('Inbox message marked as handled.')
         return _app.redirect(_app.url_for('communications', _anchor='general-inbox'))
 
+    @app.post('/communications/inbox/<int:message_id>/reply')
+    def reply_to_inbound_inbox_message(message_id):
+        user = task_user()
+        if user is None or user.role != 'organization_admin':
+            _app.abort(403)
+        inbox_message = _app.db.get_or_404(InboundInboxMessage, message_id)
+        recipient = (inbox_message.sender_email or '').strip().lower()
+        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', recipient):
+            _app.abort(400, 'This message does not have a valid reply address.')
+        subject = _app.request.form.get('subject', '').strip()[:300]
+        body = _app.request.form.get('body', '').strip()[:5000]
+        if not subject or not body:
+            _app.abort(400, 'Enter an email subject and message.')
+
+        sent = app.extensions['send_email'](
+            'public_inbox_reply', recipient, subject, body,
+            staff_user_id=user.id)
+        if sent.status == 'sent':
+            now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+            inbox_message.status = 'handled'
+            inbox_message.handled_at = now
+            inbox_message.handled_by = user.id
+            _app.db.session.add(_app.Audit(
+                actor=user.email,
+                action=f'Replied to Yazory inbox message from {recipient}'))
+            _app.flash('Reply sent and inbox message marked as handled.')
+        elif sent.status == 'preview':
+            _app.flash(
+                'Reply was prepared but not sent because delivery is in preview mode.',
+                'error')
+        else:
+            _app.flash('Reply delivery failed. Check Email history.', 'error')
+        _app.db.session.commit()
+        return _app.redirect(_app.url_for('communications', _anchor='general-inbox'))
+
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):
         contact = communication_contact(contact_id)

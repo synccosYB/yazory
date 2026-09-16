@@ -388,6 +388,49 @@ def test_email_to_public_info_address_appears_in_messages(monkeypatch):
     assert 'Need help with utilities' in client.get(handled.location).text
 
 
+def test_organization_admin_can_reply_to_public_inbox_message(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    delivered = {}
+
+    def capture_delivery(api_key, sender, recipient, subject, html, text, **options):
+        delivered.update(
+            recipient=recipient, subject=subject, text=text, options=options)
+        return 'reply-provider-id', None
+
+    monkeypatch.setattr(core_module, 'deliver', capture_delivery)
+    app.config.update(TESTING=False, DEMO=False, RESEND_API_KEY='test-key',
+                      EMAIL_FROM='Yazory <info@reply.yaazory.org>')
+    with app.app_context():
+        inbox_message = InboundInboxMessage(
+            provider_message_id='received-public-message',
+            sender_name='New Applicant', sender_email='sender@example.test',
+            recipient='info@yaazory.org', subject='Need help with utilities',
+            body='Please call me.', status='unread')
+        db.session.add(inbox_message)
+        db.session.commit()
+        message_id = inbox_message.id
+
+    page = client.get('/communications')
+    assert f'/communications/inbox/{message_id}/reply' in page.text
+    assert 'value="Re: Need help with utilities"' in page.text
+
+    response = post(client, f'/communications/inbox/{message_id}/reply', {
+        'subject': 'Re: Need help with utilities',
+        'body': 'Thank you. We will call you shortly.'})
+    assert response.status_code == 302
+    assert delivered['recipient'] == 'sender@example.test'
+    assert delivered['subject'] == 'Re: Need help with utilities'
+    assert delivered['text'] == 'Thank you. We will call you shortly.'
+    with app.app_context():
+        saved = db.session.get(InboundInboxMessage, message_id)
+        assert saved.status == 'handled'
+        assert saved.handled_at is not None
+        outbound = db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'public_inbox_reply'))
+        assert outbound.recipient == 'sender@example.test'
+        assert outbound.status == 'sent'
+
+
 def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     with app.app_context():
