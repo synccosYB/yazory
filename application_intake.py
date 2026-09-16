@@ -30,6 +30,18 @@ class AssistanceApplication(core.db.Model):
 
 EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 PUBLIC_ENDPOINTS = {'application_form', 'application_submitted'}
+REVIEW_STATUSES = ('Submitted', 'Missing information', 'Under review', 'Approved', 'Declined')
+REVIEW_FIELDS = (
+    ('Preparer role','preparer_role'),('Preparer name','preparer_name'),('Relationship to applicant','preparer_relationship'),
+    ('Preparer phone','preparer_phone'),('Preparer email','preparer_email'),('Applicant / family name','applicant_name'),
+    ('Spouse name','spouse_name'),('Address','address'),('City','city'),('State','state'),('ZIP code','zip_code'),
+    ('Phone','phone'),('Email','email'),('Children at home','children_count'),('Married children','married_children_count'),
+    ('Father','father'),('Father-in-law','father_in_law'),('Family Rav','family_rav'),('Weekday shul','weekday_shul'),
+    ('Shabbos shul','shabbos_shul'),('Applicant employment','employment'),('Spouse employment','spouse_employment'),
+    ('Total monthly income','monthly_income'),('Housing','housing'),('Food','food'),('Tuition','tuition'),('Utilities','utilities'),
+    ('Medical','medical'),('Debt payments','debt_payments'),('Other expenses','other_expenses'),('Current assistance','current_help'),
+    ('Approximate amount needed','requested_amount'),('Frequency','requested_frequency'),
+)
 
 
 def _data_from_form(existing):
@@ -51,9 +63,6 @@ def _data_from_form(existing):
 
 
 def install(app):
-    # The core authentication guard predates this public application. Wrap it so
-    # only these token-protected application pages bypass staff authentication;
-    # CSRF protection remains active for every POST.
     guards = app.before_request_funcs.get(None, [])
     for index, guard in enumerate(list(guards)):
         if getattr(guard, '__name__', '') != 'security':
@@ -84,12 +93,12 @@ def install(app):
                 flash('Enter a valid email address.', 'error')
                 return render_template('application_request.html', title='Send application')
             row = AssistanceApplication(public_token=secrets.token_urlsafe(36), recipient_email=email,
-                                        applicant_name=applicant_name, data={'applicant_name': applicant_name})
+                                        applicant_name=applicant_name, status='Sent', data={'applicant_name': applicant_name})
             core.db.session.add(row)
             core.db.session.flush()
             base = app.config.get('APP_BASE_URL', '').rstrip('/')
             link = f"{base}{url_for('application_form', token=row.public_token)}"
-            logo = f"{base}{url_for('static', filename='yazory-logo.png')}"
+            logo = f"{base}{url_for('static', filename='yazory-logo-corrected.png')}"
             subject = 'Yazory family assistance application'
             text = f'You have been asked to complete a Yazory family assistance application.\n\nOpen the application: {link}\n\nApplication: {row.number}'
             html = (f'<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto">'
@@ -115,6 +124,8 @@ def install(app):
         row = core.db.session.scalar(select(AssistanceApplication).where(AssistanceApplication.public_token == token))
         if row is None:
             abort(404)
+        if row.status in ('Approved', 'Declined'):
+            return redirect(url_for('application_submitted', token=token))
         if request.method == 'POST':
             data = _data_from_form(row.data)
             row.data = data
@@ -132,6 +143,8 @@ def install(app):
                     row.submitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
                     core.db.session.commit()
                     return redirect(url_for('application_submitted', token=token))
+            else:
+                row.status = 'In progress'
             core.db.session.commit()
             if action != 'submit':
                 flash('Application saved. You can continue later from this same link.', 'success')
@@ -143,6 +156,26 @@ def install(app):
         if row is None:
             abort(404)
         return render_template('application_submitted.html', title='Application received', application=row)
+
+    @app.get('/applications/<int:application_id>')
+    def application_review(application_id):
+        row = core.db.get_or_404(AssistanceApplication, application_id)
+        return render_template('application_review.html', title=f'Review {row.number}', application=row,
+                               data=row.data or {}, fields=REVIEW_FIELDS, statuses=REVIEW_STATUSES)
+
+    @app.post('/applications/<int:application_id>/review')
+    def application_review_action(application_id):
+        row = core.db.get_or_404(AssistanceApplication, application_id)
+        status = request.form.get('status', '').strip()
+        if status not in REVIEW_STATUSES:
+            abort(400, 'Invalid application status.')
+        data = dict(row.data or {})
+        data['review_note'] = request.form.get('review_note', '').strip()[:5000]
+        row.data = data
+        row.status = status
+        core.db.session.commit()
+        flash(f'{row.number} updated to {status}.', 'success')
+        return redirect(url_for('application_review', application_id=row.id))
 
     @app.get('/applications/<int:application_id>/print')
     def print_application(application_id):
