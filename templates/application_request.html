@@ -4,6 +4,7 @@
 <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
 <label>{{ _('Email to send application to') }}<input type="email" name="recipient_email" required autocomplete="email" placeholder="name@example.com" value="{{ request.form.get('recipient_email','') }}"></label>
 <label>{{ _('Applicant / family name') }} <small>{{ _('optional') }}</small><input name="applicant_name" autocomplete="name" value="{{ request.form.get('applicant_name','') }}"></label>
+<label>{{ _('קרן name') }} <small>{{ _('optional — generated from the applicant name when blank') }}</small><input name="fund_name" maxlength="160" value="{{ request.form.get('fund_name','') }}"></label>
 <div class="form-actions"><a class="button secondary" href="{{ url_for('applications') }}">{{ _('Cancel') }}</a><button type="submit">{{ _('Send application link') }}</button></div>
 </form></section>
 {% endblock %}

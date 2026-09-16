@@ -85,6 +85,8 @@ python -m flask --app 'app_entry:create_app()' migrate-db
 This migration also creates the additive `monthly_sponsorship` table. Monthly
 sponsor assignments, payment tracking, memorial lines, and uploaded logos are
 stored there without changing or rewriting existing application records.
+It also creates `case_sponsorship`, adds the case/application `fund_name`
+fields, and fills an existing family’s blank fund name as `קרן [family name]`.
 
 The supporter-identity migration creates one `supporter_person` record for each
 real helper and links every case-specific `contact` row through `person_id`.

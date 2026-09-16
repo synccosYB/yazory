@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from html import escape
 
 from flask import abort, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 
 import app_original as core
 from email_service import deliver
@@ -17,6 +17,7 @@ class AssistanceApplication(core.db.Model):
     status = core.db.Column(core.db.String(30), nullable=False, default='Draft', index=True)
     recipient_email = core.db.Column(core.db.String(254), nullable=False, default='', index=True)
     applicant_name = core.db.Column(core.db.String(160), nullable=False, default='')
+    fund_name = core.db.Column(core.db.String(160), nullable=False, default='')
     preparer_name = core.db.Column(core.db.String(160), nullable=False, default='')
     preparer_role = core.db.Column(core.db.String(40), nullable=False, default='')
     data = core.db.Column(core.db.JSON, nullable=False, default=dict)
@@ -79,6 +80,19 @@ def _data_from_form(existing):
 
 
 def install(app):
+    def migrate_application_fund_name():
+        if not inspect(core.db.engine).has_table('assistance_application'):
+            return
+        columns = {column['name'] for column in inspect(core.db.engine).get_columns('assistance_application')}
+        if 'fund_name' not in columns:
+            core.db.session.execute(text("ALTER TABLE assistance_application ADD COLUMN fund_name VARCHAR(160) NOT NULL DEFAULT ''"))
+        core.db.session.execute(text(
+            "UPDATE assistance_application SET fund_name = 'קרן ' || applicant_name "
+            "WHERE fund_name = '' AND applicant_name <> ''"
+        ))
+        core.db.session.commit()
+
+    app.extensions.setdefault('init_db_hooks', []).append(migrate_application_fund_name)
     guards = app.before_request_funcs.get(None, [])
     for index, guard in enumerate(list(guards)):
         if getattr(guard, '__name__', '') != 'security':
@@ -105,11 +119,13 @@ def install(app):
         if request.method == 'POST':
             email = request.form.get('recipient_email', '').strip().lower()
             applicant_name = request.form.get('applicant_name', '').strip()[:160]
+            fund_name = request.form.get('fund_name', '').strip()[:160] or (f'קרן {applicant_name}' if applicant_name else '')
             if not EMAIL_RE.match(email):
                 flash('Enter a valid email address.', 'error')
                 return render_template('application_request.html', title='Send application')
             row = AssistanceApplication(public_token=secrets.token_urlsafe(36), recipient_email=email,
-                                        applicant_name=applicant_name, status='Sent', data={'applicant_name': applicant_name})
+                                        applicant_name=applicant_name, fund_name=fund_name, status='Sent',
+                                        data={'applicant_name': applicant_name, 'fund_name': fund_name})
             core.db.session.add(row)
             core.db.session.flush()
             base = app.config.get('APP_BASE_URL', '').rstrip('/')
@@ -146,6 +162,7 @@ def install(app):
             data = _data_from_form(row.data)
             row.data = data
             row.applicant_name = data.get('applicant_name', '')[:160]
+            row.fund_name = row.fund_name or (f'קרן {row.applicant_name}' if row.applicant_name else '')
             row.preparer_name = data.get('preparer_name', '')[:160]
             row.preparer_role = data.get('preparer_role', '')[:40]
             action = request.form.get('action', 'save')

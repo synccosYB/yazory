@@ -5,6 +5,7 @@
     <div class="profile-record-identity">
       <div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} {{ _("· FAMILY PROFILE") }}</div>
       <h1><bdi dir="auto">{{ family.name }}</bdi> {{ pencil(family.id, 'name', 'Family / individual name') }}</h1>
+      <div class="profile-fund-name" dir="auto">{{ family.fund_name }}</div>
       <div class="profile-record-contact">
         <span class="profile-contact-email"><bdi dir="ltr" title="{{ family.email or _('Email not entered') }}">{{ family.email or _('Email not entered') }}</bdi> {{ pencil(family.id, 'email', 'Applicant email') }}</span>
         <span class="profile-contact-address"><bdi dir="ltr" title="{{ family.full_address or _('Address not entered') }}">{{ family.full_address or _('Address not entered') }}</bdi> {{ pencil(family.id, 'address', 'Address') }}</span>
@@ -19,6 +20,7 @@
       <a class="button" href="/families/{{ family.id }}/edit">{{ _("Edit profile") }}</a>
       <details class="profile-more-actions"><summary class="button secondary">{{ _('More actions') }}</summary><div>
         <a href="{{ url_for('family_print_report',family_id=family.id) }}">{{ _('Print profile / PDF') }}</a>
+        {% if is_org_admin %}<a href="{{ url_for('case_sponsorship_new',family_id=family.id) }}">{{ _('Case sponsorship') }}</a>{% endif %}
         <a href="{{ url_for('family_expense_report',family_id=family.id) }}">{{ _('Monthly expense report') }}</a>
         {% if workflow_active %}<a href="{{ url_for('operations',family_id=family.id) }}">{{ _('Case workflows') }}</a><a href="{{ url_for('case_ledger',family_id=family.id) }}">{{ _('Case ledger') }}</a><a href="{{ url_for('supporter_network',family_id=family.id) }}">{{ _('Supporter tree') }}</a>{% endif %}<a href="{{ url_for('charity_donations',family_id=family.id) }}">{{ _('ABCharity donations') }}</a>
       </div></details>
@@ -26,6 +28,7 @@
     </div>
   </div>
 </section>
+{% include '_case_sponsor_panel.html' %}
 <section class="card padded profile-household-sheet" id="household-community"><h2>{{ _("Household & community") }}</h2><div class="profile-sheet-layout"><dl class="details">
 <div class="profile-askan"><dt>{{ _('Designated askan for this case') }}</dt><dd><span class="profile-askan-details">{% if family.designated_askan %}<a class="strong" href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}">{{ family.designated_askan.name }}</a>{% if family.designated_askan.phone %}<span>· <bdi dir="ltr">{{ family.designated_askan.phone|phone }}</bdi></span>{% endif %}{% if family.designated_askan.email %}<span>· <a href="mailto:{{ family.designated_askan.email }}"><bdi dir="ltr">{{ family.designated_askan.email }}</bdi></a></span>{% endif %}{% else %}{{ _('Not entered') }}{% endif %}</span> {{ pencil(family.id, 'askan_name', 'Designated askan for this case') }}</dd></div>
 {% for key, label in [('spouse','Spouse'),('father','Father'),('inlaws','Father-in-law'),('inlaws_maiden_name','Mother-in-law’s maiden name'),('inlaws_family','Mother-in-law’s family / network'),('yeshivah','Yeshivah attended by applicant'),('weekday_shul','Weekday shul'),('shabbos_shul','Shabbos shul')] %}<div><dt>{{ _(label) }}</dt><dd>{% if key=='yeshivah' %}{% set history=family_yeshivah_history(family.id) %}{% for row,institution in history %}<span class="profile-linked-row">{{ institution.name }}{% if row.grade %} · {{ row.grade }}{% endif %}{% if row.year_from or row.year_to %} · <bdi dir="ltr">{{ row.year_from or '?' }}–{{ row.year_to or '?' }}</bdi>{% endif %}</span>{% else %}{{ family[key] or _('Not entered') }}{% endfor %}{% elif key in ('weekday_shul','shabbos_shul') %}{{ family[key] or _('Not entered') }} {{ pencil(family.id, key, label) }}{% set contacts=shul_rabbi_map.get(family[key],{}) %}{% set show_contacts=key=='weekday_shul' or family.shabbos_shul!=family.weekday_shul %}{% if show_contacts and (contacts.get('name') or contacts.get('assistants') or contacts.get('gabbais')) %}<details class="profile-linked-contacts"><summary>{{ _('Shul contacts') }}</summary>{% if contacts.get('name') %}<small><strong>{{ contacts.name }}</strong>{% for phone in contacts.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</small>{% endif %}{% for person in contacts.get('assistants',[]) %}<small>{{ person.name }}{% for phone in person.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</small>{% endfor %}{% for person in contacts.get('gabbais',[]) %}<small>{{ person.name }}{% for phone in person.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</small>{% endfor %}</details>{% endif %}{% else %}{{ family[key] or _('Not entered') }} {{ pencil(family.id, key, label) }}{% endif %}</dd></div>{% endfor %}

@@ -2,9 +2,9 @@ from datetime import datetime
 from io import BytesIO
 
 from app_entry_intake import create_app
-from app_original import db
+from app_original import Family, db
 from application_intake import AssistanceApplication
-from sponsorships import MonthlySponsorship, PAGE_SLOTS
+from sponsorships import CaseSponsorship, MonthlySponsorship, PAGE_SLOTS
 
 
 def make_app():
@@ -70,3 +70,63 @@ def test_unpublished_sponsor_is_not_displayed():
                                          company_name='Hidden Sponsor', status='Confirmed'))
         db.session.commit()
     assert 'Hidden Sponsor' not in client.get('/').text
+
+
+def test_case_sponsor_is_separate_and_appears_only_on_its_family_pages():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).order_by(Family.id))
+        family.fund_name = 'קרן חסד למשפחה'
+        family_id = family.id
+    response = client.post(f'/families/{family_id}/sponsorship', data={
+        'csrf': csrf(client), 'fund_name': 'קרן חסד למשפחה',
+        'start_month': datetime.now().strftime('%Y-%m'), 'end_month': '',
+        'company_name': 'Case Company', 'donor_name': 'Case Donor',
+        'memorial_one': 'ראובן בן יעקב', 'memorial_two': '',
+        'contact_name': 'Office', 'contact_phone': '8455551212',
+        'contact_email': 'case@example.com', 'amount': '2500', 'paid': '2500',
+        'status': 'Published', 'notes': '',
+        'logo': (BytesIO(b'case-logo'), 'case.png'),
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        row = db.session.scalar(db.select(CaseSponsorship))
+        assert row.family_id == family_id and row.balance_cents == 0
+    profile = client.get(f'/families/{family_id}')
+    report = client.get(f'/families/{family_id}/print')
+    assert 'Case Company' in profile.text and 'קרן חסד למשפחה' in profile.text
+    assert 'Case Company' in report.text and 'ראובן בן יעקב' in report.text
+    assert 'Case Company' not in client.get('/expenses').text
+
+
+def test_sent_application_gets_fund_name():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        application = AssistanceApplication(public_token='fund-name-token', status='Sent',
+                                            applicant_name='Example Family',
+                                            fund_name='קרן משפחת Example')
+        db.session.add(application)
+        db.session.commit()
+        application_id = application.id
+    assert 'קרן משפחת Example' in client.get('/apply/fund-name-token').text
+    assert 'קרן משפחת Example' in client.get(f'/applications/{application_id}/print').text
+    assert 'קרן ____________________' in client.get('/applications/blank/print').text
+
+
+def test_application_generates_fund_name_from_applicant_name_when_blank():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        application = AssistanceApplication(public_token='auto-fund-token', status='Sent')
+        db.session.add(application)
+        db.session.commit()
+    response = client.post('/apply/auto-fund-token', data={
+        'csrf': csrf(client), 'applicant_name': 'Auto Family', 'action': 'save',
+    })
+    assert response.status_code == 200
+    with app.app_context():
+        saved = db.session.scalar(db.select(AssistanceApplication).where(
+            AssistanceApplication.public_token == 'auto-fund-token'))
+        assert saved.fund_name == 'קרן Auto Family'

@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-heading">
+  <div><div class="eyebrow">YZ-{{ '%04d'|format(family.id) }}</div><h1>{{ _('Case sponsorship') }} · {{ family.name }}</h1><p>{{ _('Enter the sponsor dedicated to this family case.') }}</p></div>
+  <a class="button secondary" href="{{ url_for('case_sponsorships') }}">{{ _('Back to case sponsorships') }}</a>
+</div>
+<form class="card padded sponsorship-form" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="form-grid">
+    <label>{{ _('קרן name') }}<input name="fund_name" required maxlength="160" value="{{ family.fund_name or ('קרן ' ~ family.name) }}"></label>
+    <label>{{ _('Start month') }}<input type="month" name="start_month" required value="{{ sponsor.start_month if sponsor else start_month }}"></label>
+    <label>{{ _('End month') }}<input type="month" name="end_month" value="{{ sponsor.end_month if sponsor else '' }}"><small>{{ _('Leave blank for an ongoing sponsorship.') }}</small></label>
+    <label>{{ _('Company name') }}<input name="company_name" maxlength="160" value="{{ sponsor.company_name if sponsor else '' }}"></label>
+    <label>{{ _('Donor name') }}<input name="donor_name" maxlength="160" value="{{ sponsor.donor_name if sponsor else '' }}"></label>
+    <label>{{ _('First לע״נ') }}<input name="memorial_one" maxlength="300" dir="rtl" value="{{ sponsor.memorial_one if sponsor else '' }}"></label>
+    <label>{{ _('Second לע״נ') }}<input name="memorial_two" maxlength="300" dir="rtl" value="{{ sponsor.memorial_two if sponsor else '' }}"></label>
+    <label>{{ _('Contact name') }}<input name="contact_name" maxlength="160" value="{{ sponsor.contact_name if sponsor else '' }}"></label>
+    <label>{{ _('Contact phone') }}<input name="contact_phone" maxlength="80" inputmode="tel" value="{{ sponsor.contact_phone if sponsor else '' }}"></label>
+    <label>{{ _('Contact email') }}<input type="email" name="contact_email" maxlength="254" value="{{ sponsor.contact_email if sponsor else '' }}"></label>
+    <label>{{ _('Sponsorship amount') }}<input name="amount" inputmode="decimal" value="{{ '%.2f'|format(sponsor.amount_cents/100) if sponsor else '0.00' }}"></label>
+    <label>{{ _('Amount paid') }}<input name="paid" inputmode="decimal" value="{{ '%.2f'|format(sponsor.paid_cents/100) if sponsor else '0.00' }}"></label>
+    <label>{{ _('Status') }}<select name="status">{% for status in statuses %}<option value="{{ status }}" {{ 'selected' if sponsor and sponsor.status==status }}>{{ _(status) }}</option>{% endfor %}</select></label>
+    <label class="wide">{{ _('Company logo') }}<input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/gif"><small>{{ _('PNG, JPG, WebP, or GIF. Maximum 2 MB.') }}</small></label>
+    {% if sponsor and sponsor.logo_data %}<label class="logo-remove"><img src="{{ url_for('case_sponsorship_logo',sponsorship_id=sponsor.id) }}" alt=""><span><input type="checkbox" name="remove_logo" value="yes"> {{ _('Remove saved logo') }}</span></label>{% endif %}
+    <label class="wide">{{ _('Internal notes') }}<textarea name="notes" rows="4">{{ sponsor.notes if sponsor else '' }}</textarea></label>
+  </div>
+  <div class="form-actions">{% if sponsor %}<button class="button secondary" type="submit" form="delete-case-sponsorship">{{ _('Remove sponsorship') }}</button>{% endif %}<button type="submit">{{ _('Save sponsorship') }}</button></div>
+</form>
+{% if sponsor %}<form id="delete-case-sponsorship" method="post" action="{{ url_for('case_sponsorship_delete',sponsorship_id=sponsor.id) }}" onsubmit="return confirm('{{ _('Remove this case sponsorship?') }}')"><input type="hidden" name="csrf" value="{{ csrf }}"></form>{% endif %}
+{% endblock %}
