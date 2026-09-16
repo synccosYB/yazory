@@ -1070,7 +1070,7 @@ def test_shared_language_screens(client,language,direction,label):
         assert f'lang="{language}" dir="{direction}"' in page.text
         assert label in page.text
         assert '/static/style.css' in page.text
-        assert '/static/yazory-logo.png' in page.text
+        assert '/static/yazory-logo-corrected.png' in page.text
         for code in ['en','he','yi']:
             assert f'/language/{code}?' in page.text
     # Translations are labels, never database workflow values.

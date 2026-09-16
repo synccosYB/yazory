@@ -1259,7 +1259,8 @@ def create_app(test_config=None):
     @app.before_request
     def security():
         public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
-                            'reset_password', 'accept_invitation', 'about', 'privacy',
+                            'reset_password', 'accept_invitation', 'dashboard', 'about',
+                            'how_it_works', 'public_trust', 'public_apply', 'public_support', 'privacy',
                             'terms', 'donation_policy', 'stripe_webhook', 'resend_webhook',
                             'twilio_incoming_message',
                             'stripe_success', 'stripe_cancel', 'sms_consent', 'supporter_login',
@@ -1424,6 +1425,22 @@ def create_app(test_config=None):
     @app.get('/about')
     def about():
         return public_page('about', 'About Yazory')
+
+    @app.get('/how-it-works')
+    def how_it_works():
+        return public_page('how', 'How Yazory works')
+
+    @app.get('/trust')
+    def public_trust():
+        return public_page('trust', 'Trust and dignity')
+
+    @app.get('/apply')
+    def public_apply():
+        return public_page('apply', 'Apply for assistance')
+
+    @app.get('/support')
+    def public_support():
+        return public_page('support', 'Support Yazory')
 
     @app.get('/privacy')
     def privacy():
@@ -1781,6 +1798,8 @@ def create_app(test_config=None):
 
     @app.get('/')
     def dashboard():
+        if current_user() is None and not app.config['DEMO']:
+            return public_page('home', 'Family assistance with dignity')
         if current_user() and current_user().role == 'fundraiser':
             return redirect(url_for('fundraising'))
         statement = select(Family).options(

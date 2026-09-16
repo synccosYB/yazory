@@ -21,7 +21,8 @@ def test_database_diagnostic_is_disabled_by_default(public_app):
 def test_public_business_pages_are_available_without_login(public_app):
     app = public_app
     client = app.test_client()
-    for path in ('/about', '/privacy', '/terms', '/sms-consent', '/donation-policy'):
+    for path in ('/', '/about', '/how-it-works', '/trust', '/apply', '/support',
+                 '/privacy', '/terms', '/sms-consent', '/donation-policy'):
         response = client.get(path)
         assert response.status_code == 200
         assert b'Yazory' in response.data
@@ -30,8 +31,9 @@ def test_public_business_pages_are_available_without_login(public_app):
 def test_public_pages_support_all_locales(public_app):
     app = public_app
     client = app.test_client()
-    expected = {'en': b'Yazory helps families', 'he': 'יעזורי מסייעת'.encode(),
-                'yi': 'יעזורי העלפט משפחות'.encode()}
+    expected = {'en': b'Yazory helps cover the financial gap',
+                'he': 'יעזורי מסייעת להשלים את החסר'.encode(),
+                'yi': 'יעזורי העלפט דעקן דעם חסרון'.encode()}
     for language, text in expected.items():
         client.get(f'/language/{language}?next=/about')
         response = client.get('/about')
@@ -45,6 +47,16 @@ def test_public_policy_links_are_present(public_app):
     for path in (b'/privacy', b'/terms', b'/sms-consent', b'/donation-policy'):
         assert path in response.data
     assert b'support@synccos.com' in response.data
+
+
+def test_public_landing_explains_fund_trust_and_family_privacy(public_app):
+    client = public_app.test_client()
+    home = client.get('/').text
+    trust = client.get('/trust').text
+    assert 'dependable payment every two weeks' in home
+    assert 'Only actual transaction fees' in home
+    assert 'does not deduct an administrative percentage' in trust
+    assert 'represented only by that number' in trust
 
 
 def test_sms_pages_include_carrier_disclosures(public_app):
