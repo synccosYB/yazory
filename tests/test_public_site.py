@@ -47,6 +47,8 @@ def test_public_policy_links_are_present(public_app):
     for path in (b'/privacy', b'/terms', b'/sms-consent', b'/donation-policy'):
         assert path in response.data
     assert b'info@yaazory.org' in response.data
+    assert b'href="/login"' in response.data
+    assert b'Staff access' in response.data
 
 
 def test_public_landing_explains_fund_trust_and_family_privacy(public_app):
