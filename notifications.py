@@ -14,6 +14,16 @@ class StaffActivityCursor(core.db.Model):
     last_seen_at = core.db.Column(core.db.DateTime, nullable=False, index=True)
 
 
+class StaffActivityRead(core.db.Model):
+    """One activity item opened by one staff member."""
+    __tablename__ = 'staff_activity_read'
+    staff_user_id = core.db.Column(
+        core.db.Integer, core.db.ForeignKey('staff_user.id'), primary_key=True)
+    audit_id = core.db.Column(
+        core.db.Integer, core.db.ForeignKey('audit.id'), primary_key=True)
+    read_at = core.db.Column(core.db.DateTime, nullable=False, default=lambda: _now())
+
+
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -21,6 +31,7 @@ def _now():
 def install(app):
     def ensure_schema():
         StaffActivityCursor.__table__.create(core.db.engine, checkfirst=True)
+        StaffActivityRead.__table__.create(core.db.engine, checkfirst=True)
         now = _now()
         for user in core.db.session.scalars(select(core.StaffUser)).all():
             if core.db.session.get(StaffActivityCursor, user.id) is None:
@@ -54,7 +65,11 @@ def install(app):
             core.FamilyAssignment.staff_user_id == user.id)))
 
     def audit_statement(user, since):
-        statement = select(core.Audit).where(core.Audit.at > since)
+        statement = select(core.Audit).where(
+            core.Audit.at > since,
+            ~select(StaffActivityRead.audit_id).where(
+                StaffActivityRead.staff_user_id == user.id,
+                StaffActivityRead.audit_id == core.Audit.id).exists())
         family_ids = visible_family_ids(user)
         if family_ids is not None:
             statement = statement.where(core.Audit.family_id.in_(family_ids))
@@ -81,7 +96,7 @@ def install(app):
     def activity_url(row):
         lowered = row.action.lower()
         if any(word in lowered for word in ('message', 'email', 'replied')):
-            return url_for('communications')
+            return url_for('communications', _anchor='general-inbox')
         if any(word in lowered for word in ('receipt', 'donation', 'pledge', 'stripe')):
             return url_for('collections')
         if 'expense' in lowered:
@@ -111,6 +126,7 @@ def install(app):
         rows = core.db.session.scalars(audit_statement(user, cursor.last_seen_at).order_by(
             core.Audit.at.desc(), core.Audit.id.desc()).limit(100)).all()
         items = [{
+            'id': row.id,
             'action': row.action,
             'actor': row.actor,
             'at': row.at,
@@ -119,6 +135,20 @@ def install(app):
         } for row in rows]
         return render_template('notifications.html', title='What’s new', items=items,
                                unread_count=len(items), since=cursor.last_seen_at)
+
+    @app.get('/notifications/<int:audit_id>/open')
+    def notification_open(audit_id):
+        user, cursor = user_and_cursor()
+        if not user:
+            abort(403)
+        row = core.db.session.scalar(
+            audit_statement(user, cursor.last_seen_at).where(core.Audit.id == audit_id))
+        if row is None:
+            abort(404)
+        core.db.session.add(StaffActivityRead(
+            staff_user_id=user.id, audit_id=row.id, read_at=_now()))
+        core.db.session.commit()
+        return redirect(activity_url(row))
 
     @app.post('/notifications/mark-read')
     def notifications_mark_read():

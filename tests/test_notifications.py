@@ -60,3 +60,38 @@ def test_mark_all_read_clears_count(app, client):
     assert response.status_code == 200
     assert b'There is no new activity' in response.data
     assert b'notification-bell has-new' not in response.data
+
+
+def test_opening_one_notification_marks_only_that_item_read(app, client):
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        cursor = db.session.get(StaffActivityCursor, user.id)
+        cursor.last_seen_at = datetime.now(timezone.utc).replace(
+            tzinfo=None) - timedelta(minutes=5)
+        first = Audit(actor='Email sender', action='New message in Yazory inbox')
+        second = Audit(actor='Staff', action='Replied to Yazory inbox message')
+        db.session.add_all([first, second])
+        db.session.commit()
+        first_id = first.id
+
+    page = client.get('/notifications')
+    assert page.data.count(b'class="notification-item"') == 2
+    assert b'>2</b>' in page.data
+
+    opened = client.get(
+        f'/notifications/{first_id}/open', follow_redirects=False)
+    assert opened.status_code == 302
+    assert opened.location.endswith('/communications#general-inbox')
+
+    page = client.get('/notifications')
+    assert page.data.count(b'class="notification-item"') == 1
+    assert b'>1</b>' in page.data
+    assert b'New message in Yazory inbox' not in page.data
+    assert b'Replied to Yazory inbox message' in page.data
+
+
+def test_notifications_page_always_links_back_to_communications(app, client):
+    response = client.get('/notifications')
+    assert response.status_code == 200
+    assert b'href="/communications#general-inbox"' in response.data
+    assert b'Open Communications' in response.data
