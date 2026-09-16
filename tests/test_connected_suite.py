@@ -1,6 +1,9 @@
 from app_entry import create_app
 """Focused regression coverage for the connected workspace additions."""
+from sqlalchemy.dialects import postgresql
+
 from app import db, Family, Contact, Receipt, OrganizationSetting, StaffUser
+import app_original
 
 
 def csrf(client):
@@ -99,3 +102,27 @@ def test_manual_receipt_can_create_a_new_donor(monkeypatch):
             Receipt.contact_id == donor.id))
         assert receipt.amount_cents == 25000
         assert receipt.family_id == family_id
+
+
+def test_reports_expense_grouping_reuses_the_postgresql_case_expression():
+    """PostgreSQL must see the exact selected CASE expression in GROUP BY."""
+    organization_expense = app_original.case(
+        (app_original.Expense.category == 'Organization expense', True),
+        else_=False,
+    )
+    query = app_original.select(
+        app_original.Expense.family_id,
+        app_original.Expense.status,
+        organization_expense.label('is_org'),
+        app_original.func.coalesce(
+            app_original.func.sum(app_original.Expense.amount_cents), 0),
+    ).group_by(
+        app_original.Expense.family_id,
+        app_original.Expense.status,
+        organization_expense,
+    )
+
+    compiled = str(query.compile(dialect=postgresql.dialect()))
+    selected_case = compiled.split(' AS is_org', 1)[0].rsplit(', ', 1)[-1]
+    grouped_case = compiled.split('GROUP BY ', 1)[1].rsplit(', ', 1)[-1]
+    assert selected_case == grouped_case
