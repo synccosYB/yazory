@@ -506,6 +506,8 @@ def create_app(test_config=None):
                       RESEND_API_KEY=os.getenv('RESEND_API_KEY', ''),
                       EMAIL_FROM=os.getenv('EMAIL_FROM', ''),
                       EMAIL_REPLY_DOMAIN=os.getenv('EMAIL_REPLY_DOMAIN', '').strip().lower(),
+                      PUBLIC_INBOX_EMAIL=os.getenv(
+                          'PUBLIC_INBOX_EMAIL', 'info@yaazory.org').strip().lower(),
                       RESEND_WEBHOOK_SECRET=os.getenv('RESEND_WEBHOOK_SECRET', ''),
                       APP_BASE_URL=os.getenv('APP_BASE_URL', '').rstrip('/'),
                       STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY', ''),

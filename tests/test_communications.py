@@ -10,8 +10,8 @@ from werkzeug.security import generate_password_hash
 
 import app_original as core_module
 import app as app_module
-from app import (CharityCampaign, Contact, EmailMessage, Family, Receipt, StaffTask,
-                 SupporterCommunication, db)
+from app import (CharityCampaign, Contact, EmailMessage, Family, InboundInboxMessage,
+                 Receipt, StaffTask, SupporterCommunication, db)
 
 
 def post(client, path, data):
@@ -334,6 +334,58 @@ def test_resend_inbound_reply_is_matched_to_exact_supporter_and_case(monkeypatch
         assert db.session.get(SupporterCommunication, reply_id).status == 'handled'
     assert 'Tomorrow evening works for me.' not in client.get(handled.location).text.split(
         'New email replies', 1)[1].split('Outreach workflow', 1)[0]
+
+
+def test_email_to_public_info_address_appears_in_messages(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    app.config.update(
+        EMAIL_REPLY_DOMAIN='reply.yaazory.org',
+        PUBLIC_INBOX_EMAIL='info@yaazory.org',
+        RESEND_API_KEY='test-api-key',
+        RESEND_WEBHOOK_SECRET='whsec_' + base64.b64encode(b'webhook-secret').decode())
+    monkeypatch.setattr(app_module, 'retrieve_received_email', lambda key, email_id: {
+        'id': email_id,
+        'to': ['Yazory <info@yaazory.org>'],
+        'from': 'New Applicant <sender@example.test>',
+        'subject': 'Need help with utilities',
+        'text': 'Please call me about an application.',
+        'attachments': [{'filename': 'utility-bill.pdf'}],
+    })
+    event = json.dumps({
+        'type': 'email.received',
+        'data': {'email_id': 'public-inbox-email-1'},
+    }, separators=(',', ':')).encode()
+    timestamp = str(int(time.time()))
+    event_id = 'msg_public_inbox_1'
+    signature = base64.b64encode(hmac.new(
+        b'webhook-secret', event_id.encode() + b'.' + timestamp.encode() + b'.' + event,
+        hashlib.sha256).digest()).decode()
+    headers = {
+        'svix-id': event_id, 'svix-timestamp': timestamp,
+        'svix-signature': f'v1,{signature}', 'content-type': 'application/json'}
+
+    response = client.post('/resend/webhook', data=event, headers=headers)
+    assert response.status_code == 200
+    assert response.json == {
+        'matched': True, 'received': True, 'recipient': 'public_inbox'}
+    with app.app_context():
+        message = db.session.scalar(db.select(InboundInboxMessage))
+        assert message.sender_name == 'New Applicant'
+        assert message.sender_email == 'sender@example.test'
+        assert message.recipient == 'info@yaazory.org'
+        assert 'Please call me about an application.' in message.body
+        assert 'utility-bill.pdf' in message.body
+        message_id = message.id
+
+    inbox = client.get('/communications')
+    assert 'Yazory inbox' in inbox.text
+    assert 'Need help with utilities' in inbox.text
+    assert 'Please call me about an application.' in inbox.text
+    handled = post(client, f'/communications/inbox/{message_id}/handled', {})
+    assert handled.status_code == 302
+    with app.app_context():
+        assert db.session.get(InboundInboxMessage, message_id).status == 'handled'
+    assert 'Need help with utilities' in client.get(handled.location).text
 
 
 def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):

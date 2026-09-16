@@ -394,6 +394,29 @@ class ResendWebhookEvent(_app.db.Model):
         default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
 
 
+class InboundInboxMessage(_app.db.Model):
+    """Email sent directly to Yazory's public information address."""
+    __tablename__ = 'inbound_inbox_message'
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    provider_message_id = _app.db.Column(
+        _app.db.String(200), nullable=False, unique=True, index=True)
+    sender_name = _app.db.Column(_app.db.String(200), nullable=False, default='')
+    sender_email = _app.db.Column(_app.db.String(254), nullable=False, index=True)
+    recipient = _app.db.Column(_app.db.String(254), nullable=False)
+    subject = _app.db.Column(_app.db.String(300), nullable=False, default='')
+    body = _app.db.Column(_app.db.Text, nullable=False, default='')
+    status = _app.db.Column(
+        _app.db.String(20), nullable=False, default='unread', index=True)
+    created_at = _app.db.Column(
+        _app.db.DateTime, nullable=False,
+        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None),
+        index=True)
+    handled_at = _app.db.Column(_app.db.DateTime, nullable=True)
+    handled_by = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=True)
+    handler = _app.db.relationship('StaffUser')
+
+
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
 from supporter_portal import register_supporter_portal  # noqa: E402
@@ -2016,12 +2039,19 @@ def create_app(test_config=None):
             applicant_history = _app.db.session.scalars(applicant_statement).all()
         applicant_replies = [row for row in applicant_history
                              if row.direction == 'applicant' and row.status == 'unread']
+        inbox_history = None
+        if user.role == 'organization_admin':
+            inbox_history = _app.db.session.scalars(select(InboundInboxMessage).order_by(
+                InboundInboxMessage.created_at.desc(),
+                InboundInboxMessage.id.desc()).limit(300)).all()
+        inbox_messages = [row for row in (inbox_history or []) if row.status == 'unread']
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             selected_contact=selected_contact,
             history=history, latest=latest, due=due, email_replies=email_replies,
             applicant_history=applicant_history, applicant_replies=applicant_replies,
+            inbox_history=inbox_history, inbox_messages=inbox_messages,
             callback_contact_ids=callback_contact_ids,
             overdue_contact_ids=overdue_contact_ids,
             pledge_delivery=pledge_delivery,
@@ -2226,8 +2256,10 @@ def create_app(test_config=None):
                     break
 
         sender_values = inbound.get('from') or data.get('from') or ''
-        sender = next((address.lower() for _, address in getaddresses(
-            [sender_values] if isinstance(sender_values, str) else sender_values)), '')
+        parsed_senders = getaddresses(
+            [sender_values] if isinstance(sender_values, str) else sender_values)
+        sender_name, sender = next(((name, address.lower()) for name, address in parsed_senders
+                                    if address), ('', ''))
         body = (inbound.get('text') or html_to_text(inbound.get('html')) or
                 '[Email reply contained no readable text.]')[:50000]
         attachments = inbound.get('attachments') or []
@@ -2235,6 +2267,26 @@ def create_app(test_config=None):
             names = ', '.join(str(item.get('filename') or 'attachment')[:255]
                               for item in attachments[:20])
             body += f'\n\nAttachments: {names}'
+
+        recipient_addresses = {
+            address.lower() for _, address in getaddresses(recipients) if address
+        }
+        public_inbox = app.config.get('PUBLIC_INBOX_EMAIL', 'info@yaazory.org').lower()
+        receiving_alias = (f'info@{reply_domain}' if reply_domain else '')
+        if public_inbox in recipient_addresses or receiving_alias in recipient_addresses:
+            _app.db.session.add(InboundInboxMessage(
+                provider_message_id=email_id[:200],
+                sender_name=(sender_name or '')[:200], sender_email=sender[:254],
+                recipient=(public_inbox if public_inbox in recipient_addresses
+                           else receiving_alias)[:254],
+                subject=(inbound.get('subject') or data.get('subject') or
+                         'Email to Yazory')[:300],
+                body=body, status='unread'))
+            _app.db.session.add(ResendWebhookEvent(
+                event_id=event_id, email_id=email_id, event_type=event_type))
+            _app.db.session.commit()
+            return jsonify({'received': True, 'matched': True,
+                            'recipient': 'public_inbox'})
 
         # Staff emails to an applicant use the same signed Reply-To address.
         # Store a direct email reply in the applicant's portal conversation.
@@ -2317,6 +2369,20 @@ def create_app(test_config=None):
         _app.db.session.commit()
         _app.flash('Email reply marked as handled.')
         return _app.redirect(_app.url_for('communications', contact_id=reply.contact_id))
+
+    @app.post('/communications/inbox/<int:message_id>/handled')
+    def handle_inbound_inbox_message(message_id):
+        user = task_user()
+        if user is None or user.role != 'organization_admin':
+            _app.abort(403)
+        message = _app.db.get_or_404(InboundInboxMessage, message_id)
+        message.status = 'handled'
+        message.handled_at = _app.datetime.now(
+            _app.timezone.utc).replace(tzinfo=None)
+        message.handled_by = user.id
+        _app.db.session.commit()
+        _app.flash('Inbox message marked as handled.')
+        return _app.redirect(_app.url_for('communications', _anchor='general-inbox'))
 
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):
