@@ -1041,6 +1041,68 @@ def _assistant_payload(institution):
 
 def create_app(test_config=None):
     app = _app.create_app(test_config)
+
+    def extended_directory_people():
+        """Expose every reusable person table through the shared person picker."""
+        people = []
+        for person in _app.db.session.scalars(select(SupporterProfile).order_by(
+                SupporterProfile.name)).all():
+            people.append(('supporter_profile', person.id, person.name,
+                           'Supporter', person.email or person.phone))
+        for person in _app.db.session.scalars(select(RabbiPerson).order_by(
+                RabbiPerson.name)).all():
+            people.append(('rabbi', person.id, person.name, 'Rabbi', person.phone))
+        helper_phones = {row.helper_person_id: row.phone for row in
+                         _app.db.session.scalars(select(HelperPhone).order_by(
+                             HelperPhone.id)).all()}
+        for person in _app.db.session.scalars(select(HelperPerson).order_by(
+                HelperPerson.name)).all():
+            people.append(('helper', person.id, person.name, 'Community helper',
+                           helper_phones.get(person.id, '')))
+        return people
+
+    app.extensions.setdefault('person_directory_providers', []).append(
+        extended_directory_people)
+
+    def resolve_extended_directory_person(person_type, person_id):
+        model = {
+            'supporter_profile': SupporterProfile,
+            'rabbi': RabbiPerson,
+            'helper': HelperPerson,
+        }.get(person_type)
+        person = _app.db.session.get(model, person_id) if model else None
+        if person is None:
+            return None
+        phone = getattr(person, 'phone', '')
+        if person_type == 'helper':
+            phone = _app.db.session.scalar(select(HelperPhone.phone).where(
+                HelperPhone.helper_person_id == person.id).order_by(HelperPhone.id)) or ''
+        return {'name': person.name, 'phone': phone,
+                'email': getattr(person, 'email', '')}
+
+    app.extensions.setdefault('person_directory_resolvers', []).append(
+        resolve_extended_directory_person)
+
+    def create_neutral_directory_person(name, phone='', email=''):
+        """Create the neutral identity once; roles can be attached later."""
+        normalized = normalized_profile_phone(phone)
+        if normalized:
+            existing = _app.db.session.scalar(select(SupporterProfile).where(
+                SupporterProfile.normalized_phone == normalized))
+            if existing:
+                if not existing.email and email:
+                    existing.email = email[:254]
+                return existing
+        else:
+            normalized = 'person:' + _app.secrets.token_hex(12)
+        person = SupporterProfile(name=name[:160], phone=phone[:80],
+                                  normalized_phone=normalized,
+                                  email=email[:254])
+        _app.db.session.add(person)
+        return person
+
+    app.extensions.setdefault('person_directory_creators', []).append(
+        create_neutral_directory_person)
     twilio_config = {
         'TWILIO_ACCOUNT_SID': os.getenv('TWILIO_ACCOUNT_SID', ''),
         'TWILIO_AUTH_TOKEN': os.getenv('TWILIO_AUTH_TOKEN', ''),
@@ -1238,6 +1300,31 @@ def create_app(test_config=None):
                     _app.FamilyAssignment.family_id).where(
                         _app.FamilyAssignment.staff_user_id == user.id)))
         return _app.db.session.scalars(statement).all()
+
+    @app.route('/people/new', methods=['GET', 'POST'])
+    def new_directory_person():
+        supporter_directory_families()
+        return_to = _app.request.values.get('next', '').strip()
+        if not return_to.startswith('/') or return_to.startswith('//'):
+            return_to = _app.url_for('supporter_directory')
+        if _app.request.method == 'POST':
+            name = _app.request.form.get('name', '').strip()
+            phone = _app.request.form.get('phone', '').strip()
+            email = _app.request.form.get('email', '').strip().lower()
+            if not name:
+                _app.flash('Enter the person’s name.', 'error')
+                return _app.render_template('person_new.html', title='Add person',
+                                            return_to=return_to), 400
+            if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+                _app.flash('Enter a valid email address.', 'error')
+                return _app.render_template('person_new.html', title='Add person',
+                                            return_to=return_to), 400
+            create_neutral_directory_person(name=name, phone=phone, email=email)
+            _app.db.session.commit()
+            _app.flash('Person added to the shared name list.')
+            return _app.redirect(return_to)
+        return _app.render_template('person_new.html', title='Add person',
+                                    return_to=return_to)
 
     @app.route('/supporter-directory', methods=['GET', 'POST'])
     def supporter_directory():

@@ -4,7 +4,7 @@ import sqlite3
 from datetime import date
 
 import pytest
-from app import db, Family, Askan, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation, HelperPerson, HelperPhone, ShulHelperAssociation
+from app import db, Family, Askan, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation, HelperPerson, HelperPhone, ShulHelperAssociation, SupporterProfile
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
@@ -685,6 +685,37 @@ def test_designated_askan_profile_is_saved_linked_and_shown(app, client):
     assert second.status_code == 302
     with app.app_context():
         assert db.session.scalar(db.select(db.func.count(Askan.id))) == 1
+
+def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, client):
+    with app.app_context():
+        person = SupporterProfile(name='Shared Directory Person', phone='845-555-0177',
+                                  normalized_phone='8455550177',
+                                  email='shared@example.org')
+        db.session.add_all([person, Institution(kind='Shul', name='Shared People Shul')])
+        db.session.commit()
+        person_id = person.id
+
+    edit = client.get('/families/1/edit')
+    assert edit.status_code == 200
+    assert f'value="supporter_profile:{person_id}"' in edit.text
+    assert 'Shared Directory Person' in edit.text
+    assert '+ Add person' in edit.text
+
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'askan_person': f'supporter_profile:{person_id}',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        askan = db.session.get(Family, 1).designated_askan
+        assert (askan.name, askan.phone, askan.email) == (
+            'Shared Directory Person', '845-555-0177', 'shared@example.org')
+
+    directory = client.get('/community-directories?kind=Shul')
+    assert directory.status_code == 200
+    assert f'value="askan:{askan.id}"' in directory.text
+    assert f'value="supporter_profile:{person_id}"' in directory.text
+    assert 'data-select-filter="directory-person-' in directory.text
 
 def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):
     response = post(client, '/families/1/edit', {

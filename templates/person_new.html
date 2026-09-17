@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">{{ _('PEOPLE DIRECTORY') }}</div><h1>{{ _('Add person') }}</h1><p>{{ _('Create the person once. The same name can later be used as an applicant, askan, supporter, rabbi, helper, staff member, or community connection.') }}</p></div></div>
+<section class="card padded"><form method="post">{{ token(csrf) }}<input type="hidden" name="next" value="{{ return_to }}"><div class="form-grid"><label>{{ _('Name *') }}<input name="name" maxlength="160" value="{{ request.form.get('name','') }}" required autofocus></label><label>{{ _('Phone') }}<input name="phone" maxlength="80" value="{{ request.form.get('phone','') }}" dir="ltr"></label><label>{{ _('Email address') }}<input name="email" type="email" maxlength="254" value="{{ request.form.get('email','') }}" dir="ltr"></label></div><div class="form-actions"><button>{{ _('Add person') }}</button><a class="button secondary" href="{{ return_to }}">{{ _('Cancel') }}</a></div></form></section>
+{% endblock %}

@@ -14,7 +14,8 @@ def test_budget_persistence_validation_and_blank_intake(monkeypatch):
         client.get('/language/'+lang)
         page=client.get('/families/new')
         assert page.status_code == 200
-        assert 'intake-wizard' in page.text and 'Sample family' not in page.text
+        assert 'intake-wizard' in page.text
+        assert 'name="name" type="text" value=""' in page.text
         assert page.text.count('data-intake-page') == 5
         assert page.text.count('data-step=') == 5
         assert 'class="card intake-applicant"' in page.text

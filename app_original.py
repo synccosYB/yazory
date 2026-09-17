@@ -1021,6 +1021,10 @@ def create_app(test_config=None):
                 people.append(('supporter_child_spouse', child.id, child.spouse_name, 'Spouse', child.name))
         for user in db.session.scalars(select(StaffUser).order_by(StaffUser.name, StaffUser.email)).all():
             people.append(('staff', user.id, user.name or user.email, 'Staff member', user.email))
+        for askan in db.session.scalars(select(Askan).order_by(Askan.name)).all():
+            people.append(('askan', askan.id, askan.name, 'Askan', askan.email or askan.phone))
+        for provider in app.extensions.get('person_directory_providers', ()):
+            people.extend(provider())
         return people
 
     def directory_person_hierarchy():
@@ -1081,11 +1085,51 @@ def create_app(test_config=None):
                         'sort_key': ('supporter', supporter.family.name.lower(),
                                      supporter.name.lower(), 2, child.name.lower(), 1,
                                      child.spouse_name.lower())}
+        for askan in db.session.scalars(select(Askan).order_by(Askan.name)).all():
+            hierarchy[('askan', askan.id)] = {
+                'depth': 0, 'parent_name': '',
+                'relationship_label': '', 'relationship_parent': '',
+                'sort_key': ('askan', askan.name.lower())}
         return hierarchy
 
     def valid_directory_person(person_type, person_id):
         return any(kind == person_type and row_id == person_id
                    for kind, row_id, *_ in directory_people())
+
+    def directory_person_details(person_type, person_id):
+        """Resolve a typed picker value without confusing equal IDs across tables."""
+        if person_type in ('family', 'spouse'):
+            row = db.session.get(Family, person_id)
+            if row:
+                return {'name': row.name if person_type == 'family' else row.spouse,
+                        'phone': row.phone, 'email': row.email}
+        elif person_type in ('child', 'child_spouse'):
+            row = db.session.get(Child, person_id)
+            if row:
+                return {'name': row.name if person_type == 'child' else row.spouse_name,
+                        'phone': row.family.phone, 'email': ''}
+        elif person_type == 'supporter':
+            row = db.session.get(Contact, person_id)
+            if row:
+                return {'name': row.name, 'phone': row.phone, 'email': row.email}
+        elif person_type in ('supporter_child', 'supporter_child_spouse'):
+            row = db.session.get(ContactChild, person_id)
+            if row:
+                return {'name': row.name if person_type == 'supporter_child' else row.spouse_name,
+                        'phone': row.phone, 'email': ''}
+        elif person_type == 'staff':
+            row = db.session.get(StaffUser, person_id)
+            if row:
+                return {'name': row.name or row.email, 'phone': row.phone, 'email': row.email}
+        elif person_type == 'askan':
+            row = db.session.get(Askan, person_id)
+            if row:
+                return {'name': row.name, 'phone': row.phone, 'email': row.email}
+        for resolver in app.extensions.get('person_directory_resolvers', ()):
+            details = resolver(person_type, person_id)
+            if details:
+                return details
+        return None
 
     def find_or_create_institution(kind, name, city='', state=''):
         """Reuse one central institution record when profile fields name it."""
@@ -1904,6 +1948,8 @@ def create_app(test_config=None):
             ('name','fund_name','spouse','phone','email','address','city','state','zip_code','father','inlaws','inlaws_maiden_name','inlaws_family','rabbi','rabbi_phone','weekday_shul','shabbos_shul','yeshivah','shul_gabbai','shul_gabbai_phone','circumstances')} if family else {})
         if family and not error:
             values.update({
+                'askan_person': ('askan:' + str(family.designated_askan.id)
+                                 if family.designated_askan else ''),
                 'askan_name': family.designated_askan.name if family.designated_askan else '',
                 'askan_phone': family.designated_askan.phone if family.designated_askan else '',
                 'askan_email': family.designated_askan.email if family.designated_askan else '',
@@ -1922,6 +1968,7 @@ def create_app(test_config=None):
             Institution.kind == 'Shul').distinct().order_by(Institution.name)).all()
         yeshivah_names = db.session.scalars(select(Institution.name).where(
             Institution.kind == 'Yeshivah').distinct().order_by(Institution.name)).all()
+        people = directory_people()
         if error and 'yeshivah_name' in request.form:
             names = request.form.getlist('yeshivah_name')
             grades = request.form.getlist('yeshivah_grade')
@@ -1952,7 +1999,7 @@ def create_app(test_config=None):
         return render_template('family_form.html', family=family, title=title,
             values=values, budget=budget, intake_error=error,
             shul_names=shul_names, yeshivah_names=yeshivah_names,
-            yeshivah_history=yeshivah_history)
+            yeshivah_history=yeshivah_history, people=people)
 
     def submitted_yeshivah_history():
         """Validate the applicant's repeatable, structured yeshivah history."""
@@ -2002,6 +2049,31 @@ def create_app(test_config=None):
 
     def save_designated_askan(family):
         """Assign one structured askan profile to the case, reusing known people."""
+        selected_person = request.form.get('askan_person', '').strip()
+        if selected_person and selected_person != '__new__':
+            try:
+                person_type, person_id_text = selected_person.split(':', 1)
+                person_id = int(person_id_text)
+            except (TypeError, ValueError):
+                raise ValueError('Choose a valid askan.')
+            details = directory_person_details(person_type, person_id)
+            if not details:
+                raise ValueError('Choose a valid askan.')
+            askan = (db.session.get(Askan, person_id) if person_type == 'askan'
+                     else None)
+            if askan is None and details.get('email'):
+                askan = db.session.scalar(select(Askan).where(
+                    func.lower(Askan.email) == details['email'].lower()))
+            if askan is None and details.get('phone'):
+                askan = db.session.scalar(select(Askan).where(
+                    func.lower(Askan.name) == details['name'].lower(),
+                    Askan.phone == details['phone']))
+            if askan is None:
+                askan = Askan(name=details['name'], phone=details.get('phone', ''),
+                              email=details.get('email', ''))
+                db.session.add(askan)
+            family.designated_askan = askan
+            return
         name = field('askan_name', limit=160)
         phone = field('askan_phone', limit=80)
         email = optional_email_field('askan_email')
@@ -2021,6 +2093,9 @@ def create_app(test_config=None):
             askan = Askan(name=name)
             db.session.add(askan)
         askan.name, askan.phone, askan.email = name, phone, email
+        if request.form.get('askan_person') == '__new__':
+            for creator in app.extensions.get('person_directory_creators', ()):
+                creator(name=name, phone=phone, email=email)
         family.designated_askan = askan
 
     @app.route('/families/new', methods=['GET', 'POST'])
@@ -3334,6 +3409,8 @@ def create_app(test_config=None):
             phone_by_key[('supporter_child_spouse', child.id)] = child.phone
         for user in db.session.scalars(select(StaffUser)).all():
             phone_by_key[('staff', user.id)] = user.phone
+        for askan in db.session.scalars(select(Askan)).all():
+            phone_by_key[('askan', askan.id)] = askan.phone
         people_by_key = {(person_type, person_id): {
             'name': name, 'role': role, 'context': context,
             'phone': phone_by_key.get((person_type, person_id), ''),
@@ -3446,8 +3523,7 @@ def create_app(test_config=None):
             person_id = int(person_id_text)
         except (ValueError, TypeError):
             abort(400, 'Choose a valid person.')
-        if person_type not in ('family', 'spouse', 'child', 'child_spouse', 'supporter',
-                               'supporter_child', 'supporter_child_spouse', 'staff') or not valid_directory_person(person_type, person_id):
+        if not valid_directory_person(person_type, person_id):
             abort(400, 'Choose a valid person.')
         grade = field('grade', required=institution.kind == 'Yeshivah', limit=80)
         def entered_year(name, required=False):
