@@ -30,6 +30,7 @@ def test_workflow_lists_every_page_and_saves_monthly_sponsor():
         'donor_name': 'Mr. Donor', 'memorial_one': 'פלוני בן פלוני',
         'memorial_two': 'פלונית בת פלוני', 'contact_name': 'Office',
         'dedication_one_prefix': 'לע״נ', 'dedication_two_prefix': 'לזכות',
+        'memorial_three': 'הצלחה פאר די משפחה', 'dedication_three_prefix': 'לזכות',
         'contact_phone': '8455551212', 'contact_email': 'office@example.com',
         'website_url': 'https://acme.example',
         'amount': '1200.00', 'paid': '600.00', 'status': 'Published', 'notes': 'Test',
@@ -45,6 +46,7 @@ def test_workflow_lists_every_page_and_saves_monthly_sponsor():
     assert 'OUR SPONSORS' in overview.text
     assert 'לע״נ פלוני בן פלוני' in overview.text
     assert 'לזכות פלונית בת פלוני' in overview.text
+    assert 'לזכות הצלחה פאר די משפחה' in overview.text
 
 
 def test_online_and_printed_application_sponsors_are_independent():
