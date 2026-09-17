@@ -1,7 +1,17 @@
 """Small transactional-email adapter with no provider SDK dependency."""
 import json
+from email.utils import formataddr, parseaddr
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+
+SENDER_DISPLAY_NAME = 'Yaazory Notifications'
+
+
+def branded_sender(sender):
+    """Keep the verified mailbox while showing Yaazory as the sender."""
+    _, address = parseaddr((sender or '').strip())
+    return formataddr((SENDER_DISPLAY_NAME, address)) if address else sender
 
 
 def deliver(api_key, sender, recipient, subject, html, text, timeout=10, reply_to=None):
@@ -9,7 +19,7 @@ def deliver(api_key, sender, recipient, subject, html, text, timeout=10, reply_t
     if not api_key or not sender:
         return None, 'Email delivery is not configured.'
     message = {
-        'from': sender, 'to': [recipient], 'subject': subject,
+        'from': branded_sender(sender), 'to': [recipient], 'subject': subject,
         'html': html, 'text': text,
     }
     if reply_to:
