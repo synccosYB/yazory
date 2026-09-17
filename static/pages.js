@@ -125,6 +125,11 @@ document.querySelectorAll('[data-open-details]').forEach(link=>link.addEventList
   const details=document.getElementById(link.dataset.openDetails);
   if(details)details.open=true;
 }));
+document.querySelectorAll('[data-single-open]').forEach(group=>group.addEventListener('toggle',event=>{
+  const opened=event.target;
+  if(opened.tagName!=='DETAILS'||!opened.open)return;
+  group.querySelectorAll(':scope > details[open]').forEach(item=>{if(item!==opened)item.open=false;});
+},true));
 
 const mailboxRecipientForm=document.querySelector('[data-mailbox-recipient-form]');
 if(mailboxRecipientForm){
