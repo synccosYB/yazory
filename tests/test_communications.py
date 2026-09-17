@@ -71,8 +71,10 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'data-mailbox-folder="applicants"' in page.text
     assert 'data-mailbox-folder="sent"' in page.text
     assert 'id="communication-callbacks"' in page.text
+    assert 'id="outreach-workflow"' in page.text
+    assert 'id="communication-history" tabindex="-1"' in page.text
     assert 'class="outreach-actions"><div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260917-external-email-v1' in page.text
+    assert 'pages.js?v=20260917-communications-navigation-v2' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
