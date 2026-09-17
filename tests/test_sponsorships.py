@@ -1,5 +1,6 @@
 from datetime import datetime
 from io import BytesIO
+import re
 
 from app_entry_intake import create_app
 from app_original import Family, db
@@ -42,6 +43,12 @@ def test_workflow_lists_every_page_and_saves_monthly_sponsor():
         assert row.amount_cents == 120000 and row.paid_cents == 60000
     overview = client.get('/')
     assert 'Acme Foods' in overview.text and 'פלוני בן פלוני' in overview.text
+    banner = re.search(
+        r'<div class="monthly-sponsor-memorial"[^>]*>(.*?)</div>',
+        overview.text, re.DOTALL)
+    assert banner and 'לע״נ פלוני בן פלוני' in banner.group(1)
+    assert 'לזכות פלונית בת פלוני' in banner.group(1)
+    assert 'לזכות הצלחה פאר די משפחה' in banner.group(1)
     assert 'href="https://acme.example"' in overview.text
     assert 'OUR SPONSORS' in overview.text
     assert 'לע״נ פלוני בן פלוני' in overview.text
@@ -67,6 +74,30 @@ def test_online_and_printed_application_sponsors_are_independent():
     assert 'Online Sponsor' in online_page.text and 'Print Sponsor' not in online_page.text
     assert 'Print Sponsor' in printed_page.text and 'Online Sponsor' not in printed_page.text
     assert 'position:fixed' in client.get('/static/sponsorships.css').text
+
+
+def test_page_sponsor_banner_shows_three_dedications_with_saved_prefixes():
+    app = make_app()
+    client = app.test_client()
+    month = datetime.now().strftime('%Y-%m')
+    with app.app_context():
+        db.session.add(MonthlySponsorship(
+            month=month, page_key='overview', fund_name='קרן Example',
+            company_name='Example Company', donor_name='Example Donor',
+            memorial_one='ראשון', dedication_one_prefix='לע״נ',
+            memorial_two='שני', dedication_two_prefix='לזכות',
+            memorial_three='שלישי', dedication_three_prefix='לזכות',
+            status='Published', logo_data=b'logo', logo_mime='image/png'))
+        db.session.commit()
+
+    page = client.get('/').text
+    banner = re.search(
+        r'<div class="monthly-sponsor-memorial"[^>]*>(.*?)</div>',
+        page, re.DOTALL)
+    assert banner
+    assert 'לע״נ ראשון' in banner.group(1)
+    assert 'לזכות שני' in banner.group(1)
+    assert 'לזכות שלישי' in banner.group(1)
 
 
 def test_unpublished_sponsor_is_not_displayed():

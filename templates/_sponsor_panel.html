@@ -6,8 +6,9 @@
     {% if current_sponsor.company_name %}<strong>{{ current_sponsor.company_name }}</strong>{% endif %}
     {% if current_sponsor.donor_name %}<b>{{ current_sponsor.donor_name }}</b>{% endif %}
   </div>
-  {% if current_sponsor.memorial_one or current_sponsor.memorial_two %}<div class="monthly-sponsor-memorial" dir="rtl">
-    {% if current_sponsor.memorial_one %}<span>לע״נ {{ current_sponsor.memorial_one }}</span>{% endif %}
-    {% if current_sponsor.memorial_two %}<span>לע״נ {{ current_sponsor.memorial_two }}</span>{% endif %}
+  {% if current_sponsor.memorial_one or current_sponsor.memorial_two or current_sponsor.memorial_three %}<div class="monthly-sponsor-memorial" dir="rtl">
+    {% if current_sponsor.memorial_one %}<span>{% if current_sponsor.memorial_one.startswith('לע') or 'זכות' in current_sponsor.memorial_one %}{{ current_sponsor.memorial_one }}{% else %}{{ current_sponsor.dedication_one_prefix or 'לע״נ' }} {{ current_sponsor.memorial_one }}{% endif %}</span>{% endif %}
+    {% if current_sponsor.memorial_two %}<span>{% if current_sponsor.memorial_two.startswith('לע') or 'זכות' in current_sponsor.memorial_two %}{{ current_sponsor.memorial_two }}{% else %}{{ current_sponsor.dedication_two_prefix or 'לע״נ' }} {{ current_sponsor.memorial_two }}{% endif %}</span>{% endif %}
+    {% if current_sponsor.memorial_three %}<span>{% if current_sponsor.memorial_three.startswith('לע') or 'זכות' in current_sponsor.memorial_three %}{{ current_sponsor.memorial_three }}{% else %}{{ current_sponsor.dedication_three_prefix or 'לע״נ' }} {{ current_sponsor.memorial_three }}{% endif %}</span>{% endif %}
   </div>{% endif %}
 </aside>{% endif %}
