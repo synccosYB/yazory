@@ -39,3 +39,14 @@ def test_delivery_sets_reply_to_when_configured(monkeypatch):
         'Body', reply_to='reply+secure@reply.example.test')
     assert provider_id == 'sent_1' and error is None
     assert captured['reply_to'] == 'reply+secure@reply.example.test'
+
+
+def test_branded_sender_adds_yaazory_display_name_to_bare_address():
+    assert email_service.branded_sender('notifications@synccos.live') == (
+        'Yaazory Notifications <notifications@synccos.live>')
+
+
+def test_branded_sender_replaces_old_display_name_but_keeps_address():
+    assert email_service.branded_sender(
+        'Old Name <notifications@synccos.live>') == (
+        'Yaazory Notifications <notifications@synccos.live>')
