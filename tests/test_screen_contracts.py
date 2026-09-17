@@ -100,6 +100,15 @@ def test_network_people_list_is_compact_searchable_and_not_hierarchy_indented():
     assert "document.querySelectorAll('[data-list-search]')" in script
 
 
+def test_network_applicants_and_people_use_matching_accordion_cards():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/directories.html').read_text()
+    assert 'class="network-panel network-people-panel network-applicants-panel"' in template
+    assert 'data-table-search="network-applicants-{{ institution.id }}"' in template
+    assert 'id="network-applicants-{{ institution.id }}"' in template
+    assert template.count('<summary class="network-panel-header">') == 2
+
+
 def test_dashboard_uses_translated_labels_and_keeps_preview_rows_visible():
     root = Path(__file__).resolve().parents[1]
     template = (root / 'templates/dashboard.html').read_text()

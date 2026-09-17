@@ -3324,26 +3324,33 @@ def create_app(test_config=None):
             }),
         } for person_type, person_id, name, role, context in people}
         institutions = db.session.scalars(statement).all()
-        allowed_people = None
+        family_institution_ids = None
         if family_id:
-            child_ids = set(db.session.scalars(select(Child.id).where(
-                Child.family_id == family_id)).all())
-            supporter_ids = set(db.session.scalars(select(Contact.id).where(
-                Contact.family_id == family_id)).all())
-            supporter_child_ids = set(db.session.scalars(select(ContactChild.id).where(
-                ContactChild.contact_id.in_(supporter_ids))).all()) if supporter_ids else set()
-            allowed_people = {('family', family_id), ('spouse', family_id)}
-            allowed_people.update((person_type, child_id) for child_id in child_ids
-                                  for person_type in ('child', 'child_spouse'))
-            allowed_people.update(('supporter', supporter_id) for supporter_id in supporter_ids)
-            allowed_people.update((person_type, child_id) for child_id in supporter_child_ids
-                                  for person_type in ('supporter_child', 'supporter_child_spouse'))
+            family_institution_ids = set(db.session.scalars(select(
+                PersonAffiliation.institution_id
+            ).where(
+                PersonAffiliation.person_type == 'family',
+                PersonAffiliation.person_id == family_id,
+            )).all())
+            # Older directory entries sometimes connected the shul only
+            # through one of the family's supporters. Treat that as another
+            # path to the same shared institution, then render the complete
+            # institution network below.
+            supporter_ids = select(Contact.id).where(Contact.family_id == family_id)
+            family_institution_ids.update(db.session.scalars(select(
+                PersonAffiliation.institution_id
+            ).where(
+                PersonAffiliation.person_type == 'supporter',
+                PersonAffiliation.person_id.in_(supporter_ids),
+            )).all())
         visible_institutions = []
         for institution in institutions:
-            rows = [row for row in institution.affiliations
-                    if allowed_people is None or (row.person_type, row.person_id) in allowed_people]
-            if family_id and not rows:
+            if family_institution_ids is not None and institution.id not in family_institution_ids:
                 continue
+            # A shul or yeshivah is one shared network. Selecting an applicant
+            # chooses the relevant institutions; it must not hide the other
+            # applicants and people connected to those same institutions.
+            rows = list(institution.affiliations)
             rows = sorted(rows, key=lambda row: (
                 people_by_key.get((row.person_type, row.person_id), {}).get(
                     'sort_key', ('zz', row.id))))

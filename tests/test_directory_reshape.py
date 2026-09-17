@@ -60,6 +60,17 @@ def test_directory_uses_one_shared_network_for_multiple_applicants(app, client):
     # Applicant filtering remains available without creating a second network.
     assert 'name="family_id"' in page
 
+    with app.app_context():
+        second_id = db.session.scalar(db.select(Family.id).where(
+            Family.name == 'Second Applicant'))
+    for selected_family_id in (1, second_id):
+        filtered = client.get(
+            f'/community-directories?kind=Shul&family_id={selected_family_id}'
+        ).get_data(as_text=True)
+        assert 'Shared Supporter' in filtered
+        assert 'Second Applicant' in filtered
+        assert 'Sample family' in filtered
+
 
 def test_directory_only_renders_one_network_workspace(app, client):
     with app.app_context():

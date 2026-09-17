@@ -98,15 +98,16 @@
       </div>{% endif %}
 
       <div class="network-columns">
-        <section class="network-panel">
-          <div class="network-panel-header"><h3>{{ _('Applicants connected here') }}</h3><span class="count">{{ ns.applicant_count }}</span></div>
-          <div class="table-wrap"><table><thead><tr><th>{{ _('Name') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Connection') }}</th><th>{{ _('Actions') }}</th></tr></thead><tbody>
+        <details class="network-panel network-people-panel network-applicants-panel">
+          <summary class="network-panel-header"><h3>{{ _('Applicants connected here') }}</h3><span class="count">{{ ns.applicant_count }}</span></summary>
+          <div class="network-people-tools"><label>{{ _('Search people') }}<input type="search" data-table-search="network-applicants-{{ institution.id }}" placeholder="{{ _('Name, phone, or email') }}" autocomplete="off"></label></div>
+          <div class="table-wrap network-people-list"><table id="network-applicants-{{ institution.id }}"><thead><tr><th>{{ _('Name') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Connection') }}</th><th>{{ _('Actions') }}</th></tr></thead><tbody>
           {% for grade, connections in institution.directory_groups %}{% if kind == 'Yeshivah' and grade %}<tr class="directory-grade-row"><th colspan="4">{{ _('Class entered') }}: {{ grade }}</th></tr>{% endif %}{% for connection in connections %}{% if connection.person_type == 'family' %}{% set person = people_by_key.get((connection.person_type, connection.person_id)) %}
             <tr><td><div class="directory-person depth-{{ person.depth if person else 0 }}"><strong>{{ person.name if person else _('Unknown applicant') }}</strong>{% if person and person.parent_name %}<small>{{ _('Under') }} {{ person.parent_name }}</small>{% endif %}</div></td><td><bdi dir="ltr">{{ person.phone if person and person.phone else '—' }}</bdi></td><td>{% if kind == 'Yeshivah' %}{{ connection.grade or '' }}{% if connection.year_from %} · <bdi dir="ltr">{{ connection.year_from }}{% if connection.year_to %}–{{ connection.year_to }}{% endif %}</bdi>{% endif %}{% else %}{{ institution.name }}{% endif %}</td><td><form method="post" action="{{ url_for('delete_person_affiliation', affiliation_id=connection.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Remove') }}</button></form></td></tr>
           {% endif %}{% endfor %}{% endfor %}
           {% if ns.applicant_count == 0 %}<tr><td colspan="4" class="directory-empty">{{ _('No applicants connected yet.') }}</td></tr>{% endif %}
           </tbody></table></div>
-        </section>
+        </details>
 
         <details class="network-panel network-people-panel">
           <summary class="network-panel-header"><h3>{{ _('People in this network') }}</h3><span class="count">{{ ns.people_count }}</span></summary>
