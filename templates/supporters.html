@@ -27,50 +27,26 @@
 <div class="list-filter-actions"><button type="submit">{{ _('Apply filters') }}</button><a class="button secondary" href="{{ url_for('supporters') }}">{{ _('Clear filters') }}</a></div>
 </form>
 </section>
-<section class="card">
-<div class="table-wrap">
-<table>
-<thead>
-<tr>
-<th>{{ _('Supporter') }}</th>
-<th>{{ _('Phone') }}</th>
-<th>{{ _('Family') }}</th>
-<th>{{ _('Relationship') }}</th>
-<th>{{ _('Donation commitment') }}</th>
-<th>{{ _('Received to date') }}</th>
-<th>{{ _('Follow-up status') }}</th>
-<th class="list-actions">{{ _('Actions') }}</th>
-</tr>
-</thead>
-<tbody>{% for c in contacts %}<tr class="{{ 'nested-supporter-row' if c.parent_supporter }}">
-<td>
-<div class="supporter-name">
-<a class="strong" href="{{ url_for('supporter_detail', contact_id=c.id) }}">{{ c.name }}</a>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% elif c.parent_connection.startswith('F:') %}<small>{{ _('Son of applicant’s father') if c.parent_connection == 'F:Son' else _('Son-in-law of applicant’s father') }} · {{ c.family.father }}</small>{% elif c.parent_connection.startswith('I:') %}<small>{{ _('Son of applicant’s father-in-law') if c.parent_connection == 'I:Son' else _('Son-in-law of applicant’s father-in-law') }} · {{ c.family.inlaws }}</small>{% endif %}<details class="supporter-family add-child-panel no-print">
-<summary>{{ _('Add another child') }}</summary>
-<form method="post" action="{{ url_for('add_contact_child', contact_id=c.id) }}">{{ token(csrf) }}<div class="supporter-child-form">
-<label>{{ _('Child name *') }}<input name="name" required maxlength="160">
-</label>
-<label>{{ _('Spouse name') }}<input name="spouse_name" maxlength="160">
-</label>
-<label>{{ _('What is he to that supporter?') }}<select name="parent_connection">
-<option value="Son">{{ _('Son') }}</option>
-<option value="Son-in-law">{{ _('Son-in-law') }}</option>
-</select>
-</label>
-<label>{{ _('Phone') }}<input name="phone" maxlength="80">
-</label>
-<button class="small">{{ _('Add another child') }}</button>
+<section class="card supporter-list-card">
+<div class="supporter-accordion">
+{% for c in contacts %}<details class="supporter-accordion-item {{ 'nested-supporter-row' if c.parent_supporter }}">
+<summary>
+<span class="supporter-accordion-name"><strong>{{ c.name }}</strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% elif c.parent_connection.startswith('F:') %}<small>{{ _('Son of applicant’s father') if c.parent_connection == 'F:Son' else _('Son-in-law of applicant’s father') }} · {{ c.family.father }}</small>{% elif c.parent_connection.startswith('I:') %}<small>{{ _('Son of applicant’s father-in-law') if c.parent_connection == 'I:Son' else _('Son-in-law of applicant’s father-in-law') }} · {{ c.family.inlaws }}</small>{% endif %}</span>
+<span><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi><small>{{ c.family.name }}</small></span>
+<span><strong>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</strong><small>{{ _('Received to date') }}: {{ received[c.id]|money }}</small></span>
+<span class="supporter-accordion-status">{{ _(c.status) }}</span>
+</summary>
+<div class="supporter-accordion-panel">
+<div class="supporter-record-meta">
+<div><small>{{ _('Supporter') }}</small><a class="strong" href="{{ url_for('supporter_detail', contact_id=c.id) }}">{{ c.name }}</a></div>
+<div><small>{{ _('Family') }}</small><strong>{{ c.family.name }}</strong></div>
+<div><small>{{ _('Relationship') }}</small><strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</strong></div>
+<div><small>{{ _('Phone') }}</small><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></div>
+<div><small>{{ _('Received to date') }}</small><strong>{{ received[c.id]|money }}</strong></div>
+<div><small>{{ _('Follow-up status') }}</small><strong>{{ _(c.status) }}</strong></div>
 </div>
-</form>
-</details>
-</div>
-</td>
-<td>
-<bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi>
-</td>
-<td>{{ c.family.name }}</td>
-<td>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
-<td class="pledge-cell">
+<div class="supporter-record-tools">
+<div class="pledge-cell">
 <form class="inline-pledge-form no-print" method="post" action="{{ url_for('update_contact', contact_id=c.id) }}">
 {{ token(csrf) }}
 <input type="hidden" name="status" value="{{ c.status }}">
@@ -81,21 +57,26 @@
 <button class="small" type="submit">{{ _('Save') }}</button>
 </form>
 <span class="print-only">{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</span>
-</td>
-<td>{{ received[c.id]|money }}</td>
-<td>{{ _(c.status) }}</td>
-<td class="list-actions">
-<div class="row-actions">
+</div>
+<details class="supporter-family add-child-panel no-print">
+<summary>{{ _('Add another child') }}</summary>
+<form method="post" action="{{ url_for('add_contact_child', contact_id=c.id) }}">{{ token(csrf) }}<div class="supporter-child-form">
+<label>{{ _('Child name *') }}<input name="name" required maxlength="160"></label>
+<label>{{ _('Spouse name') }}<input name="spouse_name" maxlength="160"></label>
+<label>{{ _('What is he to that supporter?') }}<select name="parent_connection"><option value="Son">{{ _('Son') }}</option><option value="Son-in-law">{{ _('Son-in-law') }}</option></select></label>
+<label>{{ _('Phone') }}<input name="phone" maxlength="80"></label>
+<button class="small">{{ _('Add another child') }}</button>
+</div></form>
+</details>
+<div class="row-actions no-print">
 <a class="button small secondary" href="{{ url_for('edit_contact', contact_id=c.id) }}">{{ _('Edit') }}</a>
 <form method="post" action="{{ url_for('delete_contact', contact_id=c.id) }}" onsubmit="return confirm({{ _('Delete this supporter connection?')|tojson }})">{{ token(csrf) }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
 <button class="small danger" type="submit">{{ _('Delete') }}</button>
 </form>
 </div>
-</td>
-</tr>{% else %}<tr>
-<td colspan="8" class="empty">{{ _('No supporters found.') }}</td>
-</tr>{% endfor %}</tbody>
-</table>
+</div>
+</div>
+</details>{% else %}<p class="empty">{{ _('No supporters found.') }}</p>{% endfor %}
 </div>
 </section>
 <details class="card padded add-supporter-panel no-print" {% if selected_family_id %}open{% endif %}>

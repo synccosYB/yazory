@@ -60,6 +60,17 @@ def test_supporter_tree_names_link_to_profiles_and_table_is_searchable():
     assert "url_for('supporter_detail',contact_id=row.through.id)" in template
 
 
+def test_supporter_directory_uses_expandable_records_without_table_pagination():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/supporters.html').read_text()
+    css = (root / 'static/style.css').read_text()
+    assert 'class="supporter-accordion"' in template
+    assert 'class="supporter-accordion-item' in template
+    assert 'class="supporter-accordion-panel"' in template
+    assert '<table>' not in template
+    assert '.supporter-accordion-item>summary' in css
+
+
 def test_dashboard_uses_translated_labels_and_keeps_preview_rows_visible():
     root = Path(__file__).resolve().parents[1]
     template = (root / 'templates/dashboard.html').read_text()

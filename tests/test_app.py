@@ -450,14 +450,14 @@ def test_supporter_list_filters_by_siblings_and_nephews(app, client):
             'status': 'To contact', 'monthly': '0'}).status_code == 302
 
     siblings = client.get('/supporters?relationship_group=siblings').text
-    siblings_rows = siblings.split('<tbody>', 1)[1].split('</tbody>', 1)[0]
-    assert 'Only brother' in siblings_rows
-    assert 'Only nephew' not in siblings_rows and 'Ordinary friend' not in siblings_rows
+    sibling_records = siblings.split('<div class="supporter-accordion">', 1)[1].split('<details class="card padded add-supporter-panel', 1)[0]
+    assert 'Only brother' in sibling_records
+    assert 'Only nephew' not in sibling_records and 'Ordinary friend' not in sibling_records
 
     nephews = client.get('/supporters?relationship_group=nephews').text
-    nephew_rows = nephews.split('<tbody>', 1)[1].split('</tbody>', 1)[0]
-    assert 'Only nephew' in nephew_rows
-    assert 'Only brother' not in nephew_rows and 'Ordinary friend' not in nephew_rows
+    nephew_records = nephews.split('<div class="supporter-accordion">', 1)[1].split('<details class="card padded add-supporter-panel', 1)[0]
+    assert 'Only nephew' in nephew_records
+    assert 'Only brother' not in nephew_records and 'Ordinary friend' not in nephew_records
     assert client.get('/supporters?relationship_group=unknown').status_code == 400
 
 def test_all_four_directory_filters_are_linked(client):
@@ -484,7 +484,7 @@ def test_filtered_lists_show_phone_column_and_print_action(app, client):
         db.session.commit()
     supporter_page = client.get(
         '/supporters?relationship_group=siblings&family_id=1').text
-    assert '<th>Phone</th>' in supporter_page
+    assert '<small>Phone</small>' in supporter_page
     assert '(845) 555-0142' in supporter_page
     assert 'onclick="window.print()"' in supporter_page
 
@@ -534,8 +534,8 @@ def test_all_four_lists_can_be_filtered_by_applicant(app, client):
 
     supporter_page = client.get(
         f'/supporters?relationship_group=siblings&family_id={second_id}').text
-    supporter_rows = supporter_page.split('<tbody>', 1)[1].split('</tbody>', 1)[0]
-    assert 'Second brother' in supporter_rows and 'Sample sibling' not in supporter_rows
+    supporter_records = supporter_page.split('<div class="supporter-accordion">', 1)[1].split('<details class="card padded add-supporter-panel', 1)[0]
+    assert 'Second brother' in supporter_records and 'Sample sibling' not in supporter_records
     assert f'kind=Shul&amp;family_id={second_id}' in supporter_page
 
     shul_page = client.get(
