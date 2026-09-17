@@ -60,9 +60,9 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'Test Supporter' in page.text and 'First phone call' in page.text
     assert 'data-ai-email-form' in page.text
     assert 'data-loading-text="Writing the email…"' in page.text
-    assert 'outreach-workflow-table' in page.text
-    assert 'data-table-search="communications-supporters-table"' in page.text
-    assert 'id="communications-supporters-table"' in page.text
+    assert 'communication-accordion-item outreach-supporter' in page.text
+    assert 'data-accordion-search="communications-supporters-list"' in page.text
+    assert 'id="communications-supporters-list"' in page.text
     assert 'aria-label="Search supporters"' in page.text
     assert 'data-communication-filter="all"' in page.text
     assert 'data-communication-filter="callbacks"' in page.text
@@ -73,8 +73,8 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'id="communication-callbacks"' in page.text
     assert 'id="outreach-workflow"' in page.text
     assert 'id="communication-history" tabindex="-1"' in page.text
-    assert 'class="outreach-actions"><div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260917-sent-mailbox-v1' in page.text
+    assert '<div class="outreach-action-grid">' in page.text
+    assert 'pages.js?v=20260917-communications-accordions-v1' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
@@ -250,7 +250,8 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
         assert timeline.status == 'preview'
     result_page = client.get(sent.location)
     assert 'Email was prepared but not sent because delivery is in preview mode.' in result_page.text
-    assert '<details class="communication-message-details"><summary>View message</summary>' in result_page.text
+    assert 'class="communication-accordion history-accordion"' in result_page.text
+    assert 'What time works for a short call?' in result_page.text
     assert '<small class="preserve">Dear Test Supporter' not in result_page.text
 
 

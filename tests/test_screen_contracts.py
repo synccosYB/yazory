@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 from app_entry import create_app
 
@@ -16,11 +15,12 @@ def test_communications_mobile_cards_have_localized_field_labels():
         client.get(f'/language/{language}?next=/communications')
         page = client.get('/communications').text
         assert f'dir="{direction}"' in page
-    # The isolated app has no supporter rows, so verify the repeated-row source
-    # independently. Jinja translates each label in the active request.
+    # The isolated app has no supporter rows, so verify the repeated accordion
+    # source independently. Jinja translates each label in the active request.
     source = (Path(__file__).resolve().parents[1] / 'templates/communications.html').read_text()
-    labels = re.findall(r"data-label=\"\{\{ _\('([^']+)'\) \}\}\"", source)
-    assert labels == ['Supporter', 'Family', 'Contact', 'Current step', 'Actions']
+    assert 'communication-accordion-item outreach-supporter' in source
+    for label in ['Supporter', 'Contact', 'Current step', 'Actions']:
+        assert "{{ _('" + label + "') }}" in source
 
 
 def test_visual_ci_covers_required_layout_modes():
