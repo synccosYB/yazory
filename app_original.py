@@ -1033,14 +1033,22 @@ def create_app(test_config=None):
             if family.spouse:
                 hierarchy[('spouse', family.id)] = {
                     'depth': 1, 'parent_name': family.name,
+                    'relationship_label': 'Spouse of',
+                    'relationship_parent': family.name,
                     'sort_key': (family.name.lower(), 1, family.spouse.lower())}
             for child in sorted(family.children, key=lambda row: row.name.lower()):
                 hierarchy[('child', child.id)] = {
                     'depth': 1, 'parent_name': family.name,
+                    'relationship_label': 'Child of',
+                    'relationship_parent': family.name,
                     'sort_key': (family.name.lower(), 2, child.name.lower(), 0)}
                 if child.spouse_name:
                     hierarchy[('child_spouse', child.id)] = {
                         'depth': 2, 'parent_name': child.name,
+                        'relationship_label': 'Spouse of',
+                        'relationship_parent': child.name,
+                        'extended_relationship_label': 'Son-in-law or daughter-in-law of',
+                        'extended_relationship_parent': family.name,
                         'sort_key': (family.name.lower(), 2, child.name.lower(), 1,
                                      child.spouse_name.lower())}
         for supporter in db.session.scalars(select(Contact).order_by(Contact.name)).all():
@@ -1049,16 +1057,27 @@ def create_app(test_config=None):
             hierarchy[('supporter', supporter.id)] = {
                 'depth': 1 if parent else 0,
                 'parent_name': parent.name if parent else '',
+                'relationship_label': (
+                    f'{supporter.parent_connection} of'
+                    if parent and supporter.parent_connection in ('Son', 'Son-in-law')
+                    else ''),
+                'relationship_parent': parent.name if parent else '',
                 'sort_key': ('supporter', supporter.family.name.lower(), root_name.lower(),
                              1 if parent else 0, supporter.name.lower())}
             for child in supporter.children:
                 hierarchy[('supporter_child', child.id)] = {
                     'depth': 1, 'parent_name': supporter.name,
+                    'relationship_label': 'Child of',
+                    'relationship_parent': supporter.name,
                     'sort_key': ('supporter', supporter.family.name.lower(),
                                  supporter.name.lower(), 2, child.name.lower(), 0)}
                 if child.spouse_name:
                     hierarchy[('supporter_child_spouse', child.id)] = {
                         'depth': 2, 'parent_name': child.name,
+                        'relationship_label': 'Spouse of',
+                        'relationship_parent': child.name,
+                        'extended_relationship_label': 'Son-in-law or daughter-in-law of',
+                        'extended_relationship_parent': supporter.name,
                         'sort_key': ('supporter', supporter.family.name.lower(),
                                      supporter.name.lower(), 2, child.name.lower(), 1,
                                      child.spouse_name.lower())}
@@ -3320,6 +3339,7 @@ def create_app(test_config=None):
             'phone': phone_by_key.get((person_type, person_id), ''),
             **hierarchy.get((person_type, person_id), {
                 'depth': 0, 'parent_name': '',
+                'relationship_label': '', 'relationship_parent': '',
                 'sort_key': (context.lower(), name.lower()),
             }),
         } for person_type, person_id, name, role, context in people}

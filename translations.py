@@ -5,6 +5,11 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Spouse of': {'he': 'בן/בת זוג של', 'yi': 'מאן אדער ווייב פון'},
+    'Child of': {'he': 'ילד/ה של', 'yi': 'א קינד פון'},
+    'Son of': {'he': 'בן של', 'yi': 'א זון פון'},
+    'Son-in-law of': {'he': 'חתן של', 'yi': 'אן איידעם פון'},
+    'Son-in-law or daughter-in-law of': {'he': 'חתן או כלה של', 'yi': 'אן איידעם אדער שנור פון'},
     'What’s new': {'he': 'מה חדש', 'yi': 'וואס איז ניי'},
     'SINCE YOUR LAST VISIT': {'he': 'מאז הביקור האחרון שלך', 'yi': 'זינט אייער לעצטן באזוך'},
     'New messages, donations, applications, approvals, and other activity appear here.': {'he': 'הודעות, תרומות, בקשות, אישורים ופעילות חדשה אחרת מופיעים כאן.', 'yi': 'נייע מעסעדזשעס, נדבות, בקשות, באשטעטיגונגען און אנדערע נייע אקטיוויטעט ערשיינען דא.'},

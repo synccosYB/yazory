@@ -1,7 +1,7 @@
 from app_entry import create_app
 import pytest
 
-from app import Contact, Family, Institution, PersonAffiliation, db
+from app import Child, Contact, Family, Institution, PersonAffiliation, db
 
 
 @pytest.fixture
@@ -89,6 +89,31 @@ def test_directory_only_renders_one_network_workspace(app, client):
     ).get_data(as_text=True)
     assert selected.count('Connect an existing person') == 1
     assert selected.count('name="institution_id"') == 1
+
+
+def test_directory_spouse_relationship_names_both_connections(app, client):
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        child = Child(family_id=family.id, name='Applicant daughter', age=25,
+                      grade='', school='', married=True,
+                      spouse_name='Applicant son in law')
+        shul = Institution(kind='Shul', name='Relationship shul')
+        db.session.add_all([child, shul])
+        db.session.flush()
+        db.session.add_all([
+            PersonAffiliation(institution_id=shul.id, person_type='family',
+                              person_id=family.id),
+            PersonAffiliation(institution_id=shul.id, person_type='child_spouse',
+                              person_id=child.id),
+        ])
+        db.session.commit()
+        shul_id = shul.id
+
+    page = client.get(
+        f'/community-directories?kind=Shul&network_id={shul_id}'
+    ).get_data(as_text=True)
+    assert 'Spouse of Applicant daughter' in page
+    assert 'Son-in-law or daughter-in-law of Sample family' in page
 
 
 def test_directory_new_copy_is_translated_to_yiddish(app, client):
