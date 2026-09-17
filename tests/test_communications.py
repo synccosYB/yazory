@@ -67,6 +67,9 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'data-communication-filter="all"' in page.text
     assert 'data-communication-filter="callbacks"' in page.text
     assert 'data-communication-filter="overdue"' in page.text
+    assert 'data-mailbox-folder="supporters"' in page.text
+    assert 'data-mailbox-folder="applicants"' in page.text
+    assert 'data-mailbox-folder="sent"' in page.text
     assert 'id="communication-callbacks"' in page.text
     assert 'class="outreach-actions"><div class="outreach-action-grid">' in page.text
     assert 'pages.js?v=20260916-application-message-v1' in page.text

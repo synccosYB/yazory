@@ -6,11 +6,11 @@
   <aside class="mailbox-folders">
     <button class="mailbox-compose" type="button" data-mailbox-compose>{{ _('Compose') }}</button>
     <nav aria-label="{{ _('Mail folders') }}">
-      <a class="selected" href="#mailbox-inbox"><span>{{ _('Inbox') }}</span><b>{{ inbox_messages|length + email_replies|length + applicant_replies|length }}</b></a>
-      <a href="#mailbox-supporters"><span>{{ _('Supporters') }}</span><b>{{ email_replies|length }}</b></a>
-      <a href="#mailbox-applicants"><span>{{ _('Applicants') }}</span><b>{{ applicant_replies|length }}</b></a>
-      {% if inbox_history is not none %}<a href="#mailbox-general"><span>{{ _('General email') }}</span><b>{{ inbox_messages|length }}</b></a>{% endif %}
-      <a href="#mailbox-sent"><span>{{ _('Sent & history') }}</span></a>
+      <a class="selected" href="#mailbox-inbox" data-mailbox-folder="inbox"><span>{{ _('Inbox') }}</span><b>{{ inbox_messages|length + email_replies|length + applicant_replies|length }}</b></a>
+      <a href="#mailbox-inbox" data-mailbox-folder="supporters"><span>{{ _('Supporters') }}</span><b>{{ email_replies|length }}</b></a>
+      <a href="#mailbox-inbox" data-mailbox-folder="applicants"><span>{{ _('Applicants') }}</span><b>{{ applicant_replies|length }}</b></a>
+      {% if inbox_history is not none %}<a href="#mailbox-inbox" data-mailbox-folder="general"><span>{{ _('General email') }}</span><b>{{ inbox_messages|length }}</b></a>{% endif %}
+      <a href="#communication-history" data-mailbox-folder="sent"><span>{{ _('Sent & history') }}</span></a>
     </nav>
     <a class="mailbox-tools-link" href="#communication-tools">{{ _('Callbacks & outreach tools') }}</a>
   </aside>
@@ -31,7 +31,7 @@
 
     <div class="mailbox-list" data-mailbox-list>
       {% if inbox_history is not none %}{% for message in inbox_history %}
-      <details class="mailbox-message {{ 'unread' if message.status == 'unread' }}" id="mailbox-general">
+      <details class="mailbox-message {{ 'unread' if message.status == 'unread' }}" data-mailbox-category="general">
         <summary><span class="mailbox-avatar">{{ (message.sender_name or message.sender_email)[:1]|upper }}</span><span class="mailbox-sender">{{ message.sender_name or message.sender_email }}<small><bdi dir="ltr">{{ message.sender_email }}</bdi></small></span><span class="mailbox-subject"><strong>{{ message.subject or _('No subject') }}</strong><small>{{ message.body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary>
         <div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ message.subject or _('No subject') }}</h3><p>{{ _('From') }} <bdi dir="ltr">{{ message.sender_email }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.body }}</div><div class="mailbox-reply-actions"><details><summary class="button small">{{ _('Reply') }}</summary><form method="post" action="{{ url_for('reply_to_inbound_inbox_message',message_id=message.id) }}">{{ token(csrf) }}<label>{{ _('Subject') }}<input name="subject" value="{{ message.subject if message.subject.lower().startswith('re:') else 'Re: ' ~ message.subject }}" maxlength="300" required></label><label>{{ _('Reply') }}<textarea name="body" rows="6" maxlength="5000" required autofocus></textarea></label><button>{{ _('Send reply') }}</button></form></details>{% if message.status == 'unread' %}<form method="post" action="{{ url_for('handle_inbound_inbox_message',message_id=message.id) }}">{{ token(csrf) }}<button class="secondary small">{{ _('Mark handled') }}</button></form>{% endif %}</div></div>
       </details>{% endfor %}{% endif %}
