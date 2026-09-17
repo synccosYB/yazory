@@ -450,7 +450,7 @@ html[lang="yi"] .landing-hero h1,html[lang="yi"] .landing-page-head h1{max-width
 html[lang="yi"] .landing-hero p,html[lang="yi"] .landing-page-head p{max-width:860px;font-size:18px;line-height:1.9}
 html[lang="yi"] .landing-section>h2{font-family:Arial,"Noto Sans Hebrew",sans-serif;font-weight:700;line-height:1.35}
 html[lang="yi"] .public-sponsors h2{font-family:Arial,"Noto Sans Hebrew",sans-serif;font-weight:500;line-height:1.55}
-html[dir="rtl"] .public-page-home .landing-copy,html[dir="rtl"] .public-page-about .landing-copy{max-width:820px;margin-inline-end:auto;transform:translateX(18px);font-family:"Noto Sans Hebrew","Segoe UI",Arial,sans-serif}
+html[dir="rtl"] .public-page-home .landing-copy,html[dir="rtl"] .public-page-about .landing-copy{max-width:820px;margin-inline-start:auto;margin-inline-end:0;transform:translateX(-18px);text-align:right;font-family:"Noto Sans Hebrew","Segoe UI",Arial,sans-serif}
 html[dir="rtl"] .public-page-home .landing-hero h1,html[dir="rtl"] .public-page-about .landing-hero h1{max-width:820px;font-family:"Noto Serif Hebrew","David Libre","Times New Roman",serif;font-size:clamp(41px,4.35vw,61px);font-weight:700;line-height:1.22;letter-spacing:0}
 html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-about .landing-hero p{max-width:790px;font-family:"Noto Sans Hebrew","Segoe UI",Arial,sans-serif;font-size:18px;line-height:1.88;letter-spacing:0}
 
@@ -474,13 +474,13 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 }
 
 /* Let the assurances flow out of the hero instead of ending as a hard-edged box. */
-.public-page-home .landing-assurance,.public-page-about .landing-assurance{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;height:70px;max-width:none;margin:0 0 24px;padding-inline:max(48px,calc((100% - 1480px)/2));box-sizing:border-box;background:linear-gradient(90deg,transparent 0%,#f1ede4 9%,#f1ede4 91%,transparent 100%);border:0}
+.public-page-home .landing-assurance,.public-page-about .landing-assurance{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;height:70px;max-width:none;margin:0 0 24px;padding-block:0;padding-inline:max(48px,calc((100% - 1480px)/2));box-sizing:border-box;background:linear-gradient(90deg,transparent 0%,#f1ede4 9%,#f1ede4 91%,transparent 100%);border:0}
 .public-page-home .landing-assurance::before,.public-page-home .landing-assurance::after,.public-page-about .landing-assurance::before,.public-page-about .landing-assurance::after{content:"";position:absolute;inset-inline:0;height:1px;background:linear-gradient(90deg,transparent 0%,#d8cfbc 12%,#d8cfbc 88%,transparent 100%)}
 .public-page-home .landing-assurance::before,.public-page-about .landing-assurance::before{top:0}.public-page-home .landing-assurance::after,.public-page-about .landing-assurance::after{bottom:0}
-.public-page-home .landing-assurance div,.public-page-about .landing-assurance div{justify-content:center;min-height:0;height:70px;padding:0 28px;box-sizing:border-box;text-align:center;font-size:14px;line-height:1.4}
+.public-page-home .landing-assurance div,.public-page-about .landing-assurance div{align-items:center;justify-content:center;min-height:0;height:70px;padding:0 28px;box-sizing:border-box;text-align:center;font-size:14px;line-height:1.25;transform:none}
 .public-page-home .landing-assurance div+div,.public-page-about .landing-assurance div+div{padding-inline-start:28px;border-inline-start:1px solid #cbbf9f}
 @media(max-width:850px){
   .public-page-home .landing-assurance,.public-page-about .landing-assurance{display:grid;grid-template-columns:1fr 1fr;width:100%;height:60px;margin-bottom:18px;padding-inline:18px;background:linear-gradient(90deg,transparent 0%,#f1ede4 5%,#f1ede4 95%,transparent 100%)}
-  .public-page-home .landing-assurance div,.public-page-about .landing-assurance div{min-height:0;height:60px;padding:0 12px;border-bottom:0;font-size:12px}
+  .public-page-home .landing-assurance div,.public-page-about .landing-assurance div{min-height:0;height:60px;padding:0 12px;border-bottom:0;font-size:12px;transform:none}
   .public-page-home .landing-assurance div+div,.public-page-about .landing-assurance div+div{padding-inline-start:12px;border-inline-start:1px solid #cbbf9f}
 }
