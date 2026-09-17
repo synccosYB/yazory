@@ -4,7 +4,30 @@ import hmac
 
 import pytest
 
-from inbound_email import verify_webhook
+from inbound_email import retrieve_received_email, verify_webhook
+
+
+def test_received_email_requests_embedded_inline_images(monkeypatch):
+    requested = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b'{"id":"received-1","html":"<p>Hello</p>"}'
+
+    def fake_urlopen(request, timeout):
+        requested['url'] = request.full_url
+        return Response()
+
+    monkeypatch.setattr('inbound_email.urlopen', fake_urlopen)
+    result = retrieve_received_email('test-key', 'received-1')
+    assert result['id'] == 'received-1'
+    assert requested['url'].endswith('?html_format=data_uri')
 
 
 def test_verify_webhook_uses_raw_payload_and_rejects_tampering():

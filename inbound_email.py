@@ -65,7 +65,9 @@ def retrieve_received_email(api_key, email_id, timeout=10):
     if not api_key or not email_id:
         raise ValueError('Inbound email retrieval is not configured.')
     request = Request(
-        f'https://api.resend.com/emails/receiving/{email_id}?html_format=cid',
+        # Embed inline signature images in the returned HTML. A browser cannot
+        # resolve email-only ``cid:`` image references.
+        f'https://api.resend.com/emails/receiving/{email_id}?html_format=data_uri',
         headers={'Authorization': f'Bearer {api_key}', 'User-Agent': 'Yazory/1.0'})
     try:
         with urlopen(request, timeout=timeout) as response:

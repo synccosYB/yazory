@@ -405,6 +405,7 @@ class InboundInboxMessage(_app.db.Model):
     recipient = _app.db.Column(_app.db.String(254), nullable=False)
     subject = _app.db.Column(_app.db.String(300), nullable=False, default='')
     body = _app.db.Column(_app.db.Text, nullable=False, default='')
+    html_body = _app.db.Column(_app.db.Text, nullable=False, default='')
     status = _app.db.Column(
         _app.db.String(20), nullable=False, default='unread', index=True)
     created_at = _app.db.Column(
@@ -1171,6 +1172,14 @@ def create_app(test_config=None):
         if 'delivery_error' not in communication_columns:
             _app.db.session.execute(text(
                 "ALTER TABLE supporter_communication ADD COLUMN delivery_error "
+                "TEXT NOT NULL DEFAULT ''"))
+        inbox_columns = {
+            column['name'] for column in
+            _app.inspect(_app.db.engine).get_columns('inbound_inbox_message')
+        }
+        if 'html_body' not in inbox_columns:
+            _app.db.session.execute(text(
+                "ALTER TABLE inbound_inbox_message ADD COLUMN html_body "
                 "TEXT NOT NULL DEFAULT ''"))
         _app.db.session.execute(text(
             'CREATE UNIQUE INDEX IF NOT EXISTS uq_staff_task_source_contact '
@@ -2260,12 +2269,17 @@ def create_app(test_config=None):
             [sender_values] if isinstance(sender_values, str) else sender_values)
         sender_name, sender = next(((name, address.lower()) for name, address in parsed_senders
                                     if address), ('', ''))
-        body = (inbound.get('text') or html_to_text(inbound.get('html')) or
+        html_body = inbound.get('html') or ''
+        body = (inbound.get('text') or html_to_text(html_body) or
                 '[Email reply contained no readable text.]')[:50000]
         attachments = inbound.get('attachments') or []
-        if attachments:
+        downloadable_attachments = [
+            item for item in attachments
+            if (item.get('content_disposition') or '').lower() != 'inline'
+        ]
+        if downloadable_attachments:
             names = ', '.join(str(item.get('filename') or 'attachment')[:255]
-                              for item in attachments[:20])
+                              for item in downloadable_attachments[:20])
             body += f'\n\nAttachments: {names}'
 
         recipient_addresses = {
@@ -2281,7 +2295,7 @@ def create_app(test_config=None):
                            else receiving_alias)[:254],
                 subject=(inbound.get('subject') or data.get('subject') or
                          'Email to Yazory')[:300],
-                body=body, status='unread'))
+                body=body, html_body=html_body, status='unread'))
             _app.db.session.add(_app.Audit(
                 actor=sender or 'Email sender', action='New message in Yazory inbox'))
             _app.db.session.add(ResendWebhookEvent(

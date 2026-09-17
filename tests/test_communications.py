@@ -349,7 +349,11 @@ def test_email_to_public_info_address_appears_in_messages(monkeypatch):
         'from': 'New Applicant <sender@example.test>',
         'subject': 'Need help with utilities',
         'text': 'Please call me about an application.',
-        'attachments': [{'filename': 'utility-bill.pdf'}],
+        'html': '<p>Please call me about an <strong>application</strong>.</p>'
+                '<img src="data:image/png;base64,c2lnbmF0dXJl">',
+        'attachments': [
+            {'filename': 'signature.png', 'content_disposition': 'inline'},
+            {'filename': 'utility-bill.pdf'}],
     })
     event = json.dumps({
         'type': 'email.received',
@@ -375,12 +379,16 @@ def test_email_to_public_info_address_appears_in_messages(monkeypatch):
         assert message.recipient == 'info@yaazory.org'
         assert 'Please call me about an application.' in message.body
         assert 'utility-bill.pdf' in message.body
+        assert 'signature.png' not in message.body
+        assert '<strong>application</strong>' in message.html_body
         message_id = message.id
 
     inbox = client.get('/communications')
     assert 'Yazory inbox' in inbox.text
     assert 'Need help with utilities' in inbox.text
     assert 'Please call me about an application.' in inbox.text
+    assert 'communication-email-frame' in inbox.text
+    assert '&lt;strong&gt;application&lt;/strong&gt;' in inbox.text
     handled = post(client, f'/communications/inbox/{message_id}/handled', {})
     assert handled.status_code == 302
     with app.app_context():

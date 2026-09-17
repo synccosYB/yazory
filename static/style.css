@@ -379,3 +379,4 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 .notification-arrow{font-size:1.2rem;color:#8a6a25}
 .notification-empty{padding:3rem 1rem;text-align:center}
 html[dir="rtl"] .notification-arrow{transform:scaleX(-1)}
+.communication-email-frame{display:block;width:min(900px,85vw);height:420px;margin-top:12px;border:1px solid var(--line);border-radius:6px;background:#fff}
