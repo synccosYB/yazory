@@ -109,6 +109,21 @@ EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 IMAGE_MIMES = {'image/png', 'image/jpeg', 'image/webp', 'image/gif'}
 
 
+def _require_publishable_sponsor(row, status):
+    if status != 'Published':
+        return
+    required = (
+        ('Sponsor קרן name', row.fund_name),
+        ('Company name', row.company_name),
+        ('Donor name', row.donor_name),
+        ('Company logo', row.logo_data),
+    )
+    missing = [core.translate(label) for label, value in required if not value]
+    if missing:
+        prefix = core.translate('Cannot publish this sponsorship. Missing:')
+        abort(400, f"{prefix} {', '.join(missing)}.")
+
+
 def _month_now():
     return datetime.now(core.timezone.utc).astimezone(core.ZoneInfo('America/New_York')).strftime('%Y-%m')
 
@@ -288,8 +303,7 @@ def install(app):
                 row.logo_data, row.logo_mime = data, mime
             if request.form.get('remove_logo') == 'yes':
                 row.logo_data, row.logo_mime = None, ''
-            if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data):
-                abort(400, 'Sponsor קרן name, company name, donor name, and company logo are required before publishing.')
+            _require_publishable_sponsor(row, status)
             core.db.session.flush()
             user_id = session.get('user_id')
             user = core.db.session.get(core.StaffUser, user_id) if user_id else None
@@ -370,8 +384,7 @@ def install(app):
             row.logo_data, row.logo_mime = data, mime
         if request.form.get('remove_logo') == 'yes':
             row.logo_data, row.logo_mime = None, ''
-        if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data):
-            abort(400, 'Sponsor קרן name, company name, donor name, and company logo are required before publishing.')
+        _require_publishable_sponsor(row, status)
         open_end = end_month or '9999-12'
         conflicts = core.db.session.scalars(select(CaseSponsorship).where(
             CaseSponsorship.family_id == family.id, CaseSponsorship.id != (row.id or 0),

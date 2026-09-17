@@ -41,6 +41,7 @@ _EXTRA = {
     'This family’s case is sponsored by': {'he': 'תיק המשפחה נתמך על ידי', 'yi': 'דער משפחה תיק ווערט געספאנסערט דורך'},
     'קרן name': {'he': 'שם הקרן', 'yi': 'קרן נאמען'},
     'Sponsor קרן name': {'he': 'שם קרן הנדבן', 'yi': 'קרן נאמען פונעם נדבן'},
+    'Cannot publish this sponsorship. Missing:': {'he': 'לא ניתן לפרסם את החסות. חסר:', 'yi': 'מען קען נישט פאבלישן די ספאנסארשיפ. עס פעלט:'},
     'optional — generated from the applicant name when blank': {'he': 'רשות — ייווצר משם הפונה אם יישאר ריק', 'yi': 'נישט פארלאנגט — ווערט אויטאמאטיש געמאכט פונעם אפליקאנט נאמען אויב ליידיג'},
     'Applicant / family name': {'he': 'שם הפונה / המשפחה', 'yi': 'נאמען פונעם אפליקאנט / משפחה'},
     'Email to send application to': {'he': 'אימייל לשליחת הבקשה', 'yi': 'אימעיל וואו צו שיקן די בקשה'},

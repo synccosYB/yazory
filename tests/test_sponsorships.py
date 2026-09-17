@@ -109,6 +109,23 @@ def test_sponsor_can_be_published_without_a_website():
     assert response.status_code == 302
 
 
+def test_publish_error_names_only_the_missing_sponsor_fields():
+    app = make_app()
+    client = app.test_client()
+    month = datetime.now().strftime('%Y-%m')
+    response = client.post('/sponsorships/overview', data={
+        'csrf': csrf(client), 'month': month, 'fund_name': 'קרן Example',
+        'company_name': '', 'donor_name': 'Example Donor',
+        'contact_email': '', 'amount': '0', 'paid': '0',
+        'status': 'Published', 'notes': '',
+    })
+    assert response.status_code == 400
+    assert 'Cannot publish this sponsorship. Missing:' in response.text
+    assert 'Company name' in response.text
+    assert 'Company logo' in response.text
+    assert 'Donor name' not in response.text
+
+
 def test_case_sponsor_is_separate_and_appears_only_on_its_family_pages():
     app = make_app()
     client = app.test_client()
