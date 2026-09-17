@@ -20,6 +20,8 @@ class MonthlySponsorship(core.db.Model):
     donor_name = core.db.Column(core.db.String(160), nullable=False, default='')
     memorial_one = core.db.Column(core.db.String(300), nullable=False, default='')
     memorial_two = core.db.Column(core.db.String(300), nullable=False, default='')
+    dedication_one_prefix = core.db.Column(core.db.String(20), nullable=False, default='לע״נ')
+    dedication_two_prefix = core.db.Column(core.db.String(20), nullable=False, default='לע״נ')
     contact_name = core.db.Column(core.db.String(160), nullable=False, default='')
     contact_phone = core.db.Column(core.db.String(80), nullable=False, default='')
     contact_email = core.db.Column(core.db.String(254), nullable=False, default='')
@@ -152,6 +154,14 @@ def install(app):
                 core.db.session.execute(text(
                     "ALTER TABLE monthly_sponsorship ADD COLUMN website_url VARCHAR(500) NOT NULL DEFAULT ''"
                 ))
+            if table_name == 'monthly_sponsorship' and 'dedication_one_prefix' not in columns:
+                core.db.session.execute(text(
+                    "ALTER TABLE monthly_sponsorship ADD COLUMN dedication_one_prefix VARCHAR(20) NOT NULL DEFAULT 'לע״נ'"
+                ))
+            if table_name == 'monthly_sponsorship' and 'dedication_two_prefix' not in columns:
+                core.db.session.execute(text(
+                    "ALTER TABLE monthly_sponsorship ADD COLUMN dedication_two_prefix VARCHAR(20) NOT NULL DEFAULT 'לע״נ'"
+                ))
         core.db.session.commit()
 
     app.extensions.setdefault('init_db_hooks', []).append(migrate_sponsor_fields)
@@ -247,6 +257,10 @@ def install(app):
             row.company_name, row.donor_name = _field('company_name', 160), _field('donor_name', 160)
             row.website_url = _website_url()
             row.memorial_one, row.memorial_two = _field('memorial_one', 300), _field('memorial_two', 300)
+            row.dedication_one_prefix = _field('dedication_one_prefix', 20) or 'לע״נ'
+            row.dedication_two_prefix = _field('dedication_two_prefix', 20) or 'לע״נ'
+            if row.dedication_one_prefix not in ('לע״נ', 'לזכות') or row.dedication_two_prefix not in ('לע״נ', 'לזכות'):
+                abort(400, 'Choose either לע״נ or לזכות for each dedication line.')
             row.contact_name, row.contact_phone, row.contact_email = _field('contact_name', 160), _field('contact_phone', 80), email
             row.amount_cents, row.paid_cents = _money_cents('amount'), _money_cents('paid')
             if row.paid_cents > row.amount_cents:
