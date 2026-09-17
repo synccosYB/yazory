@@ -47,7 +47,12 @@ def test_public_policy_links_are_present(public_app):
     for path in (b'/privacy', b'/terms', b'/sms-consent', b'/donation-policy'):
         assert path in response.data
     assert b'info@yaazory.org' in response.data
+    assert b'2 Stonegate Dr. Suite 422, Monroe, NY 10950' in response.data
     assert b'href="/login"' in response.data
+    assert b'href="/applicant/login"' in response.data
+    assert b'href="/donor/login"' in response.data
+    assert b'Applicant login' in response.data
+    assert b'Donor login' in response.data
     assert b'Staff access' in response.data
 
 

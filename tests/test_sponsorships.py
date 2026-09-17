@@ -30,6 +30,7 @@ def test_workflow_lists_every_page_and_saves_monthly_sponsor():
         'donor_name': 'Mr. Donor', 'memorial_one': 'פלוני בן פלוני',
         'memorial_two': 'פלונית בת פלוני', 'contact_name': 'Office',
         'contact_phone': '8455551212', 'contact_email': 'office@example.com',
+        'website_url': 'https://acme.example',
         'amount': '1200.00', 'paid': '600.00', 'status': 'Published', 'notes': 'Test',
         'logo': (BytesIO(b'fake-png-for-test'), 'logo.png'),
     })
@@ -39,6 +40,9 @@ def test_workflow_lists_every_page_and_saves_monthly_sponsor():
         assert row.amount_cents == 120000 and row.paid_cents == 60000
     overview = client.get('/')
     assert 'Acme Foods' in overview.text and 'פלוני בן פלוני' in overview.text
+    assert 'href="https://acme.example"' in overview.text
+    assert 'OUR SPONSORS' in overview.text
+    assert 'לע״נ פלוני בן פלוני' in overview.text
 
 
 def test_online_and_printed_application_sponsors_are_independent():

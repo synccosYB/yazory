@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlparse
 
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
 from sqlalchemy import UniqueConstraint, inspect, select, text
@@ -22,6 +23,7 @@ class MonthlySponsorship(core.db.Model):
     contact_name = core.db.Column(core.db.String(160), nullable=False, default='')
     contact_phone = core.db.Column(core.db.String(80), nullable=False, default='')
     contact_email = core.db.Column(core.db.String(254), nullable=False, default='')
+    website_url = core.db.Column(core.db.String(500), nullable=False, default='')
     amount_cents = core.db.Column(core.db.Integer, nullable=False, default=0)
     paid_cents = core.db.Column(core.db.Integer, nullable=False, default=0)
     status = core.db.Column(core.db.String(20), nullable=False, default='Reserved', index=True)
@@ -125,8 +127,18 @@ def _field(name, limit):
     return value
 
 
+def _website_url():
+    value = _field('website_url', 500)
+    if not value:
+        return ''
+    parsed = urlparse(value)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        abort(400, 'Enter a complete sponsor website beginning with https:// or http://.')
+    return value
+
+
 def install(app):
-    def migrate_sponsor_fund_names():
+    def migrate_sponsor_fields():
         schema = inspect(core.db.engine)
         for table_name in ('monthly_sponsorship', 'case_sponsorship'):
             if not schema.has_table(table_name):
@@ -136,9 +148,13 @@ def install(app):
                 core.db.session.execute(text(
                     f"ALTER TABLE {table_name} ADD COLUMN fund_name VARCHAR(160) NOT NULL DEFAULT ''"
                 ))
+            if table_name == 'monthly_sponsorship' and 'website_url' not in columns:
+                core.db.session.execute(text(
+                    "ALTER TABLE monthly_sponsorship ADD COLUMN website_url VARCHAR(500) NOT NULL DEFAULT ''"
+                ))
         core.db.session.commit()
 
-    app.extensions.setdefault('init_db_hooks', []).append(migrate_sponsor_fund_names)
+    app.extensions.setdefault('init_db_hooks', []).append(migrate_sponsor_fields)
 
     def require_admin():
         if app.config['DEMO']:
@@ -165,6 +181,22 @@ def install(app):
             core.or_(CaseSponsorship.end_month == '', CaseSponsorship.end_month >= target_month),
         ).order_by(CaseSponsorship.start_month.desc(), CaseSponsorship.id.desc()))
 
+    def current_public_sponsors(month=None):
+        rows = core.db.session.scalars(select(MonthlySponsorship).where(
+            MonthlySponsorship.month == (month or _month_now()),
+            MonthlySponsorship.status == 'Published',
+            MonthlySponsorship.logo_data.is_not(None),
+            MonthlySponsorship.website_url != '',
+        ).order_by(MonthlySponsorship.company_name, MonthlySponsorship.id)).all()
+        unique = []
+        seen = set()
+        for row in rows:
+            key = row.website_url.casefold()
+            if key not in seen:
+                seen.add(key)
+                unique.append(row)
+        return unique
+
     @app.context_processor
     def sponsor_context():
         case_sponsor = None
@@ -173,6 +205,7 @@ def install(app):
             if family_id:
                 case_sponsor = current_case_sponsorship(family_id)
         return {'current_sponsor': current_sponsorship(), 'current_case_sponsor': case_sponsor,
+                'public_sponsors': current_public_sponsors(),
                 'sponsorship_page_labels': PAGE_LABELS}
 
     @app.get('/sponsorships')
@@ -213,6 +246,7 @@ def install(app):
                 core.db.session.add(row)
             row.fund_name = _field('fund_name', 160)
             row.company_name, row.donor_name = _field('company_name', 160), _field('donor_name', 160)
+            row.website_url = _website_url()
             row.memorial_one, row.memorial_two = _field('memorial_one', 300), _field('memorial_two', 300)
             row.contact_name, row.contact_phone, row.contact_email = _field('contact_name', 160), _field('contact_phone', 80), email
             row.amount_cents, row.paid_cents = _money_cents('amount'), _money_cents('paid')
@@ -227,8 +261,8 @@ def install(app):
                 row.logo_data, row.logo_mime = data, mime
             if request.form.get('remove_logo') == 'yes':
                 row.logo_data, row.logo_mime = None, ''
-            if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data):
-                abort(400, 'Sponsor קרן name, company name, donor name, and company logo are required before publishing.')
+            if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data or not row.website_url):
+                abort(400, 'Sponsor קרן name, company name, donor name, company logo, and website are required before publishing.')
             core.db.session.flush()
             user_id = session.get('user_id')
             user = core.db.session.get(core.StaffUser, user_id) if user_id else None
