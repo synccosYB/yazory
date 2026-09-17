@@ -211,6 +211,35 @@ def install(app):
         flash(f'{row.number} updated to {status}.', 'success')
         return redirect(url_for('application_review', application_id=row.id))
 
+    @app.post('/applications/<int:application_id>/question')
+    def application_requester_question(application_id):
+        row = core.db.get_or_404(AssistanceApplication, application_id)
+        if not EMAIL_RE.match(row.recipient_email or ''):
+            abort(400, 'This application does not have a valid requester email address.')
+        subject = request.form.get('subject', '').strip()[:300]
+        question = request.form.get('message', '').strip()[:5000]
+        if not subject or not question:
+            flash('Enter a subject and message before sending.', 'error')
+            return redirect(url_for('application_review', application_id=row.id,
+                                    _anchor='requester-question'))
+        staff_id = session.get('user_id')
+        staff = core.db.session.get(core.StaffUser, staff_id) if staff_id else None
+        body = f'{question}\n\nApplication: {row.number}'
+        email = app.extensions['send_email'](
+            'application_question', row.recipient_email, subject, body,
+            staff_user_id=staff.id if staff else None)
+        core.db.session.add(core.Audit(
+            actor=staff.email if staff else 'Demo user',
+            action=(f'Application question {"sent" if email.status in ("sent", "preview") else "failed"}: '
+                    f'{row.number} to {row.recipient_email}')))
+        core.db.session.commit()
+        if email.status == 'failed':
+            flash(f'Message could not be sent: {email.error}', 'error')
+        else:
+            flash(f'Question sent to {row.recipient_email}.', 'success')
+        return redirect(url_for('application_review', application_id=row.id,
+                                _anchor='requester-question'))
+
     @app.get('/applications/<int:application_id>/print')
     def print_application(application_id):
         row = core.db.get_or_404(AssistanceApplication, application_id)

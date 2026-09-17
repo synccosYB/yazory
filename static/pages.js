@@ -116,3 +116,7 @@ if (manualDonationSupporter && manualNewDonor) {
   manualDonationSupporter.addEventListener('change', updateManualDonorFields);
   updateManualDonorFields();
 }
+document.querySelectorAll('[data-open-details]').forEach(link=>link.addEventListener('click',()=>{
+  const details=document.getElementById(link.dataset.openDetails);
+  if(details)details.open=true;
+}));

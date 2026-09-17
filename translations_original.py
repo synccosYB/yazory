@@ -752,6 +752,13 @@ CATALOG.update({
     'Created': {'he': 'נוצר', 'yi': 'געמאכט'},
     'Successful charges': {'he': 'חיובים מוצלחים', 'yi': 'געלונגענע טשארדזשעס'},
     'Enter at least $1.00.': {'he': 'יש להזין לפחות $1.00.', 'yi': 'לייגט אריין כאטש $1.00.'},
+    'Message requester': {'he': 'שליחת הודעה למבקש', 'yi': 'שיקן א מעסעדזש צום מבקש'},
+    'Ask the person who received this application for any missing details or clarification.': {'he': 'שאלו את מי שקיבל את הבקשה על פרטים חסרים או הבהרות.', 'yi': 'פרעגט דעם וואס האט באקומען די אפליקאציע איבער פעלנדיגע פרטים אדער שאלות.'},
+    'To': {'he': 'אל', 'yi': 'צו'},
+    'Subject': {'he': 'נושא', 'yi': 'סובדזשעקט'},
+    'Message': {'he': 'הודעה', 'yi': 'מעסעדזש'},
+    'Question about application': {'he': 'שאלה בנוגע לבקשה', 'yi': 'שאלה איבער דער אפליקאציע'},
+    'Send question': {'he': 'שליחת השאלה', 'yi': 'שיקן די שאלה'},
 })
 
 from workflow_translations import install as install_workflow_translations
