@@ -33,7 +33,7 @@ def test_public_pages_support_all_locales(public_app):
     client = app.test_client()
     expected = {'en': b'Yazory helps cover the financial gap',
                 'he': 'יעזורו מסייעת להשלים את החסר'.encode(),
-                'yi': 'יעזורו העלפט דעקן דעם חסרון'.encode()}
+                'yi': 'יעזורו העלפט דעקן דעם פינאנציעלן חסרון'.encode()}
     for language, text in expected.items():
         client.get(f'/language/{language}?next=/about')
         response = client.get('/about')
