@@ -144,6 +144,36 @@ def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch):
     assert '<html dir="ltr">' in delivered['html']
 
 
+def test_email_html_safely_renders_basic_compose_formatting(monkeypatch):
+    app, _ = app_and_owner(monkeypatch)
+    app.config.update(TESTING=False, RESEND_API_KEY='test-key',
+                      EMAIL_FROM='notifications@example.test',
+                      APP_BASE_URL='https://yazory.example')
+    delivered = {}
+
+    def capture_delivery(*args, **kwargs):
+        delivered['html'] = args[4]
+        delivered['text'] = args[5]
+        return 'email_formatted', None
+
+    monkeypatch.setattr(core_module, 'deliver', capture_delivery)
+    with app.test_request_context('/'):
+        app.extensions['send_email'](
+            'formatted_test', 'recipient@example.test', 'Formatted message',
+            '**Important** and *kind* and [u]underlined[/u]\n\n'
+            '- First item\n- Second item\n\n'
+            '[Open the case](https://yazory.example/case/1)')
+        db.session.commit()
+
+    assert '<strong>Important</strong>' in delivered['html']
+    assert '<em>kind</em>' in delivered['html']
+    assert '<u>underlined</u>' in delivered['html']
+    assert '<ul' in delivered['html'] and '<li>First item</li>' in delivered['html']
+    assert '<a href="https://yazory.example/case/1"' in delivered['html']
+    assert '<script' not in delivered['html']
+    assert '**Important**' in delivered['text']
+
+
 def test_staff_details_status_and_delete(monkeypatch):
     app, owner = app_and_owner(monkeypatch)
     assert post(owner, '/staff', {'name': 'Staff Member', 'email': 'staff@example.test',

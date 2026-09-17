@@ -613,8 +613,20 @@ def create_app(test_config=None):
         db.session.add(message)
         db.session.flush()
         safe_body = escape(body)
+        # Staff compose in plain text with a small, deliberately limited set
+        # of formatting marks.  Convert only those marks after HTML escaping,
+        # so formatted email never becomes a route for arbitrary HTML.
         safe_body = re.sub(
-            r'(https?://[^\s<]+)',
+            r'\[([^\]\n]+)\]\((https?://[^\s<>)]+)\)',
+            r'<a href="\2" dir="ltr" style="color:#173e66;font-weight:700;text-decoration:underline">\1</a>',
+            safe_body)
+        safe_body = re.sub(
+            r'(?<!\*)\*\*([^*\n]+)\*\*(?!\*)', r'<strong>\1</strong>', safe_body)
+        safe_body = re.sub(
+            r'(?<!\*)\*([^*\n]+)\*(?!\*)', r'<em>\1</em>', safe_body)
+        safe_body = re.sub(r'\[u\]([^\n]+?)\[/u\]', r'<u>\1</u>', safe_body)
+        safe_body = re.sub(
+            r'(?<!["=])(https?://[^\s<]+)',
             r'<a href="\1" dir="ltr" style="display:inline-block;direction:ltr;unicode-bidi:embed;background:#b49a52;color:#172f4c;font-weight:700;line-height:1.4;text-decoration:none;padding:11px 17px;border-radius:5px;word-break:break-word">\1</a>',
             safe_body)
         # Email clients do not inherit the application's page direction. Infer
@@ -624,11 +636,25 @@ def create_app(test_config=None):
         latin_letters = len(re.findall(r'[A-Za-z]', body))
         email_direction = 'rtl' if rtl_letters > latin_letters else 'ltr'
         email_align = 'right' if email_direction == 'rtl' else 'left'
-        paragraphs = ''.join(
-            f'<p dir="{email_direction}" style="direction:{email_direction};text-align:{email_align};margin:0 0 18px;color:#17385f;font-size:16px;line-height:1.65">'
-            f'{paragraph.replace(chr(10), "<br>")}</p>'
-            for paragraph in safe_body.split('\n\n') if paragraph
-        )
+        blocks = []
+        for paragraph in safe_body.split('\n\n'):
+            if not paragraph:
+                continue
+            lines = paragraph.splitlines()
+            unordered = lines and all(line.startswith('- ') for line in lines)
+            ordered = lines and all(re.match(r'^\d+\. ', line) for line in lines)
+            if unordered or ordered:
+                tag = 'ul' if unordered else 'ol'
+                items = ''.join(
+                    f'<li>{re.sub(r"^(?:- |\\d+\\. )", "", line)}</li>'
+                    for line in lines)
+                blocks.append(
+                    f'<{tag} dir="{email_direction}" style="direction:{email_direction};text-align:{email_align};margin:0 0 18px;padding-inline-start:24px;color:#17385f;font-size:16px;line-height:1.65">{items}</{tag}>')
+            else:
+                blocks.append(
+                    f'<p dir="{email_direction}" style="direction:{email_direction};text-align:{email_align};margin:0 0 18px;color:#17385f;font-size:16px;line-height:1.65">'
+                    f'{paragraph.replace(chr(10), "<br>")}</p>')
+        paragraphs = ''.join(blocks)
         logo_url = absolute_url('static', filename='yazory-logo.png')
         html = f'''<!doctype html>
 <html dir="{email_direction}"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
