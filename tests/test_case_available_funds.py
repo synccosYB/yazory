@@ -33,6 +33,33 @@ def test_case_available_balance_counts_all_non_voided_disbursements(tmp_path):
     assert '$500.00' in profile
 
 
+def test_fundraising_summary_separates_collected_money_from_family_payouts(tmp_path):
+    app = create_app({'TESTING': True, 'DEMO': True,
+                      'SQLALCHEMY_DATABASE_URI': f'sqlite:///{tmp_path / "fundraising-summary.sqlite"}'})
+    client = app.test_client()
+    with app.app_context():
+        family = db.session.scalar(db.select(Family))
+        contact = family.contacts[0]
+        db.session.add(Receipt(contact_id=contact.id, family_id=family.id,
+                               amount_cents=10_000, received_on=date.today()))
+        db.session.add(ApplicantPayout(
+            family_id=family.id, method='check', amount_cents=900_000,
+            payee_name='Applicant', mailing_address='1 Main St',
+            check_number='100', check_date=date.today(), status='created'))
+        db.session.add(ApplicantPayout(
+            family_id=family.id, method='check', amount_cents=50_000,
+            payee_name='Applicant', mailing_address='1 Main St',
+            check_number='101', check_date=date.today(), status='voided'))
+        db.session.commit()
+
+    page = client.get('/fundraising').text
+    assert 'Lifetime collected' in page
+    assert 'Lifetime sent to family' in page
+    assert '$100.00' in page
+    assert '$9,000.00' in page
+    assert '$9,500.00' not in page
+
+
 def test_negative_money_keeps_ltr_order_in_rtl_views(tmp_path):
     app = create_app({'TESTING': True, 'DEMO': True,
                       'SQLALCHEMY_DATABASE_URI': f'sqlite:///{tmp_path / "rtl-funds.sqlite"}'})

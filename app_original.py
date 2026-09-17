@@ -2748,11 +2748,26 @@ def create_app(test_config=None):
         ).where(Contact.family_id.in_(family_ids), Contact.status == 'Pledged').group_by(Contact.family_id)).all()}
         if app.extensions['workflows']['enforced']():
             pledged = {f.id: app.extensions['workflows']['monthly_pledged'](f.id,current_user()) for f in families}
-        received = {family_id: total for family_id, total in db.session.execute(select(
+        manual_received = {family_id: total for family_id, total in db.session.execute(select(
             Receipt.family_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
         ).where(Receipt.family_id.in_(family_ids)).group_by(Receipt.family_id)).all()}
+        charity_received = {family_id: total for family_id, total in db.session.execute(select(
+            CharityCampaign.family_id, func.coalesce(func.sum(CharityDonation.net_cents), 0)
+        ).join(CharityDonation, CharityDonation.campaign_id == CharityCampaign.id).where(
+            CharityCampaign.family_id.in_(family_ids)).group_by(CharityCampaign.family_id)).all()}
+        paid_expenses = {family_id: total for family_id, total in db.session.execute(select(
+            Expense.family_id, func.coalesce(func.sum(Expense.amount_cents), 0)
+        ).where(Expense.family_id.in_(family_ids), Expense.status == 'Paid').group_by(
+            Expense.family_id)).all()}
+        direct_payouts = {family_id: total for family_id, total in db.session.execute(select(
+            ApplicantPayout.family_id, func.coalesce(func.sum(ApplicantPayout.amount_cents), 0)
+        ).where(ApplicantPayout.family_id.in_(family_ids),
+                ApplicantPayout.status != 'voided').group_by(ApplicantPayout.family_id)).all()}
         pledged = {family_id: pledged.get(family_id, 0) for family_id in family_ids}
-        received = {family_id: received.get(family_id, 0) for family_id in family_ids}
+        received = {family_id: manual_received.get(family_id, 0) + charity_received.get(family_id, 0)
+                    for family_id in family_ids}
+        sent = {family_id: paid_expenses.get(family_id, 0) + direct_payouts.get(family_id, 0)
+                for family_id in family_ids}
         # Fundraisers receive no target/shortfall: even an aggregate may disclose
         # confidential household budget information. Authorized family/admin users
         # may use the saved shortfall as an internal planning target.
@@ -2760,7 +2775,7 @@ def create_app(test_config=None):
         targets = ({family.id: budget_totals(family, budget_records.get(family.id))['shortfall'] for family in families}
                    if show_targets else {})
         return render_template('fundraising.html', title='Fundraising workspace', families=families,
-                               pledged=pledged, received=received, targets=targets,
+                               pledged=pledged, received=received, sent=sent, targets=targets,
                                show_targets=show_targets)
 
     @app.get('/fundraising/<int:family_id>')
