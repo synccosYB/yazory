@@ -1982,6 +1982,9 @@ def create_app(test_config=None):
             _app.abort(403)
         selected_contact_id = (ai_contact.id if ai_contact else
                                _app.request.args.get('contact_id', type=int))
+        external_email = _app.request.args.get('recipient_email', '').strip().lower()[:254]
+        if external_email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', external_email):
+            _app.abort(400, 'Enter a valid email address.')
         contact_statement = select(_app.Contact).order_by(_app.Contact.name)
         if selected_contact_id is not None:
             contact_statement = contact_statement.where(
@@ -2066,6 +2069,7 @@ def create_app(test_config=None):
             pledge_delivery=pledge_delivery,
             pledge_frequencies=_app.PLEDGE_FREQUENCIES,
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
+            external_email=external_email,
             now=now)
 
     def contact_mobile(contact):
@@ -2206,6 +2210,36 @@ def create_app(test_config=None):
     @app.get('/communications')
     def communications():
         return render_communications()
+
+    @app.post('/communications/external-email')
+    def send_external_email():
+        user = task_user()
+        if user is None or user.role not in (
+                'organization_admin', 'family_admin', 'fundraiser'):
+            _app.abort(403)
+        recipient = _app.request.form.get('recipient_email', '').strip().lower()[:254]
+        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', recipient):
+            _app.abort(400, 'Enter a valid email address.')
+        subject = _app.request.form.get('subject', '').strip()[:300]
+        body = _app.request.form.get('body', '').strip()[:5000]
+        if not subject or not body:
+            _app.abort(400, 'Enter an email subject and message.')
+        message = app.extensions['send_email'](
+            'general_outbound', recipient, subject, body,
+            staff_user_id=user.id, reply_to_public=True)
+        _app.db.session.add(_app.Audit(
+            actor=user.email,
+            action=f'{"Sent" if message.status == "sent" else "Prepared"} general email to {recipient}'))
+        _app.db.session.commit()
+        if message.status == 'sent':
+            _app.flash('Email sent.')
+        elif message.status == 'preview':
+            _app.flash(
+                'Email was prepared but not sent because delivery is in preview mode.',
+                'error')
+        else:
+            _app.flash('Email delivery failed. Check Email history.', 'error')
+        return _app.redirect(_app.url_for('communications', _anchor='mailbox-sent'))
 
     @app.post('/resend/webhook')
     def resend_webhook():

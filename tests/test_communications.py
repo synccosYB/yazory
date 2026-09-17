@@ -72,7 +72,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'data-mailbox-folder="sent"' in page.text
     assert 'id="communication-callbacks"' in page.text
     assert 'class="outreach-actions"><div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260916-application-message-v1' in page.text
+    assert 'pages.js?v=20260917-external-email-v1' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
@@ -466,6 +466,50 @@ def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):
     assert 'value="new-address@example.test"' in repaired.text
     with app.app_context():
         assert db.session.get(Contact, contact_id).email == 'new-address@example.test'
+
+
+def test_compose_can_send_to_email_not_connected_to_system(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    page = client.get('/communications')
+    assert 'name="recipient_email"' in page.text
+    assert 'Any email address' in page.text
+
+    composer = client.get('/communications?recipient_email=outside@example.test')
+    assert composer.status_code == 200
+    assert 'value="outside@example.test"' in composer.text
+    assert 'action="/communications/external-email"' in composer.text
+
+    sent = post(client, '/communications/external-email', {
+        'recipient_email': 'outside@example.test',
+        'subject': 'A message from Yazory',
+        'body': 'This address is not connected to a supporter.'})
+    assert sent.status_code == 302
+    with app.app_context():
+        message = db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'general_outbound'))
+        assert message.recipient == 'outside@example.test'
+        assert message.subject == 'A message from Yazory'
+        assert message.staff_user_id is not None
+        assert message.family_id is None
+
+
+def test_external_email_reply_goes_to_general_inbox(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    delivered = {}
+
+    def capture_delivery(api_key, sender, recipient, subject, html, text, **options):
+        delivered.update(options)
+        return 'external-provider-id', None
+
+    monkeypatch.setattr(core_module, 'deliver', capture_delivery)
+    app.config.update(TESTING=False, DEMO=False, RESEND_API_KEY='test-key',
+                      EMAIL_FROM='Yazory <info@reply.yaazory.org>',
+                      EMAIL_REPLY_DOMAIN='reply.yaazory.org')
+    sent = post(client, '/communications/external-email', {
+        'recipient_email': 'outside@example.test',
+        'subject': 'Hello', 'body': 'Please reply to Yazory.'})
+    assert sent.status_code == 302
+    assert delivered['reply_to'] == 'info@reply.yaazory.org'
 
 
 def test_sms_and_whatsapp_are_saved_in_communication_history(monkeypatch):

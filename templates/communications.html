@@ -21,12 +21,24 @@
       <label class="mailbox-search"><span class="sr-only">{{ _('Search messages') }}</span><input type="search" placeholder="{{ _('Search messages') }}" data-mailbox-search></label>
     </header>
 
-    <div class="mailbox-compose-panel" data-mailbox-compose-panel hidden>
-      <div class="section-heading"><div><h3>{{ _('New message') }}</h3><p>{{ _('Choose a supporter to write an email.') }}</p></div><button class="small secondary" type="button" data-mailbox-compose-close>{{ _('Cancel') }}</button></div>
-      <form class="mailbox-recipient-list" method="get" action="{{ url_for('communications') }}">
-        <label>{{ _('To') }}<select name="contact_id" required><option value="">{{ _('Choose supporter') }}</option>{% for contact in contacts %}<option value="{{ contact.id }}">{{ contact.name }} · {{ contact.family.name }}</option>{% endfor %}</select></label>
-        <button>{{ _('Open conversation') }}</button>
+    <div class="mailbox-compose-panel" data-mailbox-compose-panel {{ '' if external_email else 'hidden' }}>
+      <div class="section-heading"><div><h3>{{ _('New message') }}</h3><p>{{ _('Choose someone in Yazory or enter any email address.') }}</p></div><button class="small secondary" type="button" data-mailbox-compose-close>{{ _('Cancel') }}</button></div>
+      {% if external_email %}
+      <form class="mailbox-external-email" method="post" action="{{ url_for('send_external_email') }}">
+        {{ token(csrf) }}
+        <label>{{ _('To') }}<input dir="ltr" type="email" name="recipient_email" maxlength="254" autocomplete="email" required value="{{ external_email }}"></label>
+        <label>{{ _('Subject') }}<input name="subject" maxlength="300" required autofocus></label>
+        <label>{{ _('Email message') }}<textarea name="body" maxlength="5000" rows="8" required></textarea></label>
+        <button>{{ _('Send email') }}</button> <a class="button secondary" href="{{ url_for('communications') }}">{{ _('Cancel') }}</a>
       </form>
+      {% else %}
+      <form class="mailbox-recipient-list" method="get" action="{{ url_for('communications') }}" data-mailbox-recipient-form>
+        <label>{{ _('Person in Yazory') }}<select name="contact_id"><option value="">{{ _('Choose supporter') }}</option>{% for contact in contacts %}<option value="{{ contact.id }}">{{ contact.name }} · {{ contact.family.name }}</option>{% endfor %}</select></label>
+        <span class="mailbox-recipient-or">{{ _('or') }}</span>
+        <label>{{ _('Any email address') }}<input dir="ltr" type="email" name="recipient_email" maxlength="254" autocomplete="email" placeholder="name@example.com"></label>
+        <button>{{ _('Continue') }}</button>
+      </form>
+      {% endif %}
     </div>
 
     <div class="mailbox-list" data-mailbox-list>

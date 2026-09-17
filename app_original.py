@@ -607,7 +607,8 @@ def create_app(test_config=None):
         base = app.config.get('APP_BASE_URL')
         return (base + url_for(endpoint, **values)) if base else url_for(endpoint, _external=True, **values)
 
-    def send_email(kind, recipient, subject, body, staff_user_id=None, family_id=None):
+    def send_email(kind, recipient, subject, body, staff_user_id=None, family_id=None,
+                   reply_to_public=False):
         message = EmailMessage(kind=kind, recipient=recipient, subject=subject, text_body=body,
                                staff_user_id=staff_user_id, family_id=family_id)
         db.session.add(message)
@@ -680,11 +681,14 @@ def create_app(test_config=None):
         delivery_options = {}
         reply_domain = app.config.get('EMAIL_REPLY_DOMAIN', '')
         if reply_domain:
-            signature = hmac.new(
-                app.config['SECRET_KEY'].encode(), str(message.id).encode(),
-                hashlib.sha256).hexdigest()[:20]
-            delivery_options['reply_to'] = (
-                f'reply+{message.id}-{signature}@{reply_domain}')
+            if reply_to_public:
+                delivery_options['reply_to'] = f'info@{reply_domain}'
+            else:
+                signature = hmac.new(
+                    app.config['SECRET_KEY'].encode(), str(message.id).encode(),
+                    hashlib.sha256).hexdigest()[:20]
+                delivery_options['reply_to'] = (
+                    f'reply+{message.id}-{signature}@{reply_domain}')
         provider_id, error = deliver(
             app.config['RESEND_API_KEY'], app.config['EMAIL_FROM'], recipient,
             subject, html, body, **delivery_options)

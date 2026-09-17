@@ -120,3 +120,17 @@ document.querySelectorAll('[data-open-details]').forEach(link=>link.addEventList
   const details=document.getElementById(link.dataset.openDetails);
   if(details)details.open=true;
 }));
+
+const mailboxRecipientForm=document.querySelector('[data-mailbox-recipient-form]');
+if(mailboxRecipientForm){
+  mailboxRecipientForm.addEventListener('submit',event=>{
+    const contact=mailboxRecipientForm.querySelector('[name="contact_id"]');
+    const email=mailboxRecipientForm.querySelector('[name="recipient_email"]');
+    email.setCustomValidity('');
+    if(!contact.value&&!email.value.trim()){
+      event.preventDefault();
+      email.setCustomValidity('Choose a person or enter an email address.');
+      email.reportValidity();
+    }
+  });
+}

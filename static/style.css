@@ -380,3 +380,6 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 .notification-empty{padding:3rem 1rem;text-align:center}
 html[dir="rtl"] .notification-arrow{transform:scaleX(-1)}
 .communication-email-frame{display:block;width:min(900px,85vw);height:420px;margin-top:12px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.mailbox-recipient-or{padding:0 2px 10px;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase}
+.mailbox-external-email{max-width:760px}
+.mailbox-external-email textarea{resize:vertical}
