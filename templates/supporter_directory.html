@@ -42,22 +42,34 @@
   </form>
 </section>
 
-<section class="card">
-  <div class="table-wrap"><table>
-    <thead><tr><th>{{ _('Name') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Email address') }}</th><th>{{ _('Cases') }}</th><th>{{ _('Connect to a case') }}</th><th>{{ _('Actions') }}</th></tr></thead>
-    <tbody>{% for profile in profiles %}<tr>
-      <td><strong>{{ profile.name }}</strong></td>
-      <td><bdi dir="ltr">{{ profile.phone|phone }}</bdi></td>
-      <td><bdi dir="ltr">{{ profile.email or '—' }}</bdi></td>
-      <td>{{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</td>
-      <td>{% if families %}<form method="post" action="{{ url_for('connect_supporter_profile', profile_id=profile.id) }}" class="compact-form">
+<details class="card supporter-list-card foldable-supporter-list">
+  <summary class="supporter-list-summary"><span><strong>{{ _('Search people') }}</strong><small>{{ profiles|length }} {{ _('records') }}</small></span><span>{{ _('Open tools') }}</span></summary>
+  <div class="supporter-accordion supporter-directory-accordion">
+    {% for profile in profiles %}<details class="supporter-accordion-item">
+      <summary>
+        <span class="supporter-accordion-name"><strong>{{ profile.name }}</strong><small>{{ _('Cases') }}: {{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</small></span>
+        <span><bdi dir="ltr">{{ profile.phone|phone }}</bdi><small>{{ _('Phone') }}</small></span>
+        <span><bdi dir="ltr">{{ profile.email or '—' }}</bdi><small>{{ _('Email address') }}</small></span>
+        <span class="supporter-accordion-status">{{ _('Actions') }}</span>
+      </summary>
+      <div class="supporter-accordion-panel">
+        <div class="supporter-record-meta">
+          <div><small>{{ _('Name') }}</small><strong>{{ profile.name }}</strong></div>
+          <div><small>{{ _('Phone') }}</small><bdi dir="ltr">{{ profile.phone|phone }}</bdi></div>
+          <div><small>{{ _('Email address') }}</small><bdi dir="ltr">{{ profile.email or '—' }}</bdi></div>
+          <div><small>{{ _('Cases') }}</small><strong>{{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</strong></div>
+        </div>
+        <div class="supporter-directory-tools">
+          {% if families %}<form method="post" action="{{ url_for('connect_supporter_profile', profile_id=profile.id) }}" class="compact-form supporter-directory-connect">
         {{ token(csrf) }}
-        <select name="family_id" required><option value="">{{ _('Choose case') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select>
-        <select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}</select>
-        <button class="small">{{ _('Connect') }}</button>
-      </form>{% else %}—{% endif %}</td>
-      <td><a class="button small secondary" href="{{ url_for('edit_supporter_profile', profile_id=profile.id) }}">{{ _('Edit') }}</a></td>
-    </tr>{% else %}<tr><td colspan="6" class="empty">{{ _('No people have been imported yet.') }}</td></tr>{% endfor %}</tbody>
-  </table></div>
-</section>
+            <label>{{ _('Connect to a case') }}<select name="family_id" required><option value="">{{ _('Choose case') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select></label>
+            <label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}</select></label>
+            <button class="small">{{ _('Connect') }}</button>
+          </form>{% endif %}
+          <a class="button small secondary" href="{{ url_for('edit_supporter_profile', profile_id=profile.id) }}">{{ _('Edit') }}</a>
+        </div>
+      </div>
+    </details>{% else %}<p class="empty">{{ _('No people have been imported yet.') }}</p>{% endfor %}
+  </div>
+</details>
 {% endblock %}

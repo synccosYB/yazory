@@ -74,6 +74,19 @@ def test_supporter_directory_uses_expandable_records_without_table_pagination():
     assert '.supporter-list-summary' in css
 
 
+def test_imported_people_directory_uses_the_same_foldable_accordion_pattern():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/supporter_directory.html').read_text()
+    css = (root / 'static/style.css').read_text()
+    assert 'class="card supporter-list-card foldable-supporter-list"' in template
+    assert 'class="supporter-accordion supporter-directory-accordion"' in template
+    assert 'class="supporter-accordion-item"' in template
+    assert 'class="supporter-accordion-panel"' in template
+    assert '<table>' not in template
+    assert 'supporter-directory-connect' in template
+    assert '.supporter-directory-connect' in css
+
+
 def test_dashboard_uses_translated_labels_and_keeps_preview_rows_visible():
     root = Path(__file__).resolve().parents[1]
     template = (root / 'templates/dashboard.html').read_text()
