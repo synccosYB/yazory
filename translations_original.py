@@ -62,14 +62,14 @@ Expenses & approvals|הוצאות ואישורים|הוצאות און באשט�
 Activity log|יומן פעילות|וואס מען האט געטון
 A circle of support.|מעגל של תמיכה.|א קרייז פון הילף.
 WORKSPACE|סביבת עבודה|ארבעטס פלאץ
-Yazory team|צוות יעזורי|די יעזורי שטאב
+Yazory team|צוות יעזורו|די יעזורו שטאב
 Demo workspace|סביבת הדגמה|דעמא
 Staff workspace|סביבת צוות|פאר די שטאב
 Family support /|תמיכה במשפחות /|הילף פאר משפחות /
 Initial release|גרסה ראשונה|ערשטע ווערסיע
 Sign out|התנתקות|ארויסגיין
 DEMO WORKSPACE · Use fictional information only. Pledges and payment records do not move money.|הדגמה בלבד · יש להזין פרטים לדוגמה בלבד. רישום התחייבויות ותשלומים אינו מעביר כסף.|נאר א דעמא · לייגט נאר אריין אויסגעטראכטע פרטים. צוזאגן און פארשרייבונגען שיקן נישט קיין געלט.
-Yazory · Helping families keep everyday life together.|יעזורי · עוזרים למשפחות להמשיך בשגרת החיים.|יעזורי · מיר העלפן משפחות מיטן טאג טעגליכן לעבן.
+Yazory · Helping families keep everyday life together.|יעזורו · עוזרים למשפחות להמשיך בשגרת החיים.|יעזורו · מיר העלפן משפחות מיטן טאג טעגליכן לעבן.
 THE BIG PICTURE|התמונה הכוללת|דער גאנצער בילד
 Every family. A little more supported.|לכל משפחה, עוד קצת תמיכה.|יעדע משפחה. מיט נאך אביסל הילף.
 Keep care, community, and everyday expenses connected.|מרכזים את הטיפול, הקהילה והוצאות היום־יום במקום אחד.|די משפחה, די העלפער און די הוצאות, אלעס אויף איין פלאץ.
@@ -209,7 +209,7 @@ No activity recorded.|לא נרשמה פעילות.|נאך נישטא קיין �
 FINANCIAL SUPPORT|תמיכה כספית|געלט הילף
 Review requests, approve support, and record completed payments.|בדיקת בקשות, אישור סיוע ורישום תשלומים שבוצעו.|קוקט איבער בקשות, באשטעטיגט הילף און שרייבט פאר וואס מען האט באצאלט.
 All|הכול|אלעס
-Marking an expense paid records an external payment. Yazory does not send funds.|סימון הוצאה כשולמה מתעד תשלום חיצוני. יעזורי אינה מעבירה כסף.|ווען מען צייכנט אן באצאלט, שרייבט מען נאר פאר א באצאלונג. יעזורי שיקט נישט קיין געלט.
+Marking an expense paid records an external payment. Yazory does not send funds.|סימון הוצאה כשולמה מתעד תשלום חיצוני. יעזורו אינה מעבירה כסף.|ווען מען צייכנט אן באצאלט, שרייבט מען נאר פאר א באצאלונג. יעזורו שיקט נישט קיין געלט.
 Family / payee|משפחה / מקבל התשלום|משפחה / פאר וועמען
 Month|חודש|חודש
 Amount|סכום|סכום
@@ -223,7 +223,7 @@ No expenses here.|אין הוצאות להצגה.|נישטא דא קיין הו�
 ACCOUNTABILITY|שקיפות ומעקב|קלארקייט און חשבון
 The latest 200 changes, with the staff identity and Eastern Time timestamp.|200 השינויים האחרונים, עם זהות איש הצוות ושעת החוף המזרחי.|די לעצטע 200 ענדערונגען, ווער עס האט עס געטון און די צייט לויט ניו יארק.
 View family →|צפייה במשפחה →|אריינקוקן אין דער משפחה →
-YAZORY STAFF|צוות יעזורי|די יעזורי שטאב
+YAZORY STAFF|צוות יעזורו|די יעזורו שטאב
 Welcome back.|ברוכים השבים.|ברוכים הבאים.
 Sign in to your family support workspace.|כניסה למערכת התמיכה במשפחות.|גייט אריין צו דער ארבעט פאר די משפחות.
 Email|דוא״ל|אימעיל
@@ -494,7 +494,7 @@ CATALOG.update({
 CATALOG.update({
   'Collections': {'he':'גבייה', 'yi':'געלט אייננעמען'},
   'COLLECTION RECORDS': {'he':'רישומי גבייה', 'yi':'פארשרייבונגען פון געלט'},
-  'Monthly commitments and manually recorded receipts. A pledge is never a receipt, and Yazory does not move money.': {'he':'התחייבויות חודשיות וקבלות שנרשמו ידנית. התחייבות אינה קבלה, ויעזורי אינה מעבירה כסף.', 'yi':'חודש׳ליכע צוזאגן און ידנית פארשריבענע קבלות. א צוזאג איז קיינמאל נישט קיין קבלה, און יעזורי שיקט נישט קיין געלט.'},
+  'Monthly commitments and manually recorded receipts. A pledge is never a receipt, and Yazory does not move money.': {'he':'התחייבויות חודשיות וקבלות שנרשמו ידנית. התחייבות אינה קבלה, ויעזורו אינה מעבירה כסף.', 'yi':'חודש׳ליכע צוזאגן און ידנית פארשריבענע קבלות. א צוזאג איז קיינמאל נישט קיין קבלה, און יעזורו שיקט נישט קיין געלט.'},
   'View': {'he':'הצגה', 'yi':'ווייזן'},
   'Monthly due commitments': {'he':'התחייבויות חודשיות לתשלום', 'yi':'חודש׳ליכע צוזאגן וואס קומען'},
   'Follow up manually where a pledged commitment has no recorded receipt.': {'he':'בצעו מעקב ידני כאשר להתחייבות אין קבלה שנרשמה.', 'yi':'מאכט ידנית נאכפאלגן ווען א צוזאג האט נישט קיין פארשריבענע קבלה.'},
@@ -505,7 +505,7 @@ CATALOG.update({
   'Recorded': {'he':'נרשם', 'yi':'פארשריבן'},
   'No assigned supporters or commitments for this month.': {'he':'אין תומכים או התחייבויות משויכים לחודש זה.', 'yi':'נישטא קיין צוגעטיילטע העלפער אדער צוזאגן פאר דעם חודש.'},
   'Record manual receipt': {'he':'רישום קבלה ידני', 'yi':'ידנית פארשרייבן א קבלה'},
-  'This documents a receipt reported or handled outside Yazory; it does not move money.': {'he':'זה מתעד קבלה שדווחה או טופלה מחוץ ליעזורי; הוא אינו מעביר כסף.', 'yi':'דאס פארשרייבט א קבלה וואס מען האט געמאלדן אדער באהאנדלט אויסער יעזורי; עס שיקט נישט קיין געלט.'},
+  'This documents a receipt reported or handled outside Yazory; it does not move money.': {'he':'זה מתעד קבלה שדווחה או טופלה מחוץ ליעזורו; הוא אינו מעביר כסף.', 'yi':'דאס פארשרייבט א קבלה וואס מען האט געמאלדן אדער באהאנדלט אויסער יעזורו; עס שיקט נישט קיין געלט.'},
   'Received on': {'he':'תאריך קבלה', 'yi':'דאטום באקומען'},
   'Record receipt': {'he':'רישום קבלה', 'yi':'פארשרייבן קבלה'},
   'Receipt history': {'he':'היסטוריית קבלות', 'yi':'היסטאריע פון קבלות'},
@@ -710,14 +710,14 @@ CATALOG.update({
         'yi': 'מען קען נישט אויסמעקן דעם העלפער ווייל עס זענען פארשריבן קבלות אויף זיין נאמען.'
     },
     'Secure Stripe donation': {'he': 'תרומה מאובטחת באמצעות Stripe', 'yi': 'זיכערע נדבה דורך Stripe'},
-    'Stripe collects the card details. Yazory stores only payment references and status.': {'he': 'Stripe אוספת את פרטי הכרטיס. יעזורי שומרת רק אסמכתאות ומצב תשלום.', 'yi': 'Stripe נעמט די קארטל פרטים. יעזורי האלט נאר די באצאלונג רעפערענץ און מצב.'},
+    'Stripe collects the card details. Yazory stores only payment references and status.': {'he': 'Stripe אוספת את פרטי הכרטיס. יעזורו שומרת רק אסמכתאות ומצב תשלום.', 'yi': 'Stripe נעמט די קארטל פרטים. יעזורו האלט נאר די באצאלונג רעפערענץ און מצב.'},
     'Amount ($)': {'he': 'סכום ($)', 'yi': 'סכום ($)'},
     'Frequency': {'he': 'תדירות', 'yi': 'ווי אפט'},
     'Continue to secure Stripe checkout': {'he': 'המשך לתשלום המאובטח של Stripe', 'yi': 'ווייטער צום זיכערע Stripe באצאלונג'},
     'Stripe is not configured yet.': {'he': 'Stripe עדיין לא הוגדר.', 'yi': 'Stripe איז נאכנישט אנגעשטעלט.'},
     'STRIPE PAYMENT': {'he': 'תשלום STRIPE', 'yi': 'STRIPE באצאלונג'},
     'Thank you for your donation': {'he': 'תודה על תרומתך', 'yi': 'א דאנק פאר אייער נדבה'},
-    'Stripe is securely processing your payment. Yazory will send the receipt after payment confirmation.': {'he': 'Stripe מעבדת את התשלום באופן מאובטח. יעזורי תשלח קבלה לאחר אישור התשלום.', 'yi': 'Stripe פראצעסירט די באצאלונג אויף א זיכערע וועג. יעזורי וועט שיקן די קבלה נאכן באשטעטיגן די באצאלונג.'},
+    'Stripe is securely processing your payment. Yazory will send the receipt after payment confirmation.': {'he': 'Stripe מעבדת את התשלום באופן מאובטח. יעזורו תשלח קבלה לאחר אישור התשלום.', 'yi': 'Stripe פראצעסירט די באצאלונג אויף א זיכערע וועג. יעזורו וועט שיקן די קבלה נאכן באשטעטיגן די באצאלונג.'},
     'Donation not completed': {'he': 'התרומה לא הושלמה', 'yi': 'די נדבה איז נישט פארטיג געווארן'},
     'No donation was completed. You may close this page and try again when ready.': {'he': 'לא הושלמה תרומה. ניתן לסגור את הדף ולנסות שוב כשתהיו מוכנים.', 'yi': 'קיין נדבה איז נישט געענדיגט געווארן. מען קען פארמאכן דעם פעידזש און נאכאמאל פרובירן ווען מען איז גרייט.'},
     'Stripe payouts': {'he': 'תשלומי Stripe', 'yi': 'Stripe באצאלונגען'},

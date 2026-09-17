@@ -664,11 +664,11 @@ def create_app(test_config=None):
 <tr><td align="center" style="padding:28px 12px">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border:1px solid #e3e5e9;border-radius:8px;overflow:hidden">
 <tr><td align="center" style="background:#ffffff;padding:24px 24px 18px;border-bottom:4px solid #b49a52">
-<img src="{logo_url}" width="150" alt="Yazory · יעזורי" style="display:block;width:150px;max-width:45%;height:auto;border:0">
+<img src="{logo_url}" width="150" alt="Yazory · יעזורו" style="display:block;width:150px;max-width:45%;height:auto;border:0">
 </td></tr>
 <tr><td dir="{email_direction}" align="{email_align}" style="direction:{email_direction};text-align:{email_align};padding:34px 38px 24px">{paragraphs}</td></tr>
 <tr><td style="background:#173e66;padding:20px 28px;text-align:center;color:#ffffff">
-<div style="font-size:14px;font-weight:700;letter-spacing:.3px">Yazory · יעזורי</div>
+<div style="font-size:14px;font-weight:700;letter-spacing:.3px">Yazory · יעזורו</div>
 <div style="margin-top:6px;color:#d4dfeb;font-size:12px;line-height:1.5">A circle of support.</div>
 </td></tr>
 </table>

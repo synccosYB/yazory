@@ -72,13 +72,13 @@ def register_supporter_portal(app):
                     'supporter_login_link', token=raw, _external=True)
                 language = session.get('language', 'en')
                 subject = {
-                    'yi': 'אייער זיכערער יעזורי לאגאין לינק',
-                    'he': 'קישור הכניסה המאובטח שלך ליעזורי',
+                    'yi': 'אייער זיכערער יעזורו לאגאין לינק',
+                    'he': 'קישור הכניסה המאובטח שלך ליעזורו',
                 }.get(language, 'Your secure Yazory sign-in link')
                 body = {
-                    'yi': (f'שלום {supporter.name},\n\nעפנט אייער זיכערער יעזורי דאנאר אקאונט דא:\n'
+                    'yi': (f'שלום {supporter.name},\n\nעפנט אייער זיכערער יעזורו דאנאר אקאונט דא:\n'
                            f'{link}\n\nדער איינמאליגער לינק לויפט אפ נאך 30 מינוט.'),
-                    'he': (f'שלום {supporter.name},\n\nפתחו כאן את חשבון התורם המאובטח שלכם ביעזורי:\n'
+                    'he': (f'שלום {supporter.name},\n\nפתחו כאן את חשבון התורם המאובטח שלכם ביעזורו:\n'
                            f'{link}\n\nהקישור החד־פעמי יפוג לאחר 30 דקות.'),
                 }.get(language, (f'Hello {supporter.name},\n\nOpen your secure Yazory donor account here:\n'
                                  f'{link}\n\nThis one-time link expires in 30 minutes.'))
