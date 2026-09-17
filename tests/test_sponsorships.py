@@ -90,6 +90,21 @@ def test_published_sponsor_without_website_still_appears_on_public_pages():
     assert 'public-sponsor-logo' in page
 
 
+def test_sponsor_can_be_published_without_a_website():
+    app = make_app()
+    client = app.test_client()
+    month = datetime.now().strftime('%Y-%m')
+    response = client.post('/sponsorships/overview', data={
+        'csrf': csrf(client), 'month': month, 'fund_name': 'קרן Example',
+        'company_name': 'Example Company', 'donor_name': 'Example Donor',
+        'memorial_one': '', 'memorial_two': '', 'contact_name': '',
+        'contact_phone': '', 'contact_email': '', 'website_url': '',
+        'amount': '0', 'paid': '0', 'status': 'Published', 'notes': '',
+        'logo': (BytesIO(b'logo'), 'logo.png'),
+    })
+    assert response.status_code == 302
+
+
 def test_case_sponsor_is_separate_and_appears_only_on_its_family_pages():
     app = make_app()
     client = app.test_client()

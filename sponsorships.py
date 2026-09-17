@@ -260,8 +260,8 @@ def install(app):
                 row.logo_data, row.logo_mime = data, mime
             if request.form.get('remove_logo') == 'yes':
                 row.logo_data, row.logo_mime = None, ''
-            if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data or not row.website_url):
-                abort(400, 'Sponsor קרן name, company name, donor name, company logo, and website are required before publishing.')
+            if status == 'Published' and (not row.fund_name or not row.company_name or not row.donor_name or not row.logo_data):
+                abort(400, 'Sponsor קרן name, company name, donor name, and company logo are required before publishing.')
             core.db.session.flush()
             user_id = session.get('user_id')
             user = core.db.session.get(core.StaffUser, user_id) if user_id else None
