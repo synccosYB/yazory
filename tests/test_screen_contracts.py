@@ -87,6 +87,19 @@ def test_imported_people_directory_uses_the_same_foldable_accordion_pattern():
     assert '.supporter-directory-connect' in css
 
 
+def test_network_people_list_is_compact_searchable_and_not_hierarchy_indented():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/directories.html').read_text()
+    script = (root / 'static/pages.js').read_text()
+    assert 'class="network-panel network-people-panel"' in template
+    assert 'class="network-list network-people-list"' in template
+    assert 'data-list-search="network-people-{{ institution.id }}"' in template
+    assert 'data-list-item' in template
+    assert '.network-people-list{max-height:420px;overflow-y:auto' in template
+    assert "{% if kind == 'Yeshivah' %} depth-" in template
+    assert "document.querySelectorAll('[data-list-search]')" in script
+
+
 def test_dashboard_uses_translated_labels_and_keeps_preview_rows_visible():
     root = Path(__file__).resolve().parents[1]
     template = (root / 'templates/dashboard.html').read_text()
