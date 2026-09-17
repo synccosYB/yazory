@@ -2768,6 +2768,8 @@ def create_app(test_config=None):
                     for family_id in family_ids}
         sent = {family_id: paid_expenses.get(family_id, 0) + direct_payouts.get(family_id, 0)
                 for family_id in family_ids}
+        available = {family_id: received[family_id] - sent[family_id]
+                     for family_id in family_ids}
         # Fundraisers receive no target/shortfall: even an aggregate may disclose
         # confidential household budget information. Authorized family/admin users
         # may use the saved shortfall as an internal planning target.
@@ -2775,7 +2777,8 @@ def create_app(test_config=None):
         targets = ({family.id: budget_totals(family, budget_records.get(family.id))['shortfall'] for family in families}
                    if show_targets else {})
         return render_template('fundraising.html', title='Fundraising workspace', families=families,
-                               pledged=pledged, received=received, sent=sent, targets=targets,
+                               pledged=pledged, received=received, sent=sent, available=available,
+                               targets=targets,
                                show_targets=show_targets)
 
     @app.get('/fundraising/<int:family_id>')

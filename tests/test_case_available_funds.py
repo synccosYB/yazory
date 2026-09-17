@@ -55,8 +55,10 @@ def test_fundraising_summary_separates_collected_money_from_family_payouts(tmp_p
     page = client.get('/fundraising').text
     assert 'Lifetime collected' in page
     assert 'Lifetime sent to family' in page
+    assert 'Available to pay out' in page
     assert '$100.00' in page
     assert '$9,000.00' in page
+    assert '$-8,900.00' in page
     assert '$9,500.00' not in page
 
 
