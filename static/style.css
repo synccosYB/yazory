@@ -432,8 +432,8 @@ html[dir="rtl"] .notification-arrow{transform:scaleX(-1)}
 
 /* Home hero inspired by the confidence of established community organizations, without exposing a recipient. */
 .public-page-home .public-main,.public-page-about .public-main{max-width:none;padding:0}
-.public-page-home .landing-hero,.public-page-about .landing-hero{display:block;width:100%;min-height:610px;margin:0;padding:86px max(24px,calc((100vw - 1080px)/2));box-sizing:border-box;background:linear-gradient(90deg,rgba(8,31,52,.94) 0%,rgba(12,43,69,.84) 38%,rgba(12,43,69,.18) 68%,rgba(12,43,69,.05) 100%),url("yazory-family-support-hero.webp") center/cover no-repeat;border:0;color:#fff}
-.public-page-home .landing-copy,.public-page-about .landing-copy{max-width:665px}
+.public-page-home .landing-hero,.public-page-about .landing-hero{display:block;width:100%;min-height:610px;margin:0;padding:86px max(32px,calc((100vw - 1400px)/2));box-sizing:border-box;background:linear-gradient(90deg,rgba(8,31,52,.94) 0%,rgba(12,43,69,.8) 35%,rgba(12,43,69,.12) 64%,rgba(12,43,69,.02) 100%),url("yazory-family-support-hero.webp") center/cover no-repeat;border:0;color:#fff}
+.public-page-home .landing-copy,.public-page-about .landing-copy{max-width:700px;transform:translateX(-18px)}
 .public-page-home .landing-hero .eyebrow,.public-page-about .landing-hero .eyebrow{color:#e1c77c}
 .public-page-home .landing-hero h1,.public-page-about .landing-hero h1{margin:16px 0 24px;color:#fff;font-size:clamp(45px,5.4vw,72px);line-height:1.04;letter-spacing:-.025em}
 .public-page-home .landing-hero p,.public-page-about .landing-hero p{max-width:620px;color:#f1f4f7;font-size:18px;line-height:1.72}
@@ -450,6 +450,9 @@ html[lang="yi"] .landing-hero h1,html[lang="yi"] .landing-page-head h1{max-width
 html[lang="yi"] .landing-hero p,html[lang="yi"] .landing-page-head p{max-width:860px;font-size:18px;line-height:1.9}
 html[lang="yi"] .landing-section>h2{font-family:Arial,"Noto Sans Hebrew",sans-serif;font-weight:700;line-height:1.35}
 html[lang="yi"] .public-sponsors h2{font-family:Arial,"Noto Sans Hebrew",sans-serif;font-weight:500;line-height:1.55}
+html[dir="rtl"] .public-page-home .landing-copy,html[dir="rtl"] .public-page-about .landing-copy{max-width:820px;margin-inline-end:auto;transform:translateX(18px);font-family:"Noto Sans Hebrew","Segoe UI",Arial,sans-serif}
+html[dir="rtl"] .public-page-home .landing-hero h1,html[dir="rtl"] .public-page-about .landing-hero h1{max-width:820px;font-family:"Noto Serif Hebrew","David Libre","Times New Roman",serif;font-size:clamp(41px,4.35vw,61px);font-weight:700;line-height:1.22;letter-spacing:0}
+html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-about .landing-hero p{max-width:790px;font-family:"Noto Sans Hebrew","Segoe UI",Arial,sans-serif;font-size:18px;line-height:1.88;letter-spacing:0}
 
 /* The application page reads as one composed introduction instead of isolated bands. */
 @media(min-width:851px){
@@ -464,6 +467,8 @@ html[lang="yi"] .public-sponsors h2{font-family:Arial,"Noto Sans Hebrew",sans-se
 }
 @media(max-width:850px){
   html[lang="yi"]{scroll-padding-top:18px}
+  .public-page-home .landing-copy,.public-page-about .landing-copy,html[dir="rtl"] .public-page-home .landing-copy,html[dir="rtl"] .public-page-about .landing-copy{transform:none}
+  html[dir="rtl"] .public-page-home .landing-hero h1,html[dir="rtl"] .public-page-about .landing-hero h1{font-size:36px;line-height:1.25}
   html[lang="yi"] .landing-hero h1,html[lang="yi"] .landing-page-head h1{font-size:35px;line-height:1.22}
   html[lang="yi"] .landing-hero p,html[lang="yi"] .landing-page-head p{font-size:16px;line-height:1.82}
 }
