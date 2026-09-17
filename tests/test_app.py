@@ -715,6 +715,8 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
     assert directory.status_code == 200
     assert f'value="askan:{askan.id}"' in directory.text
     assert f'value="supporter_profile:{person_id}"' in directory.text
+    assert directory.text.index(f'value="askan:{askan.id}"') < directory.text.index(
+        'value="family:1"')
     assert 'data-select-filter="directory-person-' in directory.text
 
 def test_rabbi_phone_is_saved_and_shown_with_the_rabbi(app, client):

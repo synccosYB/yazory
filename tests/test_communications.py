@@ -75,7 +75,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'class="card foldable-communication-section" id="communication-history"' in page.text
     assert 'class="mailbox-list-fold"' in page.text
     assert '<div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260917-foldable-communications-v1' in page.text
+    assert 'pages.js?v=20260917-unified-person-search-v2' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript

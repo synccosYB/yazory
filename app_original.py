@@ -1005,6 +1005,12 @@ def create_app(test_config=None):
     def directory_people():
         """Return every connectable person without merging people who share a name."""
         people = []
+        # Put designated askanim first. They are often created from a case
+        # profile rather than the imported people directory, so appending them
+        # after every family/supporter/staff row made them look absent in long
+        # native dropdowns.
+        for askan in db.session.scalars(select(Askan).order_by(Askan.name)).all():
+            people.append(('askan', askan.id, askan.name, 'Askan', askan.email or askan.phone))
         for family in db.session.scalars(select(Family).order_by(Family.name)).all():
             people.append(('family', family.id, family.name, 'Applicant', family.name))
             if family.spouse:
@@ -1021,8 +1027,6 @@ def create_app(test_config=None):
                 people.append(('supporter_child_spouse', child.id, child.spouse_name, 'Spouse', child.name))
         for user in db.session.scalars(select(StaffUser).order_by(StaffUser.name, StaffUser.email)).all():
             people.append(('staff', user.id, user.name or user.email, 'Staff member', user.email))
-        for askan in db.session.scalars(select(Askan).order_by(Askan.name)).all():
-            people.append(('askan', askan.id, askan.name, 'Askan', askan.email or askan.phone))
         for provider in app.extensions.get('person_directory_providers', ()):
             people.extend(provider())
         return people
