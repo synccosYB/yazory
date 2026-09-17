@@ -186,12 +186,11 @@ def install(app):
             MonthlySponsorship.month == (month or _month_now()),
             MonthlySponsorship.status == 'Published',
             MonthlySponsorship.logo_data.is_not(None),
-            MonthlySponsorship.website_url != '',
         ).order_by(MonthlySponsorship.company_name, MonthlySponsorship.id)).all()
         unique = []
         seen = set()
         for row in rows:
-            key = row.website_url.casefold()
+            key = (row.website_url or row.company_name or str(row.id)).casefold()
             if key not in seen:
                 seen.add(key)
                 unique.append(row)

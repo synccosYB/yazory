@@ -76,6 +76,20 @@ def test_unpublished_sponsor_is_not_displayed():
     assert 'Hidden Sponsor' not in client.get('/').text
 
 
+def test_published_sponsor_without_website_still_appears_on_public_pages():
+    app = make_app()
+    client = app.test_client()
+    month = datetime.now().strftime('%Y-%m')
+    with app.app_context():
+        db.session.add(MonthlySponsorship(
+            month=month, page_key='overview', company_name='Existing Sponsor',
+            status='Published', logo_data=b'logo', logo_mime='image/png'))
+        db.session.commit()
+    page = client.get('/').text
+    assert 'Existing Sponsor' in page
+    assert 'public-sponsor-logo' in page
+
+
 def test_case_sponsor_is_separate_and_appears_only_on_its_family_pages():
     app = make_app()
     client = app.test_client()
