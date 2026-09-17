@@ -2057,6 +2057,16 @@ def create_app(test_config=None):
                 InboundInboxMessage.created_at.desc(),
                 InboundInboxMessage.id.desc()).limit(300)).all()
         inbox_messages = [row for row in (inbox_history or []) if row.status == 'unread']
+        outbound_statement = select(_app.EmailMessage).order_by(
+            _app.EmailMessage.created_at.desc(),
+            _app.EmailMessage.id.desc()).limit(300)
+        if not task_is_admin(user):
+            assigned_family_ids = select(_app.FamilyAssignment.family_id).where(
+                _app.FamilyAssignment.staff_user_id == user.id)
+            outbound_statement = outbound_statement.where(_app.or_(
+                _app.EmailMessage.family_id.in_(assigned_family_ids),
+                _app.EmailMessage.staff_user_id == user.id))
+        outbound_history = _app.db.session.scalars(outbound_statement).all()
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
@@ -2064,6 +2074,7 @@ def create_app(test_config=None):
             history=history, latest=latest, due=due, email_replies=email_replies,
             applicant_history=applicant_history, applicant_replies=applicant_replies,
             inbox_history=inbox_history, inbox_messages=inbox_messages,
+            outbound_history=outbound_history,
             callback_contact_ids=callback_contact_ids,
             overdue_contact_ids=overdue_contact_ids,
             pledge_delivery=pledge_delivery,

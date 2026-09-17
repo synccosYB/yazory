@@ -74,7 +74,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'id="outreach-workflow"' in page.text
     assert 'id="communication-history" tabindex="-1"' in page.text
     assert 'class="outreach-actions"><div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260917-communications-navigation-v2' in page.text
+    assert 'pages.js?v=20260917-sent-mailbox-v1' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
@@ -493,6 +493,11 @@ def test_compose_can_send_to_email_not_connected_to_system(monkeypatch):
         assert message.subject == 'A message from Yazory'
         assert message.staff_user_id is not None
         assert message.family_id is None
+    history = client.get('/communications')
+    assert 'data-mailbox-category="sent"' in history.text
+    assert 'outside@example.test' in history.text
+    assert 'A message from Yazory' in history.text
+    assert 'This address is not connected to a supporter.' in history.text
 
 
 def test_external_email_reply_goes_to_general_inbox(monkeypatch):
