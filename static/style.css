@@ -441,6 +441,12 @@ html[dir="rtl"] .notification-arrow{transform:scaleX(-1)}
 .public-page-home .landing-hero .button.secondary,.public-page-about .landing-hero .button.secondary{background:transparent;border-color:#ffffff9c;color:#fff}
 .public-page-home .landing-assurance,.public-page-about .landing-assurance{max-width:1080px;margin:0 auto;padding:17px 24px 45px}
 .public-page-home .landing-section,.public-page-home .landing-callout,.public-page-home .public-sponsors,.public-page-about .landing-section,.public-page-about .landing-callout,.public-page-about .public-sponsors{width:min(1480px,calc(100% - 96px));max-width:none;margin-inline:auto}
+@media(min-width:851px){
+  .public-page-home .landing-section,.public-page-about .landing-section{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);column-gap:72px;align-items:start}
+  .public-page-home .landing-section>.eyebrow,.public-page-home .landing-section>h2,.public-page-home .landing-section>p:not(.landing-side-note),.public-page-about .landing-section>.eyebrow,.public-page-about .landing-section>h2,.public-page-about .landing-section>p:not(.landing-side-note){grid-column:1}
+  .public-page-home .landing-section>.landing-side-note,.public-page-about .landing-section>.landing-side-note{grid-column:2;grid-row:2/4;align-self:center;max-width:none;margin:0}
+  .public-page-home .landing-section>.landing-grid,.public-page-about .landing-section>.landing-grid{grid-column:1/-1;width:100%}
+}
 @media(max-width:850px){.public-page-home .landing-hero,.public-page-about .landing-hero{min-height:570px;padding:56px 22px;background:linear-gradient(90deg,rgba(8,31,52,.96),rgba(12,43,69,.62)),url("yazory-family-support-hero.webp") 62% center/cover no-repeat}.public-page-home .landing-hero h1,.public-page-about .landing-hero h1{font-size:42px}.public-page-home .landing-hero p,.public-page-about .landing-hero p{font-size:16px}.public-page-home .landing-assurance,.public-page-about .landing-assurance{padding:14px 18px 34px}.public-page-home .landing-section,.public-page-home .landing-callout,.public-page-home .public-sponsors,.public-page-about .landing-section,.public-page-about .landing-callout,.public-page-about .public-sponsors{margin-inline:18px}}
 
 /* Yiddish needs a broader measure and a calmer scale than the Latin display treatment. */
