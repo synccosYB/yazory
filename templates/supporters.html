@@ -27,7 +27,8 @@
 <div class="list-filter-actions"><button type="submit">{{ _('Apply filters') }}</button><a class="button secondary" href="{{ url_for('supporters') }}">{{ _('Clear filters') }}</a></div>
 </form>
 </section>
-<section class="card supporter-list-card">
+<details class="card supporter-list-card foldable-supporter-list">
+<summary class="supporter-list-summary"><span><strong>{{ _('Supporters') }}</strong><small>{{ contacts|length }} {{ _('records') }}</small></span><span>{{ _('Open tools') }}</span></summary>
 <div class="supporter-accordion">
 {% for c in contacts %}<details class="supporter-accordion-item {{ 'nested-supporter-row' if c.parent_supporter }}">
 <summary>
@@ -78,7 +79,7 @@
 </div>
 </details>{% else %}<p class="empty">{{ _('No supporters found.') }}</p>{% endfor %}
 </div>
-</section>
+</details>
 <details class="card padded add-supporter-panel no-print" {% if selected_family_id %}open{% endif %}>
 <summary>{{ _('+ Add a new person') }}</summary>
 <form method="post" action="{{ url_for('add_contact') if families else '#' }}">
