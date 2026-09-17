@@ -61,7 +61,7 @@ def test_public_landing_explains_fund_trust_and_family_privacy(public_app):
     home = client.get('/').text
     trust = client.get('/trust').text
     assert 'dependable payment every two weeks' in home
-    assert 'Only actual transaction fees' in home
+    assert 'Only actual transaction fees' not in home
     assert 'does not deduct an administrative percentage' in trust
     assert 'represented only by that number' in trust
 
