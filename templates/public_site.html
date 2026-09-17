@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260917-proportional-sponsor-blocks-v2') }}">
 </head>
-<body class="public-site">
+<body class="public-site public-page-{{ page }}">
   <header class="public-header">
     <a class="public-brand" href="{{ url_for('dashboard') }}"><img src="{{ url_for('static', filename='yazory-logo-corrected.png') }}" alt="Yazory · יעזורו"></a>
     <nav class="public-nav" aria-label="Public information">

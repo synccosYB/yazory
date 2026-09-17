@@ -397,3 +397,48 @@ html[dir="rtl"] .notification-arrow{transform:scaleX(-1)}
 .supporter-directory-tools{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}.supporter-directory-connect{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr) auto;align-items:end;gap:10px;flex:1}.supporter-directory-connect label{margin:0}.supporter-directory-connect select{margin-top:4px}.supporter-directory-connect button{margin-bottom:0}@media(max-width:750px){.supporter-directory-connect{grid-template-columns:1fr}.supporter-directory-tools{align-items:stretch;flex-direction:column}.supporter-directory-tools>a{align-self:flex-start}}
 
 .public-address{direction:ltr;unicode-bidi:isolate}
+
+/* A quieter, editorial public presentation: fewer boxes, less symmetry, more institutional restraint. */
+.public-site .public-main{max-width:1080px;padding-top:28px}
+.public-site .eyebrow{color:var(--gold-dark);font-size:12px;font-weight:700;letter-spacing:.025em;text-transform:none}
+.public-site .landing-hero{grid-template-columns:minmax(0,1.55fr) minmax(250px,.55fr);gap:72px;align-items:end;padding:64px 0 58px;border-bottom:1px solid #cfc9bb;overflow:visible}
+.public-site .landing-hero::before{display:none}
+.public-site .landing-hero h1,.public-site .landing-page-head h1{max-width:780px;margin:14px 0 22px;font-size:clamp(38px,4.6vw,60px);line-height:1.1;letter-spacing:-.018em}
+.public-site .landing-hero p,.public-site .landing-page-head p{max-width:720px;color:#526276;font-size:17px;line-height:1.78}
+.public-site .landing-promise{padding:25px 0 5px;background:transparent;border:0;border-top:2px solid var(--gold);border-radius:0;color:var(--ink);box-shadow:none}
+.public-site .landing-promise>span{margin:0 0 13px;padding:0;border:0;color:var(--gold-dark);font-size:11px;letter-spacing:.025em;text-transform:none}
+.public-site .landing-promise h2{margin-bottom:11px;color:var(--navy-deep);font:500 24px/1.3 Georgia,serif}
+.public-site .landing-promise p{color:var(--muted);font-size:14px;line-height:1.72}
+.public-site .landing-assurance{display:flex;justify-content:flex-start;gap:0;margin:0 0 55px;background:transparent;border:0;border-radius:0;color:var(--navy);overflow:visible}
+.public-site .landing-assurance div{justify-content:flex-start;min-height:0;padding:17px 28px 17px 0;border:0;text-align:start;font-size:13px;font-weight:700}
+.public-site .landing-assurance div+div{padding-inline-start:28px;border-inline-start:1px solid #cfc9bb}
+.public-site .landing-section{padding:34px 0 48px}
+.public-site .landing-section>h2{max-width:660px;margin:10px 0 14px;font-size:34px;line-height:1.2}
+.public-site .landing-section>p{max-width:720px;margin-bottom:36px;line-height:1.8}
+.public-site .landing-section>.landing-side-note{max-width:520px;margin:4px 0 36px;padding:14px 0;border-top:1px solid #cfc9bb;border-bottom:1px solid #cfc9bb;color:var(--navy);font-family:Georgia,serif;font-size:18px;line-height:1.55}
+.public-site .landing-grid{gap:0;margin:25px 0 38px;border-top:1px solid #cfc9bb;border-bottom:1px solid #cfc9bb}
+.public-site .landing-grid article,.public-site .landing-card{min-height:0;padding:27px 30px 29px;background:transparent;border:0;border-inline-end:1px solid #ded9ce;border-radius:0}
+.public-site .landing-grid article:first-child{padding-inline-start:0}.public-site .landing-grid article:last-child{padding-inline-end:0;border-inline-end:0}
+.public-site .landing-grid h3,.public-site .landing-card h2{font-size:17px;line-height:1.35}
+.public-site .landing-callout{margin:18px 0 16px;padding:34px 0;background:transparent;border:0;border-top:1px solid #cfc9bb;border-bottom:1px solid #cfc9bb;border-radius:0;color:var(--ink)}
+.public-site .landing-callout h2{color:var(--navy-deep);font-size:27px}.public-site .landing-callout p{color:var(--muted)}
+.public-site .landing-callout .button{background:transparent;border-color:var(--navy);color:var(--navy)}
+.public-site .landing-page-head{padding:64px 0 50px;border-bottom:1px solid #cfc9bb}.public-site .landing-page-head::after{display:none}
+.public-site .landing-steps{grid-template-columns:repeat(2,1fr);border-bottom:0}.public-site .landing-steps article{display:grid;grid-template-columns:44px 1fr;align-items:center;gap:14px;border-bottom:1px solid #ded9ce}.public-site .landing-steps b{margin:0;background:transparent;border:1px solid #c4b47c}
+.public-site .trust-layout{gap:0;margin:35px 0;border-bottom:1px solid #cfc9bb}.public-site .trust-layout .landing-card{min-height:0;padding-inline-start:0}
+.public-site .case-ledger{padding:28px 30px;background:#ece8df;border:0;border-inline-start:1px solid #cfc9bb;border-radius:0;color:var(--navy-deep);box-shadow:none}.public-site .case-ledger span{color:var(--gold-dark)}.public-site .case-ledger hr{border-color:#c9c2b3}.public-site .case-ledger p{color:var(--muted)}
+.public-site .public-sponsors{margin-top:58px;padding-top:25px;text-align:start}.public-site .public-sponsors h2{font:500 24px/1.3 Georgia,serif}.public-site .public-sponsor-logos{margin-inline:0}
+@media(max-width:850px){.public-site .public-main{padding-top:12px}.public-site .landing-hero{grid-template-columns:1fr;gap:35px;padding:40px 0}.public-site .landing-hero h1,.public-site .landing-page-head h1{font-size:36px}.public-site .landing-assurance{display:block;padding:12px 0}.public-site .landing-assurance div{padding:9px 0}.public-site .landing-assurance div+div{padding-inline-start:0;border-inline-start:0}.public-site .landing-grid,.public-site .landing-steps{grid-template-columns:1fr}.public-site .landing-grid article,.public-site .landing-card{padding:22px 0;border-inline-end:0;border-bottom:1px solid #ded9ce}.public-site .landing-grid article:last-child{border-bottom:0}.public-site .landing-callout{align-items:flex-start;padding:27px 0}.public-site .trust-layout{grid-template-columns:1fr}.public-site .case-ledger{border-inline-start:0;border-top:1px solid #cfc9bb}}
+
+/* Home hero inspired by the confidence of established community organizations, without exposing a recipient. */
+.public-page-home .public-main,.public-page-about .public-main{max-width:none;padding:0}
+.public-page-home .landing-hero,.public-page-about .landing-hero{display:block;width:100%;min-height:610px;margin:0;padding:86px max(24px,calc((100vw - 1080px)/2));box-sizing:border-box;background:linear-gradient(90deg,rgba(8,31,52,.94) 0%,rgba(12,43,69,.84) 38%,rgba(12,43,69,.18) 68%,rgba(12,43,69,.05) 100%),url("yazory-family-support-hero.webp") center/cover no-repeat;border:0;color:#fff}
+.public-page-home .landing-copy,.public-page-about .landing-copy{max-width:665px}
+.public-page-home .landing-hero .eyebrow,.public-page-about .landing-hero .eyebrow{color:#e1c77c}
+.public-page-home .landing-hero h1,.public-page-about .landing-hero h1{margin:16px 0 24px;color:#fff;font-size:clamp(45px,5.4vw,72px);line-height:1.04;letter-spacing:-.025em}
+.public-page-home .landing-hero p,.public-page-about .landing-hero p{max-width:620px;color:#f1f4f7;font-size:18px;line-height:1.72}
+.public-page-home .landing-hero .button,.public-page-about .landing-hero .button{background:#fff;border-color:#fff;color:var(--navy-deep)}
+.public-page-home .landing-hero .button.secondary,.public-page-about .landing-hero .button.secondary{background:transparent;border-color:#ffffff9c;color:#fff}
+.public-page-home .landing-assurance,.public-page-about .landing-assurance{max-width:1080px;margin:0 auto;padding:17px 24px 45px}
+.public-page-home .landing-section,.public-page-home .landing-callout,.public-page-home .public-sponsors,.public-page-about .landing-section,.public-page-about .landing-callout,.public-page-about .public-sponsors{max-width:1080px;margin-inline:auto}
+@media(max-width:850px){.public-page-home .landing-hero,.public-page-about .landing-hero{min-height:570px;padding:56px 22px;background:linear-gradient(90deg,rgba(8,31,52,.96),rgba(12,43,69,.62)),url("yazory-family-support-hero.webp") 62% center/cover no-repeat}.public-page-home .landing-hero h1,.public-page-about .landing-hero h1{font-size:42px}.public-page-home .landing-hero p,.public-page-about .landing-hero p{font-size:16px}.public-page-home .landing-assurance,.public-page-about .landing-assurance{padding:14px 18px 34px}.public-page-home .landing-section,.public-page-home .landing-callout,.public-page-home .public-sponsors,.public-page-about .landing-section,.public-page-about .landing-callout,.public-page-about .public-sponsors{margin-inline:18px}}
