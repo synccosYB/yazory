@@ -1,4 +1,5 @@
 """Per-staff unread activity feed for Yazory."""
+import re
 from datetime import datetime, timezone
 
 from flask import abort, redirect, render_template, session, url_for
@@ -95,6 +96,16 @@ def install(app):
 
     def activity_url(row):
         lowered = row.action.lower()
+        sponsorship_match = re.fullmatch(
+            r'Updated (\d{4}-(?:0[1-9]|1[0-2])) sponsorship for (.+)',
+            row.action)
+        if sponsorship_match:
+            month, page_label = sponsorship_match.groups()
+            from sponsorships import PAGE_SLOTS
+            page_key = next((key for key, label in PAGE_SLOTS
+                             if label == page_label), None)
+            if page_key:
+                return url_for('sponsorship_edit', page_key=page_key, month=month)
         if any(word in lowered for word in ('message', 'email', 'replied')):
             return url_for('communications', _anchor='general-inbox')
         if any(word in lowered for word in ('receipt', 'donation', 'pledge', 'stripe')):

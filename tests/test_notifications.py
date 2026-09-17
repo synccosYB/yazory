@@ -95,3 +95,23 @@ def test_notifications_page_always_links_back_to_communications(app, client):
     assert response.status_code == 200
     assert b'href="/communications#general-inbox"' in response.data
     assert b'Open Communications' in response.data
+
+
+def test_opening_sponsorship_notification_opens_exact_page_and_month(app, client):
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        cursor = db.session.get(StaffActivityCursor, user.id)
+        cursor.last_seen_at = datetime.now(timezone.utc).replace(
+            tzinfo=None) - timedelta(minutes=5)
+        activity = Audit(
+            actor='owner@example.test',
+            action='Updated 2026-09 sponsorship for Overview')
+        db.session.add(activity)
+        db.session.commit()
+        activity_id = activity.id
+
+    opened = client.get(
+        f'/notifications/{activity_id}/open', follow_redirects=False)
+
+    assert opened.status_code == 302
+    assert opened.location.endswith('/sponsorships/overview?month=2026-09')
