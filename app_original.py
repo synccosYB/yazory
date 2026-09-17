@@ -645,9 +645,9 @@ def create_app(test_config=None):
             ordered = lines and all(re.match(r'^\d+\. ', line) for line in lines)
             if unordered or ordered:
                 tag = 'ul' if unordered else 'ol'
-                items = ''.join(
-                    f'<li>{re.sub(r"^(?:- |\\d+\\. )", "", line)}</li>'
-                    for line in lines)
+                item_lines = (
+                    re.sub(r'^(?:- |\d+\. )', '', line) for line in lines)
+                items = ''.join(f'<li>{line}</li>' for line in item_lines)
                 blocks.append(
                     f'<{tag} dir="{email_direction}" style="direction:{email_direction};text-align:{email_align};margin:0 0 18px;padding-inline-start:24px;color:#17385f;font-size:16px;line-height:1.65">{items}</{tag}>')
             else:
