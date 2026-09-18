@@ -2418,9 +2418,19 @@ def create_app(test_config=None):
         if user is None or user.role != 'organization_admin':
             _app.abort(403)
         recipient = _app.request.form.get('recipient_phone', '').strip()[:80]
+        contact_id = _app.request.form.get('contact_id', type=int)
+        if contact_id is not None:
+            contact = _app.db.session.get(_app.Contact, contact_id)
+            if contact is None:
+                _app.abort(404)
+            recipient = contact_mobile(contact)
+            if not recipient:
+                _app.abort(400, 'The selected person does not have a mobile number.')
         body = _app.request.form.get('body', '').strip()[:1600]
         if not body:
             _app.abort(400, 'Enter a message.')
+        if not recipient:
+            _app.abort(400, 'Choose a person or enter a mobile number.')
         try:
             recipient = normalize_phone(recipient)
         except ValueError as exc:

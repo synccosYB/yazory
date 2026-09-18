@@ -44,8 +44,12 @@
       <form class="mailbox-general-sms" method="post" action="{{ url_for('send_general_sms') }}">
         {{ token(csrf) }}
         <h3>{{ _('New SMS') }}</h3>
-        <p>{{ _('Send a text message to any mobile number.') }}</p>
-        <label>{{ _('Mobile number') }}<input dir="ltr" type="tel" name="recipient_phone" maxlength="80" autocomplete="tel" required placeholder="(845) 555-1212"></label>
+        <p>{{ _('Choose a person in Yazory or enter any mobile number.') }}</p>
+        <div class="mailbox-recipient-list">
+          <label>{{ _('Person in Yazory') }}<select name="contact_id"><option value="">{{ _('Choose supporter') }}</option>{% for contact in contacts %}<option value="{{ contact.id }}">{{ contact.name }} · {{ contact.family.name }}</option>{% endfor %}</select></label>
+          <span class="mailbox-recipient-or">{{ _('or') }}</span>
+          <label>{{ _('Any mobile number') }}<input dir="ltr" type="tel" name="recipient_phone" maxlength="80" autocomplete="tel" placeholder="(845) 555-1212"></label>
+        </div>
         <label>{{ _('Message') }}<textarea name="body" maxlength="1600" rows="5" required></textarea></label>
         <button>{{ _('Send SMS') }}</button>
       </form>
