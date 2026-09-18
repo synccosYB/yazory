@@ -6,23 +6,24 @@
   <aside class="mailbox-folders">
     <button class="mailbox-compose" type="button" data-mailbox-compose>{{ _('Compose') }}</button>
     <nav aria-label="{{ _('Mail folders') }}">
-      <a class="selected" href="#mailbox-inbox" data-mailbox-folder="inbox"><span>{{ _('Inbox') }}</span><b>{{ inbox_messages|length + email_replies|length + applicant_replies|length }}</b></a>
+      <a class="selected" href="#mailbox-inbox" data-mailbox-folder="inbox"><span>{{ _('Inbox') }}</span><b>{{ inbox_messages|length + email_replies|length + applicant_replies|length + general_sms_messages|length }}</b></a>
       <a href="#mailbox-inbox" data-mailbox-folder="supporters"><span>{{ _('Supporters') }}</span><b>{{ email_replies|length }}</b></a>
       <a href="#mailbox-inbox" data-mailbox-folder="applicants"><span>{{ _('Applicants') }}</span><b>{{ applicant_replies|length }}</b></a>
       {% if inbox_history is not none %}<a href="#mailbox-inbox" data-mailbox-folder="general"><span>{{ _('General email') }}</span><b>{{ inbox_messages|length }}</b></a>{% endif %}
-      <a href="#mailbox-inbox" data-mailbox-folder="sent"><span>{{ _('Sent & history') }}</span><b>{{ outbound_history|length }}</b></a>
+      {% if general_sms_history is not none %}<a href="#mailbox-inbox" data-mailbox-folder="general-sms"><span>{{ _('General SMS') }}</span><b>{{ general_sms_messages|length }}</b></a>{% endif %}
+      <a href="#mailbox-inbox" data-mailbox-folder="sent"><span>{{ _('Sent & history') }}</span><b>{{ outbound_history|length + (general_sms_history or [])|selectattr('direction','equalto','outbound')|list|length }}</b></a>
     </nav>
     <a class="mailbox-tools-link" href="#communication-tools">{{ _('Callbacks & outreach tools') }}</a>
   </aside>
 
   <div class="mailbox-main" id="mailbox-inbox">
     <header class="mailbox-toolbar">
-      <div><h2>{{ _('Inbox') }}</h2><p>{{ _('All new email, supporter, and applicant messages in one place.') }}</p></div>
+      <div><h2>{{ _('Inbox') }}</h2><p>{{ _('All new email, SMS, supporter, and applicant messages in one place.') }}</p></div>
       <label class="mailbox-search"><span class="sr-only">{{ _('Search messages') }}</span><input type="search" placeholder="{{ _('Search messages') }}" data-mailbox-search></label>
     </header>
 
     <div class="mailbox-compose-panel" data-mailbox-compose-panel {{ '' if external_email else 'hidden' }}>
-      <div class="section-heading"><div><h3>{{ _('New message') }}</h3><p>{{ _('Choose someone in Yazory or enter any email address.') }}</p></div><button class="small secondary" type="button" data-mailbox-compose-close>{{ _('Cancel') }}</button></div>
+      <div class="section-heading"><div><h3>{{ _('New message') }}</h3><p>{{ _('Send email or SMS from one place.') }}</p></div><button class="small secondary" type="button" data-mailbox-compose-close>{{ _('Cancel') }}</button></div>
       {% if external_email %}
       <form class="mailbox-external-email" method="post" action="{{ url_for('send_external_email') }}">
         {{ token(csrf) }}
@@ -39,13 +40,29 @@
         <button>{{ _('Continue') }}</button>
       </form>
       {% endif %}
+      {% if general_sms_history is not none %}
+      <form class="mailbox-general-sms" method="post" action="{{ url_for('send_general_sms') }}">
+        {{ token(csrf) }}
+        <h3>{{ _('New SMS') }}</h3>
+        <p>{{ _('Send a text message to any mobile number.') }}</p>
+        <label>{{ _('Mobile number') }}<input dir="ltr" type="tel" name="recipient_phone" maxlength="80" autocomplete="tel" required placeholder="(845) 555-1212"></label>
+        <label>{{ _('Message') }}<textarea name="body" maxlength="1600" rows="5" required></textarea></label>
+        <button>{{ _('Send SMS') }}</button>
+      </form>
+      {% endif %}
     </div>
 
-    <details class="mailbox-list-fold"><summary><strong>{{ _('Inbox') }}</strong><span>{{ (inbox_history or [])|length + email_replies|length + applicant_replies|length + outbound_history|length }} {{ _('Communication records') }}</span></summary><div class="mailbox-list" data-mailbox-list>
+    <details class="mailbox-list-fold"><summary><strong>{{ _('Inbox') }}</strong><span>{{ (inbox_history or [])|length + email_replies|length + applicant_replies|length + outbound_history|length + (general_sms_history or [])|length }} {{ _('Communication records') }}</span></summary><div class="mailbox-list" data-mailbox-list>
       {% if inbox_history is not none %}{% for message in inbox_history %}
       <details class="mailbox-message {{ 'unread' if message.status == 'unread' }}" data-mailbox-category="general">
         <summary><span class="mailbox-avatar">{{ (message.sender_name or message.sender_email)[:1]|upper }}</span><span class="mailbox-sender">{{ message.sender_name or message.sender_email }}<small><bdi dir="ltr">{{ message.sender_email }}</bdi></small></span><span class="mailbox-subject"><strong>{{ message.subject or _('No subject') }}</strong><small>{{ message.body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary>
         <div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ message.subject or _('No subject') }}</h3><p>{{ _('From') }} <bdi dir="ltr">{{ message.sender_email }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.body }}</div><div class="mailbox-reply-actions"><details><summary class="button small">{{ _('Reply') }}</summary><form method="post" action="{{ url_for('reply_to_inbound_inbox_message',message_id=message.id) }}">{{ token(csrf) }}<label>{{ _('Subject') }}<input name="subject" value="{{ message.subject if message.subject.lower().startswith('re:') else 'Re: ' ~ message.subject }}" maxlength="300" required></label><label>{{ _('Reply') }}<textarea name="body" rows="6" maxlength="5000" required autofocus></textarea></label><button>{{ _('Send reply') }}</button></form></details>{% if message.status == 'unread' %}<form method="post" action="{{ url_for('handle_inbound_inbox_message',message_id=message.id) }}">{{ token(csrf) }}<button class="secondary small">{{ _('Mark handled') }}</button></form>{% endif %}</div></div>
+      </details>{% endfor %}{% endif %}
+
+      {% if general_sms_history is not none %}{% for message in general_sms_history if message.direction == 'inbound' %}
+      <details class="mailbox-message {{ 'unread' if message.status == 'unread' }}" data-mailbox-category="general-sms">
+        <summary><span class="mailbox-avatar">SMS</span><span class="mailbox-sender"><bdi dir="ltr">{{ message.phone|phone }}</bdi><small>{{ _('General SMS') }}</small></span><span class="mailbox-subject"><strong>{{ _('Incoming text message') }}</strong><small>{{ message.body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary>
+        <div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ _('Incoming text message') }}</h3><p>{{ _('From') }} <bdi dir="ltr">{{ message.phone|phone }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.body }}</div><div class="mailbox-reply-actions"><details><summary class="button small">{{ _('Reply') }}</summary><form method="post" action="{{ url_for('reply_to_general_sms',message_id=message.id) }}">{{ token(csrf) }}<label>{{ _('Reply') }}<textarea name="body" rows="5" maxlength="1600" required autofocus></textarea></label><button>{{ _('Send SMS') }}</button></form></details>{% if message.status == 'unread' %}<form method="post" action="{{ url_for('handle_general_sms',message_id=message.id) }}">{{ token(csrf) }}<button class="secondary small">{{ _('Mark handled') }}</button></form>{% endif %}</div></div>
       </details>{% endfor %}{% endif %}
 
       {% for reply in email_replies %}<details class="mailbox-message unread" id="mailbox-supporters"><summary><span class="mailbox-avatar">{{ reply.contact.name[:1]|upper }}</span><span class="mailbox-sender">{{ reply.contact.name }}<small>{{ reply.family.name }}</small></span><span class="mailbox-subject"><strong>{{ reply.subject or _('Supporter reply') }}</strong><small>{{ reply.body|truncate(100) }}</small></span><time>{{ reply.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary><div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ reply.subject }}</h3><p>{{ reply.contact.name }} · <a href="{{ url_for('family_detail',family_id=reply.family_id) }}">{{ reply.family.name }}</a></p></div><span class="badge waiting">{{ _('New') }}</span></div><div class="mailbox-body">{{ reply.body }}</div><div class="mailbox-reply-actions"><a class="button small" href="{{ url_for('communications',contact_id=reply.contact_id) }}">{{ _('Open conversation') }}</a><form method="post" action="{{ url_for('handle_supporter_email_reply',reply_id=reply.id) }}">{{ token(csrf) }}<button class="secondary small">{{ _('Mark handled') }}</button></form></div></div></details>{% endfor %}
@@ -54,7 +71,9 @@
 
       {% for message in outbound_history %}<details class="mailbox-message" data-mailbox-category="sent" hidden><summary><span class="mailbox-avatar">{{ message.recipient[:1]|upper }}</span><span class="mailbox-sender"><bdi dir="ltr">{{ message.recipient }}</bdi><small>{{ _(message.kind.replace('_', ' ').title()) }}</small></span><span class="mailbox-subject"><strong>{{ message.subject }}</strong><small>{{ message.text_body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary><div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ message.subject }}</h3><p>{{ _('To') }} <bdi dir="ltr">{{ message.recipient }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.text_body }}</div>{% if message.error %}<p class="flash error">{{ message.error }}</p>{% endif %}</div></details>{% endfor %}
 
-      {% if not inbox_messages and not email_replies and not applicant_replies %}<div class="mailbox-empty"><strong>{{ _('You’re all caught up.') }}</strong><span>{{ _('There are no new messages.') }}</span></div>{% endif %}
+      {% if general_sms_history is not none %}{% for message in general_sms_history if message.direction == 'outbound' %}<details class="mailbox-message" data-mailbox-category="sent" hidden><summary><span class="mailbox-avatar">SMS</span><span class="mailbox-sender"><bdi dir="ltr">{{ message.phone|phone }}</bdi><small>{{ _('General SMS') }}</small></span><span class="mailbox-subject"><strong>{{ _('Text message') }}</strong><small>{{ message.body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary><div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ _('Text message') }}</h3><p>{{ _('To') }} <bdi dir="ltr">{{ message.phone|phone }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.body }}</div>{% if message.delivery_error %}<p class="flash error">{{ message.delivery_error }}</p>{% endif %}</div></details>{% endfor %}{% endif %}
+
+      {% if not inbox_messages and not email_replies and not applicant_replies and not general_sms_messages %}<div class="mailbox-empty"><strong>{{ _('You’re all caught up.') }}</strong><span>{{ _('There are no new messages.') }}</span></div>{% endif %}
     </div></details>
   </div>
 </section>

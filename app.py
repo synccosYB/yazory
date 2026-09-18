@@ -418,6 +418,28 @@ class InboundInboxMessage(_app.db.Model):
     handler = _app.db.relationship('StaffUser')
 
 
+class GeneralSmsMessage(_app.db.Model):
+    """An SMS conversation not attached to a family or supporter."""
+    __tablename__ = 'general_sms_message'
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    provider_message_id = _app.db.Column(
+        _app.db.String(100), nullable=True, unique=True, index=True)
+    phone = _app.db.Column(_app.db.String(80), nullable=False, index=True)
+    direction = _app.db.Column(_app.db.String(20), nullable=False, index=True)
+    body = _app.db.Column(_app.db.Text, nullable=False, default='')
+    status = _app.db.Column(
+        _app.db.String(20), nullable=False, default='unread', index=True)
+    delivery_error = _app.db.Column(_app.db.Text, nullable=False, default='')
+    staff_user_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=True, index=True)
+    created_at = _app.db.Column(
+        _app.db.DateTime, nullable=False,
+        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None),
+        index=True)
+    handled_at = _app.db.Column(_app.db.DateTime, nullable=True)
+    staff_user = _app.db.relationship('StaffUser')
+
+
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
 from supporter_portal import register_supporter_portal  # noqa: E402
@@ -2144,6 +2166,16 @@ def create_app(test_config=None):
                 InboundInboxMessage.created_at.desc(),
                 InboundInboxMessage.id.desc()).limit(300)).all()
         inbox_messages = [row for row in (inbox_history or []) if row.status == 'unread']
+        general_sms_history = None
+        if user.role == 'organization_admin':
+            general_sms_history = _app.db.session.scalars(
+                select(GeneralSmsMessage).order_by(
+                    GeneralSmsMessage.created_at.desc(),
+                    GeneralSmsMessage.id.desc()).limit(300)).all()
+        general_sms_messages = [
+            row for row in (general_sms_history or [])
+            if row.direction == 'inbound' and row.status == 'unread'
+        ]
         outbound_statement = select(_app.EmailMessage).order_by(
             _app.EmailMessage.created_at.desc(),
             _app.EmailMessage.id.desc()).limit(300)
@@ -2161,6 +2193,8 @@ def create_app(test_config=None):
             history=history, latest=latest, due=due, email_replies=email_replies,
             applicant_history=applicant_history, applicant_replies=applicant_replies,
             inbox_history=inbox_history, inbox_messages=inbox_messages,
+            general_sms_history=general_sms_history,
+            general_sms_messages=general_sms_messages,
             outbound_history=outbound_history,
             callback_contact_ids=callback_contact_ids,
             overdue_contact_ids=overdue_contact_ids,
@@ -2282,7 +2316,9 @@ def create_app(test_config=None):
                 _app.db.session.scalar(select(SupporterCommunication.id).where(
                     SupporterCommunication.provider_message_id == provider_id)) or
                 _app.db.session.scalar(select(ApplicantMessage.id).where(
-                    ApplicantMessage.provider_message_id == provider_id))):
+                    ApplicantMessage.provider_message_id == provider_id)) or
+                _app.db.session.scalar(select(GeneralSmsMessage.id).where(
+                    GeneralSmsMessage.provider_message_id == provider_id))):
             return Response('<Response></Response>', mimetype='application/xml')
 
         sender = _app.request.form.get('From', '').strip()[:80]
@@ -2302,6 +2338,15 @@ def create_app(test_config=None):
                 else 'Incoming text message',
                 body, status='completed', provider_message_id=provider_id,
                 direction='inbound')
+            _app.db.session.commit()
+        elif channel == 'sms':
+            try:
+                sender = normalize_phone(sender)
+            except ValueError:
+                sender = sender[:80]
+            _app.db.session.add(GeneralSmsMessage(
+                provider_message_id=provider_id or None, phone=sender,
+                direction='inbound', body=body, status='unread'))
             _app.db.session.commit()
         return Response('<Response></Response>', mimetype='application/xml')
 
@@ -2337,6 +2382,44 @@ def create_app(test_config=None):
                 'error')
         else:
             _app.flash('Email delivery failed. Check Email history.', 'error')
+        return _app.redirect(_app.url_for('communications', _anchor='mailbox-sent'))
+
+    @app.post('/communications/general-sms')
+    def send_general_sms():
+        user = task_user()
+        if user is None or user.role != 'organization_admin':
+            _app.abort(403)
+        recipient = _app.request.form.get('recipient_phone', '').strip()[:80]
+        body = _app.request.form.get('body', '').strip()[:1600]
+        if not body:
+            _app.abort(400, 'Enter a message.')
+        try:
+            recipient = normalize_phone(recipient)
+        except ValueError as exc:
+            _app.abort(400, str(exc))
+        if app.config['TESTING'] or app.config['DEMO']:
+            provider_id, error, status = None, '', 'preview'
+        else:
+            provider_id, error = deliver_message(
+                app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                recipient, body, channel='sms',
+                sms_from=app.config['TWILIO_SMS_FROM'],
+                messaging_service_sid=twilio_service_sid())
+            status = 'failed' if error else 'completed'
+        _app.db.session.add(GeneralSmsMessage(
+            provider_message_id=provider_id or None, phone=recipient,
+            direction='outbound', body=body, status=status,
+            delivery_error=error or '', staff_user_id=user.id))
+        _app.db.session.add(_app.Audit(
+            actor=user.email,
+            action=f'{"Sent" if status == "completed" else "Prepared" if status == "preview" else "Failed"} general SMS to {recipient}'))
+        _app.db.session.commit()
+        if status == 'completed':
+            _app.flash('SMS sent.')
+        elif status == 'preview':
+            _app.flash('SMS was prepared but not sent because delivery is in preview mode.', 'error')
+        else:
+            _app.flash('SMS delivery failed. Open Sent & history for the error.', 'error')
         return _app.redirect(_app.url_for('communications', _anchor='mailbox-sent'))
 
     @app.post('/resend/webhook')
@@ -2569,6 +2652,57 @@ def create_app(test_config=None):
             _app.flash('Reply delivery failed. Check Email history.', 'error')
         _app.db.session.commit()
         return _app.redirect(_app.url_for('communications', _anchor='general-inbox'))
+
+    @app.post('/communications/general-sms/<int:message_id>/handled')
+    def handle_general_sms(message_id):
+        user = task_user()
+        if user is None or user.role != 'organization_admin':
+            _app.abort(403)
+        message = _app.db.get_or_404(GeneralSmsMessage, message_id)
+        if message.direction != 'inbound':
+            _app.abort(404)
+        message.status = 'handled'
+        message.handled_at = _app.datetime.now(
+            _app.timezone.utc).replace(tzinfo=None)
+        _app.db.session.commit()
+        _app.flash('SMS marked as handled.')
+        return _app.redirect(_app.url_for('communications', _anchor='mailbox-inbox'))
+
+    @app.post('/communications/general-sms/<int:message_id>/reply')
+    def reply_to_general_sms(message_id):
+        user = task_user()
+        if user is None or user.role != 'organization_admin':
+            _app.abort(403)
+        message = _app.db.get_or_404(GeneralSmsMessage, message_id)
+        if message.direction != 'inbound':
+            _app.abort(404)
+        body = _app.request.form.get('body', '').strip()[:1600]
+        if not body:
+            _app.abort(400, 'Enter a message.')
+        if app.config['TESTING'] or app.config['DEMO']:
+            provider_id, error, status = None, '', 'preview'
+        else:
+            provider_id, error = deliver_message(
+                app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                message.phone, body, channel='sms',
+                sms_from=app.config['TWILIO_SMS_FROM'],
+                messaging_service_sid=twilio_service_sid())
+            status = 'failed' if error else 'completed'
+        _app.db.session.add(GeneralSmsMessage(
+            provider_message_id=provider_id or None, phone=message.phone,
+            direction='outbound', body=body, status=status,
+            delivery_error=error or '', staff_user_id=user.id))
+        if status == 'completed':
+            message.status = 'handled'
+            message.handled_at = _app.datetime.now(
+                _app.timezone.utc).replace(tzinfo=None)
+            _app.flash('SMS reply sent and message marked as handled.')
+        elif status == 'preview':
+            _app.flash('SMS reply was prepared but not sent because delivery is in preview mode.', 'error')
+        else:
+            _app.flash('SMS reply failed. Open Sent & history for the error.', 'error')
+        _app.db.session.commit()
+        return _app.redirect(_app.url_for('communications', _anchor='mailbox-inbox'))
 
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):

@@ -10,8 +10,8 @@ from werkzeug.security import generate_password_hash
 
 import app_original as core_module
 import app as app_module
-from app import (CharityCampaign, Contact, EmailMessage, Family, InboundInboxMessage,
-                 Receipt, StaffTask, SupporterCommunication, db)
+from app import (CharityCampaign, Contact, EmailMessage, Family, GeneralSmsMessage,
+                 InboundInboxMessage, Receipt, StaffTask, SupporterCommunication, db)
 
 
 def post(client, path, data):
@@ -613,6 +613,55 @@ def test_valid_twilio_reply_from_applicant_is_saved_in_family_messages(monkeypat
         assert row.status == 'unread'
         assert row.body == 'Applicant reply'
         assert row.provider_message_id == 'SM' + 'c' * 32
+
+
+def test_unknown_twilio_reply_is_saved_in_general_sms_inbox(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    app.config.update(TESTING=False, DEMO=False, TWILIO_AUTH_TOKEN='secret')
+    monkeypatch.setattr('app.validate_webhook_signature', lambda *args: True)
+
+    response = client.post('/twilio/incoming-message', data={
+        'From': '+19175550199', 'To': '+12513063232',
+        'Body': 'Can someone call me?', 'MessageSid': 'SM' + 'd' * 32})
+
+    assert response.status_code == 200
+    with app.app_context():
+        row = db.session.scalar(db.select(GeneralSmsMessage))
+        assert row.phone == '+19175550199'
+        assert row.direction == 'inbound'
+        assert row.status == 'unread'
+        assert row.body == 'Can someone call me?'
+    page = client.get('/communications')
+    assert 'data-mailbox-folder="general-sms"' in page.text
+    assert 'Can someone call me?' in page.text
+
+
+def test_general_sms_can_be_sent_and_replied_to(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    sent = post(client, '/communications/general-sms', {
+        'recipient_phone': '(917) 555-0199', 'body': 'Hello from Yazory'})
+    assert sent.status_code == 302
+    with app.app_context():
+        outbound = db.session.scalar(db.select(GeneralSmsMessage))
+        assert outbound.phone == '+19175550199'
+        assert outbound.direction == 'outbound'
+        assert outbound.status == 'preview'
+        inbound = GeneralSmsMessage(
+            provider_message_id='SM' + 'e' * 32, phone='+19175550199',
+            direction='inbound', body='Thank you', status='unread')
+        db.session.add(inbound)
+        db.session.commit()
+        inbound_id = inbound.id
+
+    reply = post(client, f'/communications/general-sms/{inbound_id}/reply', {
+        'body': 'You are welcome'})
+    assert reply.status_code == 302
+    with app.app_context():
+        rows = db.session.scalars(db.select(GeneralSmsMessage).order_by(
+            GeneralSmsMessage.id)).all()
+        assert [row.direction for row in rows] == ['outbound', 'inbound', 'outbound']
+        assert rows[1].status == 'unread'
+        assert rows[2].body == 'You are welcome'
 
 
 def test_twilio_reply_rejects_invalid_signature(monkeypatch):

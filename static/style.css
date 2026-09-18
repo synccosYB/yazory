@@ -523,3 +523,8 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 .public-sponsor-dedication>span{display:block;width:100%;text-align:center!important;unicode-bidi:plaintext}
 .monthly-sponsor-memorial,.case-sponsor-memorial{justify-items:center;text-align:center!important}
 .monthly-sponsor-memorial>span,.case-sponsor-memorial>span{display:block;width:100%;text-align:center!important;unicode-bidi:plaintext}
+
+/* General SMS is plain text and shares the mailbox compose panel. */
+.mailbox-general-sms{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.mailbox-general-sms h3,.mailbox-general-sms p{margin:0 0 6px}
+.mailbox-general-sms .email-format-toolbar,.mailbox-reply-actions form[action*="general-sms"] .email-format-toolbar{display:none}
