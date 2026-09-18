@@ -2518,6 +2518,29 @@ def create_app(test_config=None):
         name = field('name', True)
         phone = field('phone', limit=80)
         email = optional_email_field()
+        profile_model = app.extensions.get('supporter_profile_model')
+        selected_profile_id = request.form.get('supporter_profile_id', type=int)
+        imported_profile = None
+        if selected_profile_id:
+            imported_profile = db.session.get(profile_model, selected_profile_id) if profile_model else None
+            if imported_profile is None:
+                abort(400, 'Choose a valid imported person.')
+        elif profile_model:
+            normalized_phone = re.sub(r'\D', '', phone)
+            if len(normalized_phone) == 11 and normalized_phone.startswith('1'):
+                normalized_phone = normalized_phone[1:]
+            if 7 <= len(normalized_phone) <= 15:
+                imported_profile = db.session.scalar(select(profile_model).where(
+                    profile_model.normalized_phone == normalized_phone))
+            if imported_profile is None and email:
+                imported_profile = db.session.scalar(select(profile_model).where(
+                    func.lower(profile_model.email) == email.lower()).order_by(profile_model.id))
+        if imported_profile:
+            # Imported directory data is authoritative. This prevents a second
+            # spelling of the same person from being created by hand.
+            name = imported_profile.name
+            phone = imported_profile.phone
+            email = imported_profile.email or email
         key = supporter_key(name, phone)
         existing = db.session.scalar(select(Contact).where(Contact.supporter_key == key).order_by(Contact.id))
         duplicate_case = db.session.scalar(select(Contact.id).where(

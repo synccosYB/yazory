@@ -78,6 +78,63 @@ def test_imported_profile_connects_once_to_a_case(app, client):
     assert case_page.status_code == 200
     assert 'Imported Person' in case_page.text
 
+
+def test_case_supporter_form_can_select_imported_profile_and_blocks_duplicate(app, client):
+    with app.app_context():
+        profile = SupporterProfile(name='Directory Name', phone='(845) 555-1350',
+                                   normalized_phone='8455551350',
+                                   email='directory@example.test')
+        db.session.add(profile)
+        db.session.commit()
+        profile_id = profile.id
+        family_id = db.session.scalar(db.select(Family.id).order_by(Family.id))
+
+    payload = {
+        'csrf': csrf(client), 'supporter_profile_id': str(profile_id),
+        'name': 'Different manual spelling', 'phone': '845-555-9999',
+        'email': 'different@example.test', 'relationship': 'Friend',
+        'status': 'To contact', 'monthly': '0',
+        'pledge_frequency': 'Monthly',
+    }
+    first = client.post(f'/families/{family_id}/contacts', data=payload)
+    assert first.status_code == 302
+    payload['csrf'] = csrf(client)
+    second = client.post(f'/families/{family_id}/contacts', data=payload)
+    assert second.status_code == 400
+    assert 'already connected to this case' in second.text
+
+    with app.app_context():
+        rows = db.session.scalars(db.select(Contact).where(
+            Contact.family_id == family_id,
+            Contact.supporter_key == 'phone:8455551350')).all()
+        assert len(rows) == 1
+        assert (rows[0].name, rows[0].phone, rows[0].email) == (
+            'Directory Name', '(845) 555-1350', 'directory@example.test')
+
+
+def test_manual_entry_matching_imported_email_reuses_directory_identity(app, client):
+    with app.app_context():
+        profile = SupporterProfile(name='Canonical Name', phone='845-555-1360',
+                                   normalized_phone='8455551360',
+                                   email='same@example.test')
+        db.session.add(profile)
+        db.session.commit()
+        family_id = db.session.scalar(db.select(Family.id).order_by(Family.id))
+
+    response = client.post(f'/families/{family_id}/contacts', data={
+        'csrf': csrf(client), 'name': 'Duplicate Name', 'phone': '',
+        'email': 'SAME@example.test', 'relationship': 'Friend',
+        'status': 'To contact', 'monthly': '0',
+        'pledge_frequency': 'Monthly',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        row = db.session.scalar(db.select(Contact).where(
+            Contact.family_id == family_id,
+            Contact.supporter_key == 'phone:8455551360'))
+        assert row is not None
+        assert row.name == 'Canonical Name'
+
 def test_wide_contact_export_uses_local_name_and_first_available_phone(app, client):
     data = (
         'Account #,English Name,Yiddish/Hebrew Name,Phone 1,Phone 2,Phone 3,Email 1,Email 2\n'

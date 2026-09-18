@@ -1064,6 +1064,34 @@ def _assistant_payload(institution):
 def create_app(test_config=None):
     app = _app.create_app(test_config)
 
+    # Core supporter forms live in app_original.py, while the imported people
+    # directory is supplied by this compatibility layer. Publish the model to
+    # the core routes without introducing an import cycle.
+    app.extensions['supporter_profile_model'] = SupporterProfile
+
+    def imported_supporter_profiles():
+        return _app.db.session.scalars(select(SupporterProfile).order_by(
+            SupporterProfile.name, SupporterProfile.id)).all()
+
+    app.jinja_env.globals['imported_supporter_profiles'] = imported_supporter_profiles
+
+    @app.get('/supporter-directory/options')
+    def supporter_directory_options():
+        supporter_directory_families()
+        profiles = imported_supporter_profiles()
+        return jsonify({
+            'profiles': [{
+                'id': profile.id, 'name': profile.name,
+                'phone': profile.phone, 'email': profile.email,
+            } for profile in profiles],
+            'labels': {
+                'choose': _app.translate('Choose from imported people'),
+                'hint': _app.translate('Search by name, phone, or email'),
+                'search': _app.translate('Search people'),
+                'new': _app.translate('Enter a new person below'),
+            },
+        })
+
     def extended_directory_people():
         """Expose every reusable person table through the shared person picker."""
         people = []

@@ -84,7 +84,10 @@
 <summary>{{ _('+ Add a new person') }}</summary>
 <form method="post" action="{{ url_for('add_contact') if families else '#' }}">
 <input type="hidden" name="relationship_group" value="{{ relationship_group }}">
+{% set imported_profiles = imported_supporter_profiles() %}
 <div class="form-grid">{{ token(csrf) }}<label>{{ _('Family') }}<select name="family_id" id="supporter-family">{% for family in families %}<option value="{{ family.id }}" {{ 'selected' if family.id==selected_family_id }}>{{ family.name }}</option>{% endfor %}</select>
+</label>
+<label>{{ _('Choose from imported people') }}<span class="field-hint">{{ _('Search by name, phone, or email') }}</span><input type="search" class="select-search" data-select-filter="imported-supporter-profile" placeholder="{{ _('Search people') }}" autocomplete="off"><select name="supporter_profile_id" id="imported-supporter-profile"><option value="">{{ _('Enter a new person below') }}</option>{% for profile in imported_profiles %}<option value="{{ profile.id }}">{{ profile.name }} · {{ profile.phone|phone }}{% if profile.email %} · {{ profile.email }}{% endif %}</option>{% endfor %}</select>
 </label>
 <label>{{ _('Name *') }}<input name="name" required maxlength="160">
 </label>
