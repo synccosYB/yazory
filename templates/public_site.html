@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260918-historical-impact-v3') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260918-impact-ledger-v1') }}">
 </head>
 <body class="public-site public-page-{{ page }}">
   <header class="public-header">
@@ -17,6 +17,7 @@
       <a class="{{ 'selected' if page in ('home','about') }}" href="{{ url_for('dashboard') }}">{% if language == 'yi' %}הויפט בלאט{% elif language == 'he' %}דף הבית{% else %}Home{% endif %}</a>
       <a class="{{ 'selected' if page == 'how' }}" href="{{ url_for('how_it_works') }}">{% if language == 'yi' %}ווי אזוי עס ארבעט{% elif language == 'he' %}כיצד זה פועל{% else %}How it works{% endif %}</a>
       <a class="{{ 'selected' if page == 'trust' }}" href="{{ url_for('public_trust') }}">{% if language == 'yi' %}נאמנות און כבוד{% elif language == 'he' %}נאמנות וכבוד{% else %}Trust &amp; dignity{% endif %}</a>
+      <a class="{{ 'selected' if page == 'impact' }}" href="{{ url_for('public_impact') }}">{% if language == 'yi' %}אונזער הילף{% elif language == 'he' %}הסיוע שלנו{% else %}Our impact{% endif %}</a>
       <a class="{{ 'selected' if page == 'apply' }}" href="{{ url_for('public_apply') }}">{% if language == 'yi' %}אפליקאציע{% elif language == 'he' %}הגשת בקשה{% else %}Apply{% endif %}</a>
       <a class="{{ 'selected' if page == 'support' }}" href="{{ url_for('public_support') }}">{% if language == 'yi' %}שטיצט יעזורו{% elif language == 'he' %}תמיכה{% else %}Support{% endif %}</a>
     </nav>
@@ -26,7 +27,7 @@
   </header>
 
   <main class="public-main">
-  {% if page in ('home','about','how','trust','apply','support') %}
+  {% if page in ('home','about','how','trust','impact','apply','support') %}
     {% include 'public_landing.html' %}
   {% elif page == 'about' %}
     {% if language == 'yi' %}

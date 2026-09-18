@@ -17,6 +17,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from translations import LANGUAGES, translate, translate_audit
+from historical_impact import (HISTORICAL_IMPACT_AVERAGE,
+                               HISTORICAL_IMPACT_CASES,
+                               HISTORICAL_IMPACT_FAMILIES,
+                               HISTORICAL_IMPACT_PEOPLE,
+                               HISTORICAL_IMPACT_TOTAL)
 
 from intake import validate_intake, intake_for_form
 from budget_report import household_report
@@ -1522,8 +1527,8 @@ def create_app(test_config=None):
         db.session.execute(select(1))
         return {'status': 'ok'}
 
-    def public_page(page, title):
-        return render_template('public_site.html', page=page, title=title)
+    def public_page(page, title, **context):
+        return render_template('public_site.html', page=page, title=title, **context)
 
     @app.get('/about')
     def about():
@@ -1536,6 +1541,17 @@ def create_app(test_config=None):
     @app.get('/trust')
     def public_trust():
         return public_page('trust', 'Trust and dignity')
+
+    @app.get('/impact')
+    def public_impact():
+        return public_page(
+            'impact', 'Historical assistance ledger',
+            impact_total=HISTORICAL_IMPACT_TOTAL,
+            impact_families=HISTORICAL_IMPACT_FAMILIES,
+            impact_people=HISTORICAL_IMPACT_PEOPLE,
+            impact_average=HISTORICAL_IMPACT_AVERAGE,
+            impact_cases=HISTORICAL_IMPACT_CASES,
+        )
 
     @app.get('/apply')
     def public_apply():

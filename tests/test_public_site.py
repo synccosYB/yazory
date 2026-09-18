@@ -21,7 +21,7 @@ def test_database_diagnostic_is_disabled_by_default(public_app):
 def test_public_business_pages_are_available_without_login(public_app):
     app = public_app
     client = app.test_client()
-    for path in ('/', '/about', '/how-it-works', '/trust', '/apply', '/support',
+    for path in ('/', '/about', '/how-it-works', '/trust', '/impact', '/apply', '/support',
                  '/privacy', '/terms', '/sms-consent', '/donation-policy'):
         response = client.get(path)
         assert response.status_code == 200
@@ -64,6 +64,15 @@ def test_public_landing_explains_fund_trust_and_family_privacy(public_app):
     assert 'Only actual transaction fees' not in home
     assert 'does not deduct an administrative percentage' in trust
     assert 'represented only by that number' in trust
+
+
+def test_historical_impact_ledger_reconciles_and_discloses_estimates(public_app):
+    page = public_app.test_client().get('/impact').text
+    assert '$11,786,589.63' in page
+    assert 'YZ-0001' in page and 'YZ-0096' in page
+    assert '96' in page and '778' in page
+    assert 'historical reconstruction' in page
+    assert 'organization-wide total is verified' in page
 
 
 def test_sms_pages_include_carrier_disclosures(public_app):
