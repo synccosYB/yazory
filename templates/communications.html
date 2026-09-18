@@ -41,7 +41,7 @@
       </form>
       {% endif %}
       {% if general_sms_history is not none %}
-      <form class="mailbox-general-sms" method="post" action="{{ url_for('send_general_sms') }}">
+      <form class="mailbox-general-sms" id="mailbox-general-sms-compose" method="post" action="{{ url_for('send_general_sms') }}">
         {{ token(csrf) }}
         <h3>{{ _('New SMS') }}</h3>
         <p>{{ _('Choose a person in Yazory or enter any mobile number.') }}</p>
