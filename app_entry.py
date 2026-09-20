@@ -277,4 +277,13 @@ def create_app(test_config=None):
         return _app.render_template('operating_reports.html', title='Organization-wide report', rows=rows, totals=totals)
 
     app.view_functions['operating_reports'] = operating_reports_override
+
+    @app.get('/static/service-worker.js')
+    def yazory_service_worker():
+        response = app.send_static_file('service-worker.js')
+        response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['Service-Worker-Allowed'] = '/'
+        return response
+
     return app
