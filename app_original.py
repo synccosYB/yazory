@@ -2516,7 +2516,11 @@ def create_app(test_config=None):
         else:
             parent_connection = ''
         name = field('name', True)
-        phone = field('phone', limit=80)
+        cell_phone = field('cell_phone', limit=80)
+        home_phone = field('home_phone', limit=80)
+        # Keep the legacy phone field as the primary contact number for
+        # supporter identity, while storing the phone types separately.
+        phone = cell_phone or home_phone
         email = optional_email_field()
         profile_model = app.extensions.get('supporter_profile_model')
         selected_profile_id = request.form.get('supporter_profile_id', type=int)
@@ -2553,6 +2557,7 @@ def create_app(test_config=None):
             if not email:
                 email = existing.email
         contact = Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
+                          cell_phone=cell_phone, home_phone=home_phone,
                           email=email, supporter_key=key, parent_contact_id=parent_contact_id,
                           parent_connection=parent_connection, monthly_cents=pledge,
                           pledge_frequency=pledge_frequency, status=status)
