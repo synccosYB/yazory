@@ -153,6 +153,18 @@ def test_public_sponsors_use_bounded_carousel_and_have_directory():
     assert all(f'Sponsor {index}' in directory.text for index in range(5))
 
 
+def test_sponsor_directory_is_public_without_staff_login():
+    app = make_app()
+    app.config['DEMO'] = False
+    client = app.test_client()
+
+    response = client.get('/sponsors')
+
+    assert response.status_code == 200
+    assert response.request.path == '/sponsors'
+    assert 'public-sponsor-directory' in response.text or 'Our sponsors' in response.text
+
+
 def test_sponsor_can_be_published_without_a_website():
     app = make_app()
     client = app.test_client()

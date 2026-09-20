@@ -1364,7 +1364,8 @@ def create_app(test_config=None):
     def security():
         public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
                             'reset_password', 'accept_invitation', 'dashboard', 'about',
-                            'how_it_works', 'public_trust', 'public_impact', 'public_apply', 'public_support', 'privacy',
+                            'how_it_works', 'public_trust', 'public_impact', 'public_apply', 'public_support',
+                            'public_sponsors_directory', 'privacy',
                             'terms', 'donation_policy', 'stripe_webhook', 'resend_webhook',
                             'twilio_incoming_message',
                             'stripe_success', 'stripe_cancel', 'sms_consent', 'supporter_login',
