@@ -30,7 +30,7 @@ class AssistanceApplication(core.db.Model):
 
 
 EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-PUBLIC_ENDPOINTS = {'application_form', 'application_submitted'}
+PUBLIC_ENDPOINTS = {'application_form', 'application_submitted', 'yazory_service_worker'}
 REVIEW_STATUSES = ('Submitted', 'Missing information', 'Under review', 'Approved', 'Declined')
 REVIEW_FIELDS = (
     ('Preparer role','preparer_role'),('Preparer name','preparer_name'),('Relationship to applicant','preparer_relationship'),

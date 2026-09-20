@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="{{ language }}" dir="{{ direction }}">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>{{ _('Donation checkout') }} · Yazory</title>
+  {% include '_pwa_head.html' %}
   <link rel="icon" href="{{ url_for('static',filename='favicon-32.png') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static',filename='donation.css') }}">

@@ -1,5 +1,5 @@
 entrypoint = "app_entry_intake.py"
-modules = ["python-3.11", "postgresql-16"]
+modules = ["python-3.11", "postgresql-16", "nodejs-24"]
 run = "pip install -r requirements.txt && APP_ENV=production python -m flask --app app_entry_intake init-db && APP_ENV=production python -m gunicorn --bind 0.0.0.0:5000 --error-logfile - --capture-output 'app_entry_intake:create_app()'"
 
 [[ports]]
