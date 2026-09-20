@@ -165,6 +165,12 @@ def test_sponsor_directory_is_public_without_staff_login():
     assert 'public-sponsor-directory' in response.text or 'Our sponsors' in response.text
 
 
+def test_sponsor_carousel_keeps_small_bottom_clearance():
+    css = make_app().test_client().get('/static/style.css').text
+    assert '.public-sponsor-stage .public-sponsor-logos' in css
+    assert 'padding-bottom:8px' in css
+
+
 def test_sponsor_can_be_published_without_a_website():
     app = make_app()
     client = app.test_client()
