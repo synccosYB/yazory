@@ -50,10 +50,11 @@ def test_workflow_lists_every_page_and_saves_monthly_sponsor():
     assert 'לזכות פלונית בת פלוני' in banner.group(1)
     assert 'לזכות הצלחה פאר די משפחה' in banner.group(1)
     assert 'href="https://acme.example"' in overview.text
-    assert 'OUR SPONSORS' in overview.text
-    assert 'לע״נ פלוני בן פלוני' in overview.text
-    assert 'לזכות פלונית בת פלוני' in overview.text
-    assert 'לזכות הצלחה פאר די משפחה' in overview.text
+    public_overview = client.get('/about').text
+    assert 'Our sponsors' in public_overview
+    assert 'לע״נ פלוני בן פלוני' in public_overview
+    assert 'לזכות פלונית בת פלוני' in public_overview
+    assert 'לזכות הצלחה פאר די משפחה' in public_overview
 
 
 def test_online_and_printed_application_sponsors_are_independent():
@@ -120,9 +121,36 @@ def test_published_sponsor_without_website_still_appears_on_public_pages():
             month=month, page_key='overview', company_name='Existing Sponsor',
             status='Published', logo_data=b'logo', logo_mime='image/png'))
         db.session.commit()
-    page = client.get('/').text
+    page = client.get('/about').text
     assert 'Existing Sponsor' in page
     assert 'public-sponsor-logo' in page
+
+
+def test_public_sponsors_use_bounded_carousel_and_have_directory():
+    app = make_app()
+    client = app.test_client()
+    month = datetime.now().strftime('%Y-%m')
+    with app.app_context():
+        for index in range(5):
+            db.session.add(MonthlySponsorship(
+                month=month, page_key=PAGE_SLOTS[index][0],
+                company_name=f'Sponsor {index}', donor_name=f'Donor {index}',
+                fund_name=f'Fund {index}', status='Published',
+                logo_data=b'logo', logo_mime='image/png',
+                memorial_one=f'Dedication {index}',
+            ))
+        db.session.commit()
+
+    home = client.get('/about').text
+    assert 'data-sponsor-carousel' in home
+    assert 'data-page-size="4"' in home
+    assert '/sponsors' in home
+    assert 'View dedication' in home
+
+    directory = client.get('/sponsors')
+    assert directory.status_code == 200
+    assert 'public-sponsor-directory' in directory.text
+    assert all(f'Sponsor {index}' in directory.text for index in range(5))
 
 
 def test_sponsor_can_be_published_without_a_website():

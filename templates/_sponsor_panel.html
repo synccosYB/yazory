@@ -1,5 +1,5 @@
 {% if current_sponsor %}<aside class="monthly-sponsor" aria-label="{{ _('Monthly sponsor') }}">
-  {% if current_sponsor.logo_data %}<img src="{{ url_for('sponsorship_logo', sponsorship_id=current_sponsor.id) }}" alt="{{ current_sponsor.company_name or _('Sponsor logo') }}">{% endif %}
+  {% if current_sponsor.logo_data %}{% if current_sponsor.website_url %}<a class="monthly-sponsor-logo-link" href="{{ current_sponsor.website_url }}" target="_blank" rel="noopener noreferrer" aria-label="{{ current_sponsor.company_name }}"><img src="{{ url_for('sponsorship_logo', sponsorship_id=current_sponsor.id) }}" alt="{{ current_sponsor.company_name or _('Sponsor logo') }}"></a>{% else %}<img src="{{ url_for('sponsorship_logo', sponsorship_id=current_sponsor.id) }}" alt="{{ current_sponsor.company_name or _('Sponsor logo') }}">{% endif %}{% endif %}
   <div class="monthly-sponsor-main">
     {% if current_sponsor.fund_name %}<em dir="auto">{{ current_sponsor.fund_name }}</em>{% endif %}
     <span>{{ _('This page is sponsored this month by') }}</span>

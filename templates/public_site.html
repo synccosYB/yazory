@@ -9,7 +9,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260918-sponsor-wrap-center-v2') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260920-sponsor-carousel-v1') }}">
+  <script src="{{ url_for('static', filename='public-sponsors.js', v='20260920-v1') }}" defer></script>
 </head>
 <body class="public-site public-page-{{ page }}">
   <header class="public-header">
@@ -28,7 +29,7 @@
   </header>
 
   <main class="public-main">
-  {% if page in ('home','about','how','trust','impact','apply','support') %}
+  {% if page in ('home','about','how','trust','impact','apply','support','sponsors') %}
     {% include 'public_landing.html' %}
   {% elif page == 'about' %}
     {% if language == 'yi' %}

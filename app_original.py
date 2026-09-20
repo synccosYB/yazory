@@ -1561,6 +1561,10 @@ def create_app(test_config=None):
     def public_support():
         return public_page('support', 'Support Yazory')
 
+    @app.get('/sponsors')
+    def public_sponsors_directory():
+        return public_page('sponsors', 'Our sponsors')
+
     @app.get('/privacy')
     def privacy():
         return public_page('privacy', 'Privacy policy')
