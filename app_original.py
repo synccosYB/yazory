@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import case, select, func, or_, UniqueConstraint, inspect, text
 from sqlalchemy.orm import selectinload
@@ -1366,7 +1366,8 @@ def create_app(test_config=None):
                             'reset_password', 'accept_invitation', 'dashboard', 'about',
                             'how_it_works', 'public_trust', 'public_impact', 'public_apply', 'public_support',
                             'public_sponsors_directory', 'privacy',
-                            'terms', 'donation_policy', 'stripe_webhook', 'resend_webhook',
+                            'terms', 'donation_policy', 'robots_txt', 'sitemap_xml',
+                            'localized_public_page', 'stripe_webhook', 'resend_webhook',
                             'twilio_incoming_message',
                             'stripe_success', 'stripe_cancel', 'sms_consent', 'supporter_login',
                             'supporter_login_link', 'supporter_portal',
@@ -1424,6 +1425,16 @@ def create_app(test_config=None):
             response.headers['Cache-Control'] = 'no-store'
         if production:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+        indexable_endpoints = {
+            'dashboard', 'about', 'how_it_works', 'public_trust', 'public_impact',
+            'public_apply', 'public_support', 'public_sponsors_directory',
+            'privacy', 'terms', 'sms_consent', 'donation_policy',
+            'localized_public_page', 'robots_txt', 'sitemap_xml',
+        }
+        private_dashboard = request.endpoint == 'dashboard' and current_user() is not None
+        if ((request.endpoint not in indexable_endpoints or private_dashboard)
+                and request.endpoint != 'static'):
+            response.headers['X-Robots-Tag'] = 'noindex, nofollow'
         return response
 
     def audit(action, family_id=None):
@@ -1528,8 +1539,75 @@ def create_app(test_config=None):
         db.session.execute(select(1))
         return {'status': 'ok'}
 
-    def public_page(page, title, **context):
-        return render_template('public_site.html', page=page, title=title, **context)
+    PUBLIC_PAGE_SEO = {
+        'home': {'path': '', 'titles': {'en': 'Family assistance with dignity', 'he': 'סיוע למשפחות בכבוד', 'yi': 'משפחה הילף מיט כבוד'},
+                 'descriptions': {'en': 'Yazory provides confidential, dependable financial assistance to families facing illness and a loss of household income.', 'he': 'יעזורו מעניקה סיוע כספי חסוי וקבוע למשפחות המתמודדות עם מחלה ופגיעה בהכנסות הבית.', 'yi': 'יעזורו גיט פארטרויליכע און פארלעסליכע פינאנציעלע הילף פאר משפחות וואס גייען דורך א מחלה און פארלירן הכנסה.'}},
+        'about': {'path': 'about', 'titles': {'en': 'About Yazory', 'he': 'אודות יעזורו', 'yi': 'וועגן יעזורו'}},
+        'how': {'path': 'how-it-works', 'titles': {'en': 'How Yazory works', 'he': 'כיצד יעזורו פועלת', 'yi': 'ווי אזוי יעזורו ארבעט'}},
+        'trust': {'path': 'trust', 'titles': {'en': 'Trust and dignity', 'he': 'נאמנות וכבוד', 'yi': 'נאמנות און כבוד'}},
+        'impact': {'path': 'impact', 'titles': {'en': 'Our impact since 2011', 'he': 'הסיוע שלנו מאז 2011', 'yi': 'אונזער הילף זינט 2011'}},
+        'apply': {'path': 'apply', 'titles': {'en': 'Apply for family assistance', 'he': 'הגשת בקשה לסיוע למשפחה', 'yi': 'לייגט אריין א בקשה פאר משפחה הילף'}},
+        'support': {'path': 'support', 'titles': {'en': 'Support a family through Yazory', 'he': 'תמיכה במשפחה באמצעות יעזורו', 'yi': 'שטיצט א משפחה דורך יעזורו'}},
+        'sponsors': {'path': 'sponsors', 'titles': {'en': 'Our sponsors', 'he': 'נותני החסות שלנו', 'yi': 'אונזערע ספאנסארס'}},
+        'privacy': {'path': 'privacy', 'titles': {'en': 'Privacy policy', 'he': 'מדיניות פרטיות', 'yi': 'פריוואטקייט פאליסי'}},
+        'terms': {'path': 'terms', 'titles': {'en': 'Terms of service', 'he': 'תנאי שימוש', 'yi': 'תנאי באנוץ'}},
+        'sms-consent': {'path': 'sms-consent', 'titles': {'en': 'SMS consent', 'he': 'הסכמת SMS', 'yi': 'SMS הסכמה'}},
+        'donation-policy': {'path': 'donation-policy', 'titles': {'en': 'Donation and recurring payment policy', 'he': 'מדיניות תרומות ותשלומים קבועים', 'yi': 'נדבות און שטענדיגע באצאלונגען פאליסי'}},
+    }
+    default_descriptions = {
+        'en': 'Learn how Yazory supports families facing illness with confidential assistance, careful review and transparent fund distribution.',
+        'he': 'למדו כיצד יעזורו מסייעת למשפחות המתמודדות עם מחלה באמצעות סיוע חסוי, בדיקה אחראית וחלוקת כספים שקופה.',
+        'yi': 'זעט ווי אזוי יעזורו העלפט משפחות בשעת א מחלה מיט פארטרויליכע הילף, א פארזיכטיגע איבערזיכט און קלארע געלט פארטיילונג.',
+    }
+
+    def public_page(page, title=None, **context):
+        language = session.get('language', 'en')
+        seo = PUBLIC_PAGE_SEO[page]
+        localized_title = seo['titles'].get(language, seo['titles']['en'])
+        description = seo.get('descriptions', {}).get(language, default_descriptions[language])
+        return render_template('public_site.html', page=page, title=localized_title,
+                               seo_path=seo['path'], meta_description=description, **context)
+
+    localized_pages = {seo['path']: page for page, seo in PUBLIC_PAGE_SEO.items()}
+
+    @app.get('/<language_code>/')
+    @app.get('/<language_code>/<path:public_path>')
+    def localized_public_page(language_code, public_path=''):
+        if language_code not in LANGUAGES or public_path not in localized_pages:
+            abort(404)
+        session['language'] = language_code
+        page = localized_pages[public_path]
+        context = {}
+        if page == 'impact':
+            context = dict(impact_total=HISTORICAL_IMPACT_TOTAL,
+                           impact_families=HISTORICAL_IMPACT_FAMILIES,
+                           impact_people=HISTORICAL_IMPACT_PEOPLE,
+                           impact_average=HISTORICAL_IMPACT_AVERAGE,
+                           impact_cases=HISTORICAL_IMPACT_CASES)
+        return public_page(page, **context)
+
+    @app.get('/robots.txt')
+    def robots_txt():
+        body = (f'User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /donor/\n'
+                f'Disallow: /applicant/\nDisallow: /applications/\nDisallow: /families/\n'
+                f'Sitemap: {request.url_root.rstrip("/")}/sitemap.xml\n')
+        return Response(body, mimetype='text/plain')
+
+    @app.get('/sitemap.xml')
+    def sitemap_xml():
+        base = request.url_root.rstrip('/')
+        rows = []
+        for seo in PUBLIC_PAGE_SEO.values():
+            path = seo['path']
+            english = f'{base}/{path}' if path else f'{base}/'
+            rows.append(f'  <url><loc>{english}</loc></url>')
+            for language in ('he', 'yi'):
+                localized = f'{base}/{language}/{path}' if path else f'{base}/{language}/'
+                rows.append(f'  <url><loc>{localized}</loc></url>')
+        xml = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+               '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+               '\n'.join(rows) + '\n</urlset>\n')
+        return Response(xml, mimetype='application/xml')
 
     @app.get('/about')
     def about():

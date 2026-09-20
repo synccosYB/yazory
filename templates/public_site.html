@@ -3,8 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="Yazory provides secure family-support, donation, and transparent fund-distribution services.">
+  <meta name="description" content="{{ meta_description }}">
   <title>{{ title }} · Yazory</title>
+  {% set canonical_path = '/' ~ seo_path if seo_path else '/' %}
+  {% set canonical_url = request.url_root.rstrip('/') ~ canonical_path %}
+  <link rel="canonical" href="{{ canonical_url }}">
+  <link rel="alternate" hreflang="en" href="{{ canonical_url }}">
+  <link rel="alternate" hreflang="he" href="{{ request.url_root.rstrip('/') }}/he{{ canonical_path }}">
+  <link rel="alternate" hreflang="yi" href="{{ request.url_root.rstrip('/') }}/yi{{ canonical_path }}">
+  <link rel="alternate" hreflang="x-default" href="{{ canonical_url }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Yazory">
+  <meta property="og:title" content="{{ title }} · Yazory">
+  <meta property="og:description" content="{{ meta_description }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:image" content="{{ request.url_root.rstrip('/') }}{{ url_for('static', filename='yazory-logo-corrected.png') }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }} · Yazory">
+  <meta name="twitter:description" content="{{ meta_description }}">
+  <meta name="twitter:image" content="{{ request.url_root.rstrip('/') }}{{ url_for('static', filename='yazory-logo-corrected.png') }}">
+  <script type="application/ld+json">{{ {
+    '@context': 'https://schema.org', '@type': 'NonprofitOrganization',
+    'name': 'Yazory', 'alternateName': 'יעזורו', 'url': request.url_root.rstrip('/'),
+    'logo': request.url_root.rstrip('/') ~ url_for('static', filename='yazory-logo-corrected.png'),
+    'email': 'info@yaazory.org', 'telephone': '+1-845-285-2092',
+    'address': {'@type': 'PostalAddress', 'streetAddress': '2 Stonegate Dr. Suite 422',
+                'addressLocality': 'Monroe', 'addressRegion': 'NY',
+                'postalCode': '10950', 'addressCountry': 'US'}
+  } | tojson }}</script>
   {% include '_pwa_head.html' %}
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}">
@@ -24,7 +50,7 @@
       <a class="{{ 'selected' if page == 'support' }}" href="{{ url_for('public_support') }}">{% if language == 'yi' %}שטיצט יעזורו{% elif language == 'he' %}תמיכה{% else %}Support{% endif %}</a>
     </nav>
     <nav class="language-switch" aria-label="Choose language">
-      {% for code, name in languages.items() %}<a lang="{{ code }}" dir="auto" href="{{ url_for('set_language', language=code, next=request.path) }}" class="{{ 'selected' if language == code }}">{{ name }}</a>{% endfor %}
+      {% for code, name in languages.items() %}<a lang="{{ code }}" dir="auto" href="{% if code == 'en' %}{{ canonical_path }}{% else %}/{{ code }}{{ canonical_path }}{% endif %}" class="{{ 'selected' if language == code }}">{{ name }}</a>{% endfor %}
     </nav>
   </header>
 

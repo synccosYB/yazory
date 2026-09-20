@@ -28,6 +28,49 @@ def test_public_business_pages_are_available_without_login(public_app):
         assert b'Yazory' in response.data
 
 
+def test_search_engine_files_are_public_and_not_login_pages(public_app):
+    client = public_app.test_client()
+    robots = client.get('/robots.txt')
+    assert robots.status_code == 200
+    assert robots.mimetype == 'text/plain'
+    assert b'User-agent: *' in robots.data
+    assert b'Sitemap: http://localhost/sitemap.xml' in robots.data
+    assert b'Staff sign in' not in robots.data
+
+    sitemap = client.get('/sitemap.xml')
+    assert sitemap.status_code == 200
+    assert sitemap.mimetype == 'application/xml'
+    assert b'<loc>http://localhost/</loc>' in sitemap.data
+    assert b'<loc>http://localhost/he/how-it-works</loc>' in sitemap.data
+    assert b'<loc>http://localhost/yi/support</loc>' in sitemap.data
+
+
+def test_public_pages_have_complete_seo_metadata(public_app):
+    client = public_app.test_client()
+    home = client.get('/').text
+    assert '<link rel="canonical" href="http://localhost/">' in home
+    assert 'hreflang="he" href="http://localhost/he/"' in home
+    assert 'property="og:title"' in home
+    assert 'name="twitter:card" content="summary_large_image"' in home
+    assert '"@type": "NonprofitOrganization"' in home
+
+    how = client.get('/how-it-works').text
+    assert '<link rel="canonical" href="http://localhost/how-it-works">' in how
+    assert 'Learn how Yazory supports families' in how
+
+
+def test_localized_public_urls_are_stable_and_private_pages_are_noindex(public_app):
+    client = public_app.test_client()
+    hebrew = client.get('/he/how-it-works')
+    assert hebrew.status_code == 200
+    assert '<html lang="he" dir="rtl">' in hebrew.text
+    assert 'hreflang="yi" href="http://localhost/yi/how-it-works"' in hebrew.text
+    assert 'X-Robots-Tag' not in hebrew.headers
+
+    login = client.get('/login')
+    assert login.headers['X-Robots-Tag'] == 'noindex, nofollow'
+
+
 def test_public_pages_support_all_locales(public_app):
     app = public_app
     client = app.test_client()
