@@ -17,6 +17,14 @@ COORDINATION_STATUSES = (
     'Identified', 'Introduction needed', 'Contacted', 'Referral submitted',
     'Accepted', 'Coordinating', 'Waiting', 'Completed', 'Declined')
 RELATIONSHIP_TYPES = ('Official role', 'Informal connection', 'Personal contact')
+COMMUNITY_OPTIONS = (
+    'Kiryas Joel / Monroe', 'Williamsburg', 'Boro Park',
+    'Monsey / Spring Valley', 'New Square', 'Lakewood', 'Bloomingburg',
+    'Crown Heights', 'Flatbush', 'Five Towns', 'Passaic', 'Other')
+GEOGRAPHIC_AREA_OPTIONS = (
+    'Orange County', 'Rockland County', 'New York City', 'Long Island',
+    'New York State', 'Lakewood / Ocean County', 'North Jersey',
+    'New Jersey', 'United States', 'International', 'Other')
 
 
 class PartnerOrganization(db.Model):
@@ -197,6 +205,20 @@ def install(app):
         except ValueError:
             core.abort(400, 'Enter a valid follow-up date.')
 
+    def selected_values(name, allowed, limit):
+        """Validate and store an ordered multi-select without changing schema."""
+        values = []
+        for item in core.request.form.getlist(name):
+            item = item.strip()
+            if item and item not in allowed:
+                core.abort(400, f'Choose a valid {name.replace("_", " ")}.')
+            if item and item not in values:
+                values.append(item)
+        result = ', '.join(values)
+        if len(result) > limit:
+            core.abort(400, f'{name.replace("_", " ").title()} is too long.')
+        return result
+
     def audit(action, family_id=None):
         current = user()
         db.session.add(core.Audit(actor=current.email if current else 'Demo user',
@@ -240,7 +262,9 @@ def install(app):
         return core.render_template('partner_network.html', title='Organizations & Askonim',
                                     organizations=organizations, askonim=askonim, due=due,
                                     query=query, selected_category=category,
-                                    categories=ORGANIZATION_CATEGORIES)
+                                    categories=ORGANIZATION_CATEGORIES,
+                                    community_options=COMMUNITY_OPTIONS,
+                                    geographic_area_options=GEOGRAPHIC_AREA_OPTIONS)
 
     @app.post('/partner-network/organizations')
     def add_partner_organization():
@@ -256,7 +280,9 @@ def install(app):
             phone=value('phone', 80), email=email_value(), website=value('website', 300),
             address=value('address', 300), hours=value('hours', 300),
             response_time=value('response_time', 160),
-            communities=value('communities', 500), geographic_area=value('geographic_area', 300),
+            communities=selected_values('communities', COMMUNITY_OPTIONS, 500),
+            geographic_area=selected_values(
+                'geographic_area', GEOGRAPHIC_AREA_OPTIONS, 300),
             services=value('services', 5000), exclusions=value('exclusions', 5000),
             eligibility=value('eligibility', 5000), referral_method=value('referral_method', 5000),
             required_documents=value('required_documents', 5000), notes=value('notes', 10000),

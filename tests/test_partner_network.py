@@ -33,7 +33,9 @@ def test_partner_data_center_coordination_and_communications(app, client):
         'name': 'Refuah Helpline', 'category': 'Medical',
         'phone': '845-555-1000', 'email': 'intake@refuah.example',
         'services': 'Medical guidance and specialist referrals',
-        'exclusions': 'Household bills', 'communities': 'New York'})
+        'exclusions': 'Household bills',
+        'communities': ['Monsey / Spring Valley', 'New Square'],
+        'geographic_area': ['Rockland County', 'New York State']})
     assert added.status_code == 302
 
     with app.app_context():
@@ -41,6 +43,8 @@ def test_partner_data_center_coordination_and_communications(app, client):
             PartnerOrganization.name == 'Refuah Helpline'))
         family = db.session.scalar(db.select(Family).order_by(Family.id))
         org_id, family_id = org.id, family.id
+        assert org.communities == 'Monsey / Spring Valley, New Square'
+        assert org.geographic_area == 'Rockland County, New York State'
 
     assert post(client, f'/partner-network/organizations/{org_id}/contacts', {
         'name': 'Medical Intake', 'title': 'Case coordinator',
