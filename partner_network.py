@@ -312,6 +312,54 @@ def install(app):
                                     recipients=recipients(org), statuses=COORDINATION_STATUSES,
                                     relationship_types=RELATIONSHIP_TYPES)
 
+    @app.route('/partner-network/organizations/<int:organization_id>/edit', methods=['GET', 'POST'])
+    def edit_partner_organization(organization_id):
+        require_network_access()
+        org = db.get_or_404(PartnerOrganization, organization_id)
+        if core.request.method == 'POST':
+            category = value('category', 50, True)
+            if category not in ORGANIZATION_CATEGORIES:
+                core.abort(400, 'Choose a valid organization category.')
+            name = value('name', 160, True)
+            duplicate = db.session.scalar(select(PartnerOrganization.id).where(
+                func.lower(PartnerOrganization.name) == name.lower(),
+                PartnerOrganization.id != org.id))
+            if duplicate:
+                core.abort(409, 'This organization is already in the Data Center.')
+            org.name = name
+            org.category = category
+            org.phone = value('phone', 80)
+            org.email = email_value()
+            org.website = value('website', 300)
+            org.address = value('address', 300)
+            org.hours = value('hours', 300)
+            org.response_time = value('response_time', 160)
+            org.communities = selected_values('communities', COMMUNITY_OPTIONS, 500)
+            org.geographic_area = selected_values(
+                'geographic_area', GEOGRAPHIC_AREA_OPTIONS, 300)
+            org.services = value('services', 5000)
+            org.exclusions = value('exclusions', 5000)
+            org.eligibility = value('eligibility', 5000)
+            org.referral_method = value('referral_method', 5000)
+            org.required_documents = value('required_documents', 5000)
+            org.notes = value('notes', 10000)
+            audit(f'Updated partner organization: {name}')
+            db.session.commit()
+            core.flash('Organization updated.')
+            return core.redirect(core.url_for(
+                'partner_organization_detail', organization_id=org.id))
+        selected_communities = {
+            item.strip() for item in org.communities.split(',') if item.strip()}
+        selected_geographic_areas = {
+            item.strip() for item in org.geographic_area.split(',') if item.strip()}
+        return core.render_template(
+            'edit_partner_organization.html', title=f'Edit {org.name}',
+            organization=org, categories=ORGANIZATION_CATEGORIES,
+            community_options=COMMUNITY_OPTIONS,
+            geographic_area_options=GEOGRAPHIC_AREA_OPTIONS,
+            selected_communities=selected_communities,
+            selected_geographic_areas=selected_geographic_areas)
+
     @app.post('/partner-network/organizations/<int:organization_id>/contacts')
     def add_partner_contact(organization_id):
         require_network_access()
