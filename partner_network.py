@@ -392,8 +392,13 @@ def install(app):
         if askan is None:
             name = value('askan_name', 160, True)
             phone, email = value('askan_phone', 80), email_value('askan_email')
-            askan = db.session.scalar(select(core.Askan).where(
-                or_(core.Askan.phone == phone, core.Askan.email == email))) if (phone or email) else None
+            identity_matches = []
+            if phone:
+                identity_matches.append(core.Askan.phone == phone)
+            if email:
+                identity_matches.append(func.lower(core.Askan.email) == email)
+            askan = (db.session.scalar(select(core.Askan).where(
+                or_(*identity_matches))) if identity_matches else None)
             if askan is None:
                 askan = core.Askan(name=name, phone=phone, email=email)
                 db.session.add(askan)
@@ -413,6 +418,21 @@ def install(app):
         db.session.commit()
         core.flash('Askan connected to organization.')
         return core.redirect(core.url_for('partner_organization_detail', organization_id=org.id))
+
+    @app.post('/partner-network/organizations/<int:organization_id>/askonim/<int:link_id>/remove')
+    def remove_organization_askan(organization_id, link_id):
+        require_network_access()
+        org = db.get_or_404(PartnerOrganization, organization_id)
+        link = db.get_or_404(OrganizationAskan, link_id)
+        if link.organization_id != org.id:
+            core.abort(404)
+        askan_name = link.askan.name
+        db.session.delete(link)
+        audit(f'Disconnected askan {askan_name} from {org.name}')
+        db.session.commit()
+        core.flash('Askan removed from organization.')
+        return core.redirect(core.url_for(
+            'partner_organization_detail', organization_id=org.id))
 
     @app.route('/partner-network/askonim/<int:askan_id>', methods=['GET', 'POST'])
     def network_askan_detail(askan_id):
