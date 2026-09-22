@@ -240,6 +240,17 @@ def install(app):
                          link.askan.phone))
         return rows
 
+    def matching_askan_for_contact(contact, askonim):
+        """Match a contact to one reusable askan without creating duplicates."""
+        email = (contact.email or '').strip().lower()
+        phone = normalize_phone(contact.cell_phone or contact.phone or '')
+        for askan in askonim:
+            if email and (askan.email or '').strip().lower() == email:
+                return askan
+            if phone and normalize_phone(askan.phone or '') == phone:
+                return askan
+        return None
+
     @app.get('/partner-network')
     def partner_network():
         require_network_access()
@@ -348,6 +359,11 @@ def install(app):
         require_network_access()
         org = db.get_or_404(PartnerOrganization, organization_id)
         askonim = db.session.scalars(select(core.Askan).order_by(core.Askan.name)).all()
+        contact_askan_ids = {}
+        for contact in org.contacts:
+            matched = matching_askan_for_contact(contact, askonim)
+            if matched:
+                contact_askan_ids[contact.id] = matched.id
         families = db.session.scalars(select(core.Family).order_by(core.Family.name)).all()
         families = [family for family in families if can_access_family(family.id)]
         staff = db.session.scalars(select(core.StaffUser).where(
@@ -357,7 +373,8 @@ def install(app):
                 PartnerCommunication.created_at.desc()).limit(200)).all()
         coordinations = [row for row in org.case_coordinations if can_access_family(row.family_id)]
         return core.render_template('partner_organization.html', title=org.name, organization=org,
-                                    askonim=askonim, families=families, staff=staff,
+                                    askonim=askonim, contact_askan_ids=contact_askan_ids,
+                                    families=families, staff=staff,
                                     coordinations=coordinations, history=history,
                                     recipients=recipients(org), statuses=COORDINATION_STATUSES,
                                     relationship_types=RELATIONSHIP_TYPES)
@@ -431,6 +448,35 @@ def install(app):
         db.session.commit()
         core.flash('Organization contact added.')
         return core.redirect(core.url_for('partner_organization_detail', organization_id=org.id))
+
+    @app.post('/partner-network/organizations/<int:organization_id>/contacts/<int:contact_id>/askan')
+    def promote_partner_contact_to_askan(organization_id, contact_id):
+        require_network_access()
+        org = db.get_or_404(PartnerOrganization, organization_id)
+        contact = db.get_or_404(PartnerContact, contact_id)
+        if contact.organization_id != org.id:
+            core.abort(404)
+        askonim = db.session.scalars(select(core.Askan)).all()
+        askan = matching_askan_for_contact(contact, askonim)
+        if askan is None:
+            askan = core.Askan(
+                name=contact.name,
+                phone=contact.cell_phone or contact.phone or '',
+                email=contact.email or '')
+            db.session.add(askan)
+            db.session.flush()
+        existing = db.session.scalar(select(OrganizationAskan).where(
+            OrganizationAskan.organization_id == org.id,
+            OrganizationAskan.askan_id == askan.id))
+        if existing is None:
+            db.session.add(OrganizationAskan(
+                organization=org, askan=askan, role=contact.title,
+                relationship_type='Official role', notes=contact.notes))
+        audit(f'Added organization contact {contact.name} to askonim directory')
+        db.session.commit()
+        core.flash('Contact added to askonim directory.')
+        return core.redirect(core.url_for(
+            'partner_organization_detail', organization_id=org.id))
 
     @app.post('/partner-network/organizations/<int:organization_id>/askonim')
     def connect_organization_askan(organization_id):

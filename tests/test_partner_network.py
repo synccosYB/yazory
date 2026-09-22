@@ -144,6 +144,35 @@ def test_new_askan_does_not_match_an_unrelated_blank_email_and_can_be_removed(ap
         assert db.session.scalar(db.select(Askan).where(
             Askan.name == 'Correct Askan')) is not None
 
+
+def test_organization_contact_can_be_added_to_askan_directory_without_duplicates(app, client):
+    with app.app_context():
+        org = PartnerOrganization(name='Yom Tov Partner', category='Other')
+        contact = PartnerContact(
+            organization=org, name='Meir Eli Goldberger',
+            title='Community coordinator', cell_phone='845-555-1414',
+            email='meir@example.org')
+        db.session.add_all((org, contact))
+        db.session.commit()
+        org_id, contact_id = org.id, contact.id
+
+    path = f'/partner-network/organizations/{org_id}/contacts/{contact_id}/askan'
+    assert post(client, path, {}).status_code == 302
+    assert post(client, path, {}).status_code == 302
+
+    with app.app_context():
+        askonim = db.session.scalars(db.select(Askan).where(
+            Askan.name == 'Meir Eli Goldberger')).all()
+        assert len(askonim) == 1
+        links = db.session.scalars(db.select(OrganizationAskan).where(
+            OrganizationAskan.organization_id == org_id,
+            OrganizationAskan.askan_id == askonim[0].id)).all()
+        assert len(links) == 1
+        assert links[0].role == 'Community coordinator'
+
+    page = client.get(f'/partner-network/organizations/{org_id}')
+    assert b'Open askan profile' in page.data
+
 def test_standalone_askan_can_be_added_and_filtered_before_any_connection(app, client):
     response = post(client, '/partner-network/askonim', {
         'name': 'Meir Eli Goldberger', 'phone': '845-555-1414',
