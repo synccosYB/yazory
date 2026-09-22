@@ -106,6 +106,44 @@ def test_partner_data_center_coordination_and_communications(app, client):
             Audit.family_id == family_id)) >= 3
 
 
+
+def test_new_askan_does_not_match_an_unrelated_blank_email_and_can_be_removed(app, client):
+    with app.app_context():
+        org = PartnerOrganization(name='Test Partner', category='Other')
+        unrelated = Askan(name='Unrelated Askan', phone='845-000-0001', email='')
+        db.session.add_all((org, unrelated))
+        db.session.commit()
+        org_id, unrelated_id = org.id, unrelated.id
+
+    response = post(client, f'/partner-network/organizations/{org_id}/askonim', {
+        'askan_name': 'Correct Askan',
+        'askan_phone': '845-000-0002',
+        'askan_email': '',
+        'relationship_type': 'Personal contact'})
+    assert response.status_code == 302
+
+    with app.app_context():
+        correct = db.session.scalar(db.select(Askan).where(
+            Askan.name == 'Correct Askan'))
+        link = db.session.scalar(db.select(OrganizationAskan).where(
+            OrganizationAskan.organization_id == org_id))
+        assert correct is not None
+        assert link.askan_id == correct.id
+        assert link.askan_id != unrelated_id
+        link_id = link.id
+
+    removed = post(
+        client,
+        f'/partner-network/organizations/{org_id}/askonim/{link_id}/remove',
+        {})
+    assert removed.status_code == 302
+
+    with app.app_context():
+        assert db.session.get(OrganizationAskan, link_id) is None
+        assert db.session.get(Askan, unrelated_id) is not None
+        assert db.session.scalar(db.select(Askan).where(
+            Askan.name == 'Correct Askan')) is not None
+
 def test_partner_network_is_visible_in_all_locales(client):
     for language in ('en', 'he', 'yi'):
         client.get(f'/language/{language}?next=/partner-network')
