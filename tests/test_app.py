@@ -706,7 +706,8 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
     assert edit.status_code == 200
     assert f'value="supporter_profile:{person_id}"' in edit.text
     assert 'Shared Directory Person' in edit.text
-    assert '+ Add person' in edit.text
+    assert '+ Add new askan' in edit.text
+    assert 'data-add-new-person' in edit.text
 
     response = post(client, '/families/1/edit', {
         'name': 'Sample family',
@@ -717,6 +718,19 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
         askan = db.session.get(Family, 1).designated_askan
         assert (askan.name, askan.phone, askan.email) == (
             'Shared Directory Person', '845-555-0177', 'shared@example.org')
+
+    response = post(client, '/families/1/edit', {
+        'name': 'Sample family',
+        'askan_person': '__new__',
+        'askan_name': 'New Case Askan',
+        'askan_phone': '845-555-0188',
+        'askan_email': 'new-askan@example.org',
+    })
+    assert response.status_code == 302
+    with app.app_context():
+        askan = db.session.get(Family, 1).designated_askan
+        assert (askan.name, askan.phone, askan.email) == (
+            'New Case Askan', '845-555-0188', 'new-askan@example.org')
 
     directory = client.get('/community-directories?kind=Shul')
     assert directory.status_code == 200

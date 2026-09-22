@@ -50,6 +50,15 @@
         fields.querySelector('[name="askan_name"]')?.toggleAttribute('required', select.value === '__new__');
       }
     });
+    select.closest('[data-person-picker]')?.querySelector('[data-add-new-person]')
+      ?.addEventListener('click', () => {
+        select.value = '__new__';
+        select.dispatchEvent(new Event('change', {bubbles: true}));
+        search.value = '';
+        close();
+        select.closest('[data-person-picker]')
+          ?.querySelector('[data-new-person] [name="askan_name"]')?.focus();
+      });
 
     const selected = select.selectedOptions[0];
     if (selected?.value) search.value = selected.textContent.trim();
