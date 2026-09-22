@@ -10,7 +10,7 @@ from werkzeug.security import generate_password_hash
 
 import app_original as core_module
 import app as app_module
-from app import (CharityCampaign, Contact, EmailMessage, Family, GeneralSmsMessage,
+from app import (Askan, CharityCampaign, Contact, EmailMessage, Family, GeneralSmsMessage,
                  InboundInboxMessage, Receipt, StaffTask, SupporterCommunication, db)
 
 
@@ -688,6 +688,39 @@ def test_general_sms_can_be_sent_and_replied_to(monkeypatch):
         assert [row.direction for row in rows] == ['outbound', 'inbound', 'outbound']
         assert rows[1].status == 'unread'
         assert rows[2].body == 'You are welcome'
+
+
+def test_family_askan_sms_button_prefills_and_links_message_to_case(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).where(Family.name == 'Test family'))
+        askan = Askan(name='Yoel Neiman', phone='8456621449')
+        db.session.add(askan)
+        db.session.flush()
+        family.designated_askan_id = askan.id
+        db.session.commit()
+        family_id = family.id
+
+    profile = client.get(f'/families/{family_id}')
+    assert profile.status_code == 200
+    assert 'Send SMS' in profile.text
+    assert 'sms_phone=8456621449' in profile.text
+
+    compose = client.get(
+        f'/communications?sms_phone=8456621449&sms_name=Yoel+Neiman&family_id={family_id}')
+    assert compose.status_code == 200
+    assert 'value="8456621449"' in compose.text
+    assert f'name="family_id" value="{family_id}"' in compose.text
+    assert 'Yoel Neiman' in compose.text
+
+    sent = post(client, '/communications/general-sms', {
+        'recipient_phone': '8456621449', 'family_id': str(family_id),
+        'body': 'Please call about this case.'})
+    assert sent.status_code == 302
+    with app.app_context():
+        message = db.session.scalar(db.select(GeneralSmsMessage))
+        assert message.family_id == family_id
+        assert message.family.name == 'Test family'
 
 
 def test_twilio_reply_rejects_invalid_signature(monkeypatch):

@@ -445,7 +445,7 @@ class InboundInboxMessage(_app.db.Model):
 
 
 class GeneralSmsMessage(_app.db.Model):
-    """An SMS conversation not attached to a family or supporter."""
+    """An SMS conversation outside the supporter communication workflow."""
     __tablename__ = 'general_sms_message'
     id = _app.db.Column(_app.db.Integer, primary_key=True)
     provider_message_id = _app.db.Column(
@@ -458,12 +458,15 @@ class GeneralSmsMessage(_app.db.Model):
     delivery_error = _app.db.Column(_app.db.Text, nullable=False, default='')
     staff_user_id = _app.db.Column(
         _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=True, index=True)
+    family_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('family.id'), nullable=True, index=True)
     created_at = _app.db.Column(
         _app.db.DateTime, nullable=False,
         default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None),
         index=True)
     handled_at = _app.db.Column(_app.db.DateTime, nullable=True)
     staff_user = _app.db.relationship('StaffUser')
+    family = _app.db.relationship('Family')
 
 
 from app_original import *  # noqa: F401,F403,E402
@@ -1486,6 +1489,17 @@ def create_app(test_config=None):
             _app.db.session.execute(text(
                 "ALTER TABLE inbound_inbox_message ADD COLUMN html_body "
                 "TEXT NOT NULL DEFAULT ''"))
+        general_sms_columns = {
+            column['name'] for column in
+            _app.inspect(_app.db.engine).get_columns('general_sms_message')
+        }
+        if 'family_id' not in general_sms_columns:
+            _app.db.session.execute(text(
+                'ALTER TABLE general_sms_message ADD COLUMN family_id INTEGER '
+                'REFERENCES family(id)'))
+        _app.db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_general_sms_message_family_id '
+            'ON general_sms_message (family_id)'))
         _app.db.session.execute(text(
             'CREATE UNIQUE INDEX IF NOT EXISTS uq_staff_task_source_contact '
             'ON staff_task (source_contact_id)'
@@ -2491,6 +2505,15 @@ def create_app(test_config=None):
         selected_contact_id = (ai_contact.id if ai_contact else
                                _app.request.args.get('contact_id', type=int))
         external_email = _app.request.args.get('recipient_email', '').strip().lower()[:254]
+        sms_phone = _app.request.args.get('sms_phone', '').strip()[:80]
+        sms_name = _app.request.args.get('sms_name', '').strip()[:160]
+        sms_family_id = _app.request.args.get('family_id', type=int)
+        sms_family = None
+        if sms_phone:
+            if user.role != 'organization_admin':
+                _app.abort(403)
+            if sms_family_id is not None:
+                sms_family = _app.db.get_or_404(_app.Family, sms_family_id)
         if external_email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', external_email):
             _app.abort(400, 'Enter a valid email address.')
         contact_statement = select(_app.Contact).order_by(_app.Contact.name)
@@ -2603,6 +2626,7 @@ def create_app(test_config=None):
             pledge_frequencies=_app.PLEDGE_FREQUENCIES,
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
             external_email=external_email,
+            sms_phone=sms_phone, sms_name=sms_name, sms_family=sms_family,
             now=now)
 
     def contact_mobile(contact):
@@ -2792,6 +2816,10 @@ def create_app(test_config=None):
             _app.abort(403)
         recipient = _app.request.form.get('recipient_phone', '').strip()[:80]
         contact_id = _app.request.form.get('contact_id', type=int)
+        family_id = _app.request.form.get('family_id', type=int)
+        family = None
+        if family_id is not None:
+            family = _app.db.get_or_404(_app.Family, family_id)
         if contact_id is not None:
             contact = _app.db.session.get(_app.Contact, contact_id)
             if contact is None:
@@ -2820,10 +2848,12 @@ def create_app(test_config=None):
         _app.db.session.add(GeneralSmsMessage(
             provider_message_id=provider_id or None, phone=recipient,
             direction='outbound', body=body, status=status,
-            delivery_error=error or '', staff_user_id=user.id))
+            delivery_error=error or '', staff_user_id=user.id,
+            family_id=family_id))
         _app.db.session.add(_app.Audit(
             actor=user.email,
-            action=f'{"Sent" if status == "completed" else "Prepared" if status == "preview" else "Failed"} general SMS to {recipient}'))
+            action=f'{"Sent" if status == "completed" else "Prepared" if status == "preview" else "Failed"} general SMS to {recipient}',
+            family_id=family.id if family else None))
         _app.db.session.commit()
         if status == 'completed':
             _app.flash('SMS sent.')

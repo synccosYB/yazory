@@ -22,7 +22,7 @@
       <label class="mailbox-search"><span class="sr-only">{{ _('Search messages') }}</span><input type="search" placeholder="{{ _('Search messages') }}" data-mailbox-search></label>
     </header>
 
-    <div class="mailbox-compose-panel" data-mailbox-compose-panel {{ '' if external_email else 'hidden' }}>
+    <div class="mailbox-compose-panel" data-mailbox-compose-panel {{ '' if external_email or sms_phone else 'hidden' }}>
       <div class="section-heading"><div><h3>{{ _('New message') }}</h3><p>{{ _('Send email or SMS from one place.') }}</p></div><button class="small secondary" type="button" data-mailbox-compose-close>{{ _('Cancel') }}</button></div>
       {% if external_email %}
       <form class="mailbox-external-email" method="post" action="{{ url_for('send_external_email') }}">
@@ -44,11 +44,12 @@
       <form class="mailbox-general-sms" id="mailbox-general-sms-compose" method="post" action="{{ url_for('send_general_sms') }}">
         {{ token(csrf) }}
         <h3>{{ _('New SMS') }}</h3>
-        <p>{{ _('Choose a person in Yazory or enter any mobile number.') }}</p>
+        {% if sms_name %}<p><strong>{{ sms_name }}</strong>{% if sms_family %} · <a href="{{ url_for('family_detail', family_id=sms_family.id) }}">YZ-{{ '%04d'|format(sms_family.id) }} · {{ sms_family.name }}</a>{% endif %}</p>{% else %}<p>{{ _('Choose a person in Yazory or enter any mobile number.') }}</p>{% endif %}
+        {% if sms_family %}<input type="hidden" name="family_id" value="{{ sms_family.id }}">{% endif %}
         <div class="mailbox-recipient-list">
           <label>{{ _('Person in Yazory') }}<select name="contact_id"><option value="">{{ _('Choose supporter') }}</option>{% for contact in contacts %}<option value="{{ contact.id }}">{{ contact.name }} · {{ contact.family.name }}</option>{% endfor %}</select></label>
           <span class="mailbox-recipient-or">{{ _('or') }}</span>
-          <label>{{ _('Any mobile number') }}<input dir="ltr" type="tel" name="recipient_phone" maxlength="80" autocomplete="tel" placeholder="(845) 555-1212"></label>
+          <label>{{ _('Any mobile number') }}<input dir="ltr" type="tel" name="recipient_phone" maxlength="80" autocomplete="tel" placeholder="(845) 555-1212" value="{{ sms_phone }}"></label>
         </div>
         <label>{{ _('Message') }}<textarea name="body" maxlength="1600" rows="5" required></textarea></label>
         <button>{{ _('Send SMS') }}</button>
@@ -75,7 +76,7 @@
 
       {% for message in outbound_history %}<details class="mailbox-message" data-mailbox-category="sent" hidden><summary><span class="mailbox-avatar">{{ message.recipient[:1]|upper }}</span><span class="mailbox-sender"><bdi dir="ltr">{{ message.recipient }}</bdi><small>{{ _(message.kind.replace('_', ' ').title()) }}</small></span><span class="mailbox-subject"><strong>{{ message.subject }}</strong><small>{{ message.text_body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary><div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ message.subject }}</h3><p>{{ _('To') }} <bdi dir="ltr">{{ message.recipient }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.text_body }}</div>{% if message.error %}<p class="flash error">{{ message.error }}</p>{% endif %}</div></details>{% endfor %}
 
-      {% if general_sms_history is not none %}{% for message in general_sms_history if message.direction == 'outbound' %}<details class="mailbox-message" data-mailbox-category="sent" hidden><summary><span class="mailbox-avatar">SMS</span><span class="mailbox-sender"><bdi dir="ltr">{{ message.phone|phone }}</bdi><small>{{ _('General SMS') }}</small></span><span class="mailbox-subject"><strong>{{ _('Text message') }}</strong><small>{{ message.body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary><div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ _('Text message') }}</h3><p>{{ _('To') }} <bdi dir="ltr">{{ message.phone|phone }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.body }}</div>{% if message.delivery_error %}<p class="flash error">{{ message.delivery_error }}</p>{% endif %}</div></details>{% endfor %}{% endif %}
+      {% if general_sms_history is not none %}{% for message in general_sms_history if message.direction == 'outbound' %}<details class="mailbox-message" data-mailbox-category="sent" hidden><summary><span class="mailbox-avatar">SMS</span><span class="mailbox-sender"><bdi dir="ltr">{{ message.phone|phone }}</bdi><small>{% if message.family %}YZ-{{ '%04d'|format(message.family_id) }} · {{ message.family.name }}{% else %}{{ _('General SMS') }}{% endif %}</small></span><span class="mailbox-subject"><strong>{{ _('Text message') }}</strong><small>{{ message.body|truncate(100) }}</small></span><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></summary><div class="mailbox-reading-pane"><div class="mailbox-reading-head"><div><h3>{{ _('Text message') }}</h3><p>{{ _('To') }} <bdi dir="ltr">{{ message.phone|phone }}</bdi></p></div><span class="badge {{ message.status }}">{{ _(message.status.title()) }}</span></div><div class="mailbox-body">{{ message.body }}</div>{% if message.delivery_error %}<p class="flash error">{{ message.delivery_error }}</p>{% endif %}</div></details>{% endfor %}{% endif %}
 
       {% if not inbox_messages and not email_replies and not applicant_replies and not general_sms_messages %}<div class="mailbox-empty"><strong>{{ _('You’re all caught up.') }}</strong><span>{{ _('There are no new messages.') }}</span></div>{% endif %}
     </div></details>
