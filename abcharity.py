@@ -284,6 +284,27 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         db.session.commit()
         return redirect(url_for('charity_donations', family_id=family_id))
 
+    @app.post('/families/<int:family_id>/donors/<int:donor_id>/name')
+    def charity_name_donor(family_id, donor_id):
+        require_capability(('family_admin', 'fundraiser'))
+        get_family(family_id)
+        donor = db.session.scalar(select(Donor).join(
+            Campaign, Campaign.id == Donor.campaign_id).where(
+                Donor.id == donor_id, Campaign.family_id == family_id))
+        if donor is None:
+            abort(404)
+        allowed_ids = assigned_contacts(family_id)
+        if allowed_ids is not None and donor.contact_id not in allowed_ids:
+            abort(403)
+        name = request.form.get('donor_name', '').strip()
+        if not 1 <= len(name) <= 300:
+            abort(400, 'Enter the donor name.')
+        donor.local_name = name
+        audit('Named anonymous ABCharity donor', family_id)
+        db.session.commit()
+        flash('Donor name saved.')
+        return redirect(url_for('charity_donations', family_id=family_id))
+
     @app.cli.command('sync-abcharity')
     def sync_all():
         """Run from the deployment scheduler; returns nonzero on any failure."""
