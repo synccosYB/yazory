@@ -1,0 +1,28 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<section class="card padded network-edit">
+<div class="section-heading"><div><div class="eyebrow">{{ _('PARTNER ORGANIZATION') }}</div><h1>{{ _('Edit organization') }}</h1><p>{{ organization.name }}</p></div><a class="button secondary" href="{{ url_for('partner_organization_detail', organization_id=organization.id) }}">{{ _('Back to organization') }}</a></div>
+<form method="post" class="network-form network-edit-form">{{ token(csrf) }}
+<div class="form-grid">
+<label>{{ _('Organization name') }} *<input name="name" maxlength="160" required value="{{ organization.name }}"></label>
+<label>{{ _('Category') }}<select name="category" required>{% for item in categories %}<option value="{{ item }}" {{ 'selected' if organization.category == item }}>{{ _(item) }}</option>{% endfor %}</select></label>
+<label>{{ _('Phone') }}<input name="phone" maxlength="80" dir="ltr" value="{{ organization.phone }}"></label>
+<label>{{ _('Email') }}<input name="email" type="email" maxlength="254" dir="ltr" value="{{ organization.email }}"></label>
+<label>{{ _('Website') }}<input name="website" maxlength="300" dir="ltr" value="{{ organization.website }}"></label>
+<label>{{ _('Address') }}<input name="address" maxlength="300" value="{{ organization.address }}"></label>
+<label>{{ _('Hours') }}<input name="hours" maxlength="300" value="{{ organization.hours }}"></label>
+<label>{{ _('Response time') }}<input name="response_time" maxlength="160" value="{{ organization.response_time }}"></label>
+<details class="network-multi-select"><summary>{{ _('Choose communities') }}</summary><div>{% for item in community_options %}<label><input type="checkbox" name="communities" value="{{ item }}" {{ 'checked' if item in selected_communities }}> {{ _(item) }}</label>{% endfor %}</div></details>
+<details class="network-multi-select"><summary>{{ _('Choose geographic areas') }}</summary><div>{% for item in geographic_area_options %}<label><input type="checkbox" name="geographic_area" value="{{ item }}" {{ 'checked' if item in selected_geographic_areas }}> {{ _(item) }}</label>{% endfor %}</div></details>
+</div>
+<p class="field-hint">{{ _('You may select more than one option.') }}</p>
+<label>{{ _('Services provided') }}<textarea name="services" rows="3" maxlength="5000">{{ organization.services }}</textarea></label>
+<label>{{ _('Services not provided') }}<textarea name="exclusions" rows="2" maxlength="5000">{{ organization.exclusions }}</textarea></label>
+<label>{{ _('Eligibility requirements') }}<textarea name="eligibility" rows="2" maxlength="5000">{{ organization.eligibility }}</textarea></label>
+<label>{{ _('Referral method') }}<textarea name="referral_method" rows="2" maxlength="5000">{{ organization.referral_method }}</textarea></label>
+<label>{{ _('Required documents') }}<textarea name="required_documents" rows="2" maxlength="5000">{{ organization.required_documents }}</textarea></label>
+<label>{{ _('Internal notes') }}<textarea name="notes" rows="3" maxlength="10000">{{ organization.notes }}</textarea></label>
+<div class="form-actions"><button>{{ _('Save changes') }}</button><a class="button secondary" href="{{ url_for('partner_organization_detail', organization_id=organization.id) }}">{{ _('Cancel') }}</a></div>
+</form>
+</section>
+{% endblock %}
