@@ -32,6 +32,7 @@ def test_family_relative_names_are_backfilled_without_resaving_profile(app, clie
     with app.app_context():
         family = db.session.get(Family, 1)
         expected = {
+            'family:1:applicant': family.name,
             'family:1:spouse': family.spouse,
             'family:1:father': family.father,
             'family:1:inlaws': family.inlaws,
@@ -66,6 +67,7 @@ def test_partial_family_profile_save_syncs_relative_names_once(app, client):
             SupporterProfile.normalized_phone.like('family:1:%'))).all()
         by_key = {row.normalized_phone: row.name for row in profiles}
         assert by_key['family:1:father'] == 'R. Yaakov Shlomo'
+        assert by_key['family:1:applicant'] == 'Sample family'
         assert by_key['family:1:inlaws'] == 'R. Monish Neishtיין'
         assert by_key['family:1:maiden'] == 'Yisroel Boruch Gutman'
         assert by_key['family:1:inlawfam'] == 'R. Hersh Meilech Seidenfeld'
