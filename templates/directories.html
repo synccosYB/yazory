@@ -12,7 +12,7 @@
     <p>{{ _('One shared network. Applicants and people connect to the same shul or yeshivah without duplicate records.') }}</p>
   </div>
   <div class="row-actions no-print">
-    <button type="button" onclick="window.print()">{{ _('Print list') }}</button>
+    <button type="button" data-print>{{ _('Print list') }}</button>
     <a class="button {{ 'secondary' if kind != 'Shul' }}" href="{{ url_for('community_directories', kind='Shul') }}">{{ _('Shul list') }}</a>
     <a class="button {{ 'secondary' if kind != 'Yeshivah' }}" href="{{ url_for('community_directories', kind='Yeshivah') }}">{{ _('Yeshivah list') }}</a>
   </div>
