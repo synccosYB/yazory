@@ -46,6 +46,7 @@ _EXTRA = {
     'Case coordination': {'he': 'תיאום תיק', 'yi': 'תיק קאארדינאציע'},
     'Coordination plan': {'he': 'תוכנית תיאום', 'yi': 'קאארדינאציע פלאן'},
     'Coordination requiring attention': {'he': 'תיאומים הדורשים טיפול', 'yi': 'קאארדינאציע וואס דארף באהאנדלונג'},
+    'No follow-ups are due.': {'he': 'אין מעקבים לביצוע.', 'yi': 'קיין נאכפאלגן זענען נישט פעליג.'},
     'Coordination records': {'he': 'רשומות תיאום', 'yi': 'קאארדינאציע רעקארדס'},
     'Add coordination': {'he': 'הוספת תיאום', 'yi': 'לייג צו קאארדינאציע'},
     'Update coordination': {'he': 'עדכון התיאום', 'yi': 'אפדעיט קאארדינאציע'},

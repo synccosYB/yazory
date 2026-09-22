@@ -150,3 +150,16 @@ def test_partner_network_is_visible_in_all_locales(client):
         page = client.get('/partner-network')
         assert page.status_code == 200
         assert 'partner-network' in page.text or 'ארג' in page.text
+
+
+def test_partner_network_metric_cards_link_to_their_sections_even_when_zero(client):
+    page = client.get('/partner-network')
+
+    assert page.status_code == 200
+    assert 'href="#organization-directory"' in page.text
+    assert 'href="#askonim-directory"' in page.text
+    assert 'href="#coordination-follow-ups"' in page.text
+    assert 'id="organization-directory"' in page.text
+    assert 'id="askonim-directory"' in page.text
+    assert 'id="coordination-follow-ups"' in page.text
+    assert 'No follow-ups are due.' in page.text
