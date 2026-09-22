@@ -2226,6 +2226,8 @@ def create_app(test_config=None):
                 return intake_form(None, 'New family intake', str(exc)), 400
             db.session.flush()
             connect_family_profile_directories(family, yeshivah_history)
+            for sync_people in app.extensions.get('family_profile_person_sync', ()):
+                sync_people(family)
             save_intake(family, intake_data)
             # An office intake never creates an unassigned household.
             if not organization_admin():
@@ -2261,6 +2263,8 @@ def create_app(test_config=None):
             except ValueError as exc:
                 return intake_form(family, 'Edit family profile', str(exc)), 400
             connect_family_profile_directories(family, yeshivah_history)
+            for sync_people in app.extensions.get('family_profile_person_sync', ()):
+                sync_people(family)
             save_intake(family, intake_data)
             audit('Updated family profile', family.id)
             db.session.commit()

@@ -27,6 +27,51 @@ def csrf(client):
         return session['csrf']
 
 
+def test_family_relative_names_are_backfilled_without_resaving_profile(app, client):
+    """Legacy case text fields must immediately appear in the people list."""
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        expected = {
+            'family:1:spouse': family.spouse,
+            'family:1:father': family.father,
+            'family:1:inlaws': family.inlaws,
+        }
+        profiles = {
+            row.normalized_phone: row.name for row in
+            db.session.scalars(db.select(SupporterProfile).where(
+                SupporterProfile.normalized_phone.in_(expected))).all()
+        }
+        assert profiles == expected
+
+    page = client.get('/supporter-directory').text
+    for name in expected.values():
+        assert name in page
+
+
+def test_partial_family_profile_save_syncs_relative_names_once(app, client):
+    response = client.post('/families/1/edit?field=father', data={
+        'csrf': csrf(client), 'name': 'Sample family',
+        'father': 'R. Yaakov Shlomo',
+        'inlaws': 'R. Monish Neishtיין',
+        'inlaws_maiden_name': 'Yisroel Boruch Gutman',
+        'inlaws_family': 'R. Hersh Meilech Seidenfeld',
+    })
+    assert response.status_code == 302
+
+    with app.app_context():
+        sync_people = app.extensions['family_profile_person_sync'][0]
+        sync_people(db.session.get(Family, 1))
+        db.session.commit()
+        profiles = db.session.scalars(db.select(SupporterProfile).where(
+            SupporterProfile.normalized_phone.like('family:1:%'))).all()
+        by_key = {row.normalized_phone: row.name for row in profiles}
+        assert by_key['family:1:father'] == 'R. Yaakov Shlomo'
+        assert by_key['family:1:inlaws'] == 'R. Monish Neishtיין'
+        assert by_key['family:1:maiden'] == 'Yisroel Boruch Gutman'
+        assert by_key['family:1:inlawfam'] == 'R. Hersh Meilech Seidenfeld'
+        assert len(by_key) == len(set(by_key))
+
+
 def test_csv_import_uses_phone_as_unique_identity(app, client):
     data = (
         'Name,Phone,Email\n'

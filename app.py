@@ -1179,6 +1179,46 @@ def create_app(test_config=None):
 
     app.extensions.setdefault('person_directory_creators', []).append(
         create_neutral_directory_person)
+
+    family_relative_fields = (
+        ('spouse', 'spouse', 'Spouse'),
+        ('father', 'father', 'Father'),
+        ('inlaws', 'inlaws', 'Father-in-law'),
+        ('inlaws_maiden_name', 'maiden', "Father’s father-in-law"),
+        ('inlaws_family', 'inlawfam', "Father-in-law’s father-in-law"),
+    )
+
+    def sync_family_relatives_to_people(family):
+        """Publish names entered on a case in the independent people list.
+
+        The deterministic directory key is important for relatives who do not
+        yet have a phone number: release-time backfills and later profile saves
+        update one record instead of creating a duplicate every time.
+        """
+        for field_name, key_suffix, relationship in family_relative_fields:
+            name = (getattr(family, field_name, '') or '').strip()[:160]
+            if not name:
+                continue
+            directory_key = f'family:{family.id}:{key_suffix}'
+            profile = _app.db.session.scalar(select(SupporterProfile).where(
+                SupporterProfile.normalized_phone == directory_key))
+            if profile is None:
+                profile = SupporterProfile(
+                    name=name, phone='', normalized_phone=directory_key, email='')
+                _app.db.session.add(profile)
+            else:
+                profile.name = name
+            _app.db.session.flush()
+            person = canonical_person_for_profile(profile)
+            person.name = name
+            source_note = f'{relationship} of {family.name} (YZ-{family.id:04d})'
+            generated_prefixes = tuple(
+                label for _, _, label in family_relative_fields)
+            if not person.notes or person.notes.startswith(generated_prefixes):
+                person.notes = source_note
+
+    app.extensions.setdefault('family_profile_person_sync', []).append(
+        sync_family_relatives_to_people)
     twilio_config = {
         'TWILIO_ACCOUNT_SID': os.getenv('TWILIO_ACCOUNT_SID', ''),
         'TWILIO_AUTH_TOKEN': os.getenv('TWILIO_AUTH_TOKEN', ''),
@@ -1395,6 +1435,11 @@ def create_app(test_config=None):
                 existing_profiles[normalized] = profile
             elif not profile.email and contact.email:
                 profile.email = contact.email
+        # Family relationship fields historically lived only as text on the
+        # case. Backfill them during the release migration, so an old case does
+        # not have to be opened and saved again.
+        for family in _app.db.session.scalars(select(_app.Family)).all():
+            sync_family_relatives_to_people(family)
         _app.db.session.flush()
         for profile in _app.db.session.scalars(select(SupporterProfile)).all():
             canonical_person_for_profile(profile)
