@@ -75,7 +75,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'class="card foldable-communication-section" id="communication-history"' in page.text
     assert 'class="mailbox-list-fold"' in page.text
     assert '<div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260917-unified-person-search-v2' in page.text
+    assert 'pages.js?v=20260920-mobile-v2' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
@@ -194,6 +194,24 @@ def test_supporter_communication_link_opens_only_that_supporter(monkeypatch):
                         relationship='Friend', monthly_cents=0,
                         pledge_frequency='Monthly', status='To contact')
         db.session.add(other)
+        db.session.flush()
+        db.session.add_all([
+            SupporterCommunication(
+                contact_id=contact.id, family_id=contact.family_id, kind='sms',
+                subject='Selected conversation', body='Only this message belongs here',
+                status='completed'),
+            SupporterCommunication(
+                contact_id=other.id, family_id=other.family_id, kind='sms',
+                subject='Other conversation', body='Must not appear here',
+                status='completed'),
+            InboundInboxMessage(
+                provider_message_id='general-inbox-message',
+                sender_email='stranger@example.test', recipient='info@yaazory.org',
+                subject='General portal inbox message', body='Not this supporter'),
+            GeneralSmsMessage(
+                provider_message_id='general-sms-message', phone='+19175550199',
+                direction='inbound', body='Unrelated general SMS', status='unread'),
+        ])
         db.session.commit()
 
     profile = client.get(f'/supporters/{contact_id}')
@@ -202,6 +220,14 @@ def test_supporter_communication_link_opens_only_that_supporter(monkeypatch):
     assert page.status_code == 200
     assert 'Test Supporter' in page.text
     assert 'Other Supporter' not in page.text
+    assert 'Selected conversation' in page.text
+    assert 'Only this message belongs here' in page.text
+    assert 'Other conversation' not in page.text
+    assert 'General portal inbox message' not in page.text
+    assert 'Unrelated general SMS' not in page.text
+    assert 'data-mailbox-folder=' not in page.text
+    assert 'New applicant messages' not in page.text
+    assert 'Applicant communication history' not in page.text
 
 
 def test_manual_receipt_emails_and_enters_timeline(monkeypatch):
@@ -251,7 +277,7 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
         assert timeline.status == 'preview'
     result_page = client.get(sent.location)
     assert 'Email was prepared but not sent because delivery is in preview mode.' in result_page.text
-    assert 'class="communication-accordion history-accordion"' in result_page.text
+    assert 'id="selected-supporter-history"' in result_page.text
     assert 'What time works for a short call?' in result_page.text
     assert '<small class="preserve">Dear Test Supporter' not in result_page.text
 

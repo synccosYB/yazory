@@ -2503,7 +2503,7 @@ def create_app(test_config=None):
         email_replies = [row for row in history
                          if row.kind == 'email_reply' and row.status == 'received']
         applicant_history = []
-        if user.role != 'fundraiser':
+        if selected_contact is None and user.role != 'fundraiser':
             applicant_statement = select(ApplicantMessage).order_by(
                 ApplicantMessage.created_at.desc(), ApplicantMessage.id.desc()).limit(300)
             if not task_is_admin(user):
@@ -2515,13 +2515,13 @@ def create_app(test_config=None):
         applicant_replies = [row for row in applicant_history
                              if row.direction == 'applicant' and row.status == 'unread']
         inbox_history = None
-        if user.role == 'organization_admin':
+        if selected_contact is None and user.role == 'organization_admin':
             inbox_history = _app.db.session.scalars(select(InboundInboxMessage).order_by(
                 InboundInboxMessage.created_at.desc(),
                 InboundInboxMessage.id.desc()).limit(300)).all()
         inbox_messages = [row for row in (inbox_history or []) if row.status == 'unread']
         general_sms_history = None
-        if user.role == 'organization_admin':
+        if selected_contact is None and user.role == 'organization_admin':
             general_sms_history = _app.db.session.scalars(
                 select(GeneralSmsMessage).order_by(
                     GeneralSmsMessage.created_at.desc(),
@@ -2530,16 +2530,18 @@ def create_app(test_config=None):
             row for row in (general_sms_history or [])
             if row.direction == 'inbound' and row.status == 'unread'
         ]
-        outbound_statement = select(_app.EmailMessage).order_by(
-            _app.EmailMessage.created_at.desc(),
-            _app.EmailMessage.id.desc()).limit(300)
-        if not task_is_admin(user):
-            assigned_family_ids = select(_app.FamilyAssignment.family_id).where(
-                _app.FamilyAssignment.staff_user_id == user.id)
-            outbound_statement = outbound_statement.where(_app.or_(
-                _app.EmailMessage.family_id.in_(assigned_family_ids),
-                _app.EmailMessage.staff_user_id == user.id))
-        outbound_history = _app.db.session.scalars(outbound_statement).all()
+        outbound_history = []
+        if selected_contact is None:
+            outbound_statement = select(_app.EmailMessage).order_by(
+                _app.EmailMessage.created_at.desc(),
+                _app.EmailMessage.id.desc()).limit(300)
+            if not task_is_admin(user):
+                assigned_family_ids = select(_app.FamilyAssignment.family_id).where(
+                    _app.FamilyAssignment.staff_user_id == user.id)
+                outbound_statement = outbound_statement.where(_app.or_(
+                    _app.EmailMessage.family_id.in_(assigned_family_ids),
+                    _app.EmailMessage.staff_user_id == user.id))
+            outbound_history = _app.db.session.scalars(outbound_statement).all()
         pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
