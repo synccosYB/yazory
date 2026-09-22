@@ -275,3 +275,9 @@ access to the Sheet. Unlike a browser OAuth connection, it does not require
 periodic sign-in; synchronization stops only if the key is revoked, the Sheet
 permission is removed, or GitHub Actions is disabled. Never put the JSON key in
 the repository or in Replit source files.
+# Partner-network database update
+
+After pulling a release that includes the Organizations & Askonim Data Center,
+run `flask --app app_entry:create_app migrate-db` once before restarting the
+application. The migration is additive and does not rewrite existing family,
+supporter, or financial records.

@@ -621,3 +621,13 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
     min-height:220px;
   }
 }
+
+/* Partner organizations, askonim, and case coordination */
+.network-hero,.network-record{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.network-hero h1,.network-record h1{margin:4px 0}.network-metrics{display:grid;grid-template-columns:repeat(3,minmax(100px,1fr));gap:10px}
+.network-metrics>div{padding:14px;border-radius:12px;background:var(--surface-soft,#f4f6f8);text-align:center}.network-metrics strong{display:block;font-size:1.55rem;color:var(--navy,#18324a)}.network-metrics span{font-size:.78rem}
+.network-form{margin-top:14px;min-width:min(720px,80vw)}.network-person-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.network-person-grid>a,.network-person{display:flex;flex-direction:column;gap:3px;padding:13px;border:1px solid var(--border,#d9e0e5);border-radius:12px;color:inherit;text-decoration:none}.network-person-grid>a:hover{border-color:var(--gold,#b8964e)}
+.network-two-column{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.network-two-column>div,.network-two-column>form{min-width:0}.network-contact-line{display:flex;flex-wrap:wrap;gap:12px}.network-details{grid-template-columns:repeat(2,minmax(0,1fr))}
+.coordination-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px}.coordination-card{border:1px solid var(--border,#d9e0e5);border-radius:14px;padding:16px}.coordination-card>header{display:flex;justify-content:space-between;align-items:start;gap:10px}.coordination-card h3{margin:5px 0 12px}.coordination-card dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.coordination-card dt{font-size:.75rem;color:var(--muted,#61707d)}.coordination-card dd{margin:2px 0}.coordination-card details{margin:12px 0}
+.communication-timeline{display:grid;gap:10px}.communication-timeline article{display:grid;grid-template-columns:1fr auto;gap:5px 15px;padding:14px;border-inline-start:4px solid var(--gold,#b8964e);background:var(--surface-soft,#f6f7f8);border-radius:8px}.communication-timeline article>div{display:flex;flex-direction:column}.communication-timeline p,.communication-timeline small{grid-column:1/-1;margin:0;white-space:pre-wrap}.communication-timeline time{font-size:.78rem}
+@media(max-width:800px){.network-hero,.network-record{align-items:stretch;flex-direction:column}.network-metrics,.network-two-column,.network-details,.coordination-card dl{grid-template-columns:1fr}.network-form{min-width:0}.coordination-board{grid-template-columns:1fr}}

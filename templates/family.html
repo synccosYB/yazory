@@ -19,6 +19,7 @@
       <a class="button" href="/families/{{ family.id }}/edit">{{ _("Edit profile") }}</a>
       <details class="profile-more-actions"><summary class="button secondary">{{ _('More actions') }}</summary><div>
         <a href="{{ url_for('family_print_report',family_id=family.id) }}">{{ _('Print profile / PDF') }}</a>
+        <a href="{{ url_for('family_coordination',family_id=family.id) }}">{{ _('Partner coordination') }}</a>
         {% if is_org_admin %}<a href="{{ url_for('case_sponsorship_new',family_id=family.id) }}">{{ _('Case sponsorship') }}</a>{% endif %}
         <a href="{{ url_for('family_expense_report',family_id=family.id) }}">{{ _('Monthly expense report') }}</a>
         {% if workflow_active %}<a href="{{ url_for('operations',family_id=family.id) }}">{{ _('Case workflows') }}</a><a href="{{ url_for('case_ledger',family_id=family.id) }}">{{ _('Case ledger') }}</a><a href="{{ url_for('supporter_network',family_id=family.id) }}">{{ _('Supporter tree') }}</a>{% endif %}<a href="{{ url_for('charity_donations',family_id=family.id) }}">{{ _('ABCharity donations') }}</a>

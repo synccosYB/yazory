@@ -10,6 +10,7 @@ import app as _base
 import app_original as _app
 from notifications import install as install_notifications
 from sponsorships import install as install_sponsorships
+from partner_network import install as install_partner_network
 
 
 def _family_denial_reason(family):
@@ -35,6 +36,7 @@ def create_app(test_config=None):
     app = _base.create_app(test_config)
     install_sponsorships(app)
     install_notifications(app)
+    install_partner_network(app)
 
     @app.cli.command('translations-push')
     def translations_push():
