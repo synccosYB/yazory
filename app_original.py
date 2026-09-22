@@ -2176,6 +2176,8 @@ def create_app(test_config=None):
                               email=details.get('email', ''))
                 db.session.add(askan)
             family.designated_askan = askan
+            for sync_people in app.extensions.get('askan_profile_person_sync', ()):
+                sync_people(askan)
             return
         name = field('askan_name', limit=160)
         phone = field('askan_phone', limit=80)
@@ -2200,6 +2202,8 @@ def create_app(test_config=None):
             for creator in app.extensions.get('person_directory_creators', ()):
                 creator(name=name, phone=phone, email=email)
         family.designated_askan = askan
+        for sync_people in app.extensions.get('askan_profile_person_sync', ()):
+            sync_people(askan)
 
     @app.route('/families/new', methods=['GET', 'POST'])
     def new_family():
