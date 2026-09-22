@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
 from sqlalchemy import UniqueConstraint, inspect, select, text
+from sqlalchemy.orm import load_only
 
 import app_original as core
 
@@ -203,13 +204,34 @@ def install(app):
         key = page_key or ENDPOINT_PAGE.get(request.endpoint)
         if not key:
             return None
-        return core.db.session.scalar(select(MonthlySponsorship).where(
+        return core.db.session.scalar(select(MonthlySponsorship).options(load_only(
+            MonthlySponsorship.id,
+            MonthlySponsorship.fund_name,
+            MonthlySponsorship.company_name,
+            MonthlySponsorship.donor_name,
+            MonthlySponsorship.memorial_one,
+            MonthlySponsorship.memorial_two,
+            MonthlySponsorship.memorial_three,
+            MonthlySponsorship.dedication_one_prefix,
+            MonthlySponsorship.dedication_two_prefix,
+            MonthlySponsorship.dedication_three_prefix,
+            MonthlySponsorship.website_url,
+            MonthlySponsorship.logo_mime,
+        )).where(
             MonthlySponsorship.month == (month or _month_now()),
             MonthlySponsorship.page_key == key, MonthlySponsorship.status == 'Published'))
 
     def current_case_sponsorship(family_id, month=None):
         target_month = month or _month_now()
-        return core.db.session.scalar(select(CaseSponsorship).where(
+        return core.db.session.scalar(select(CaseSponsorship).options(load_only(
+            CaseSponsorship.id,
+            CaseSponsorship.fund_name,
+            CaseSponsorship.company_name,
+            CaseSponsorship.donor_name,
+            CaseSponsorship.memorial_one,
+            CaseSponsorship.memorial_two,
+            CaseSponsorship.logo_mime,
+        )).where(
             CaseSponsorship.family_id == family_id,
             CaseSponsorship.status == 'Published',
             CaseSponsorship.start_month <= target_month,
@@ -217,7 +239,18 @@ def install(app):
         ).order_by(CaseSponsorship.start_month.desc(), CaseSponsorship.id.desc()))
 
     def current_public_sponsors(month=None):
-        rows = core.db.session.scalars(select(MonthlySponsorship).where(
+        rows = core.db.session.scalars(select(MonthlySponsorship).options(load_only(
+            MonthlySponsorship.id,
+            MonthlySponsorship.company_name,
+            MonthlySponsorship.memorial_one,
+            MonthlySponsorship.memorial_two,
+            MonthlySponsorship.memorial_three,
+            MonthlySponsorship.dedication_one_prefix,
+            MonthlySponsorship.dedication_two_prefix,
+            MonthlySponsorship.dedication_three_prefix,
+            MonthlySponsorship.website_url,
+            MonthlySponsorship.logo_mime,
+        )).where(
             MonthlySponsorship.month == (month or _month_now()),
             MonthlySponsorship.status == 'Published',
             MonthlySponsorship.logo_data.is_not(None),
@@ -238,8 +271,17 @@ def install(app):
             family_id = (request.view_args or {}).get('family_id')
             if family_id:
                 case_sponsor = current_case_sponsorship(family_id)
+        # The public carousel is only rendered by the landing and sponsor
+        # directory pages.  Loading it for every staff screen used to fetch
+        # every published sponsor (including its logo BLOB) on every request.
+        public_sponsor_endpoints = {
+            'dashboard', 'about', 'public_sponsors_directory',
+            'localized_public_page',
+        }
+        public_sponsors = (current_public_sponsors()
+                           if request.endpoint in public_sponsor_endpoints else [])
         return {'current_sponsor': current_sponsorship(), 'current_case_sponsor': case_sponsor,
-                'public_sponsors': current_public_sponsors(),
+                'public_sponsors': public_sponsors,
                 'sponsorship_page_labels': PAGE_LABELS}
 
     @app.get('/sponsorships')
