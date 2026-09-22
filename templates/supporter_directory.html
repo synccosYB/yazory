@@ -2,10 +2,11 @@
 <div class="page-heading">
   <div>
     <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
-    <h1>{{ _('Import people') }}</h1>
-    <p>{{ _('Upload names, phone numbers, and email addresses. The phone number is the unique profile identity.') }}</p>
+    <h1>{{ _('People directory') }}</h1>
+    <p>{{ _('Build the people network before they are connected to a case. Add people one at a time or import a contact sheet.') }}</p>
   </div>
   <a class="button secondary" href="{{ url_for('supporters') }}">{{ _('Back to supporters') }}</a>
+  <a class="button" href="{{ url_for('new_directory_person', next=url_for('supporter_directory')) }}">{{ _('+ Add person') }}</a>
 </div>
 
 <section class="card padded no-print">

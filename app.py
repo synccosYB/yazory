@@ -23,6 +23,9 @@ class SupporterProfile(_app.db.Model):
     """A person in the shared directory, before they are assigned to a case."""
     __tablename__ = 'supporter_profile'
     id = _app.db.Column(_app.db.Integer, primary_key=True)
+    person_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('supporter_person.id'), nullable=True,
+        unique=True, index=True)
     name = _app.db.Column(_app.db.String(160), nullable=False)
     phone = _app.db.Column(_app.db.String(80), nullable=False)
     normalized_phone = _app.db.Column(
@@ -31,6 +34,29 @@ class SupporterProfile(_app.db.Model):
     created_at = _app.db.Column(
         _app.db.DateTime, nullable=False,
         default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+
+
+class PersonRelationship(_app.db.Model):
+    """A direct connection between two canonical people, independent of a case."""
+    __tablename__ = 'person_relationship'
+    __table_args__ = (
+        UniqueConstraint('person_one_id', 'person_two_id',
+                         name='uq_person_relationship_pair'),
+    )
+    id = _app.db.Column(_app.db.Integer, primary_key=True)
+    person_one_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('supporter_person.id'),
+        nullable=False, index=True)
+    person_two_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('supporter_person.id'),
+        nullable=False, index=True)
+    relationship = _app.db.Column(_app.db.String(80), nullable=False)
+    notes = _app.db.Column(_app.db.String(500), nullable=False, default='')
+
+
+PERSON_RELATIONSHIPS = (
+    'Brothers', 'Sisters', 'Brother and sister', 'Spouses',
+    'Parent and child', 'In-laws', 'Cousins', 'Friends', 'Other')
 
 
 def normalized_profile_phone(value):
@@ -1178,6 +1204,39 @@ def create_app(test_config=None):
                 setattr(row, field_name, getattr(person, field_name) or '')
             row.supporter_key = person.identity_key
 
+        profile = _app.db.session.scalar(select(SupporterProfile).where(
+            SupporterProfile.person_id == person.id))
+        if profile is not None:
+            profile.name = person.name
+            profile.phone = person.phone
+            profile.email = person.email
+            normalized = normalized_profile_phone(person.phone)
+            if normalized:
+                profile.normalized_phone = normalized
+
+    def canonical_person_for_profile(profile):
+        """Attach an import row to the same authoritative person used by cases."""
+        person = (_app.db.session.get(SupporterPerson, profile.person_id)
+                  if profile.person_id else None)
+        if person is None:
+            identity_key = 'phone:' + profile.normalized_phone
+            person = _app.db.session.scalar(select(SupporterPerson).where(
+                SupporterPerson.identity_key == identity_key))
+            if person is None:
+                person = SupporterPerson(
+                    identity_key=identity_key, name=profile.name,
+                    phone=profile.phone, cell_phone=profile.phone,
+                    email=profile.email)
+                _app.db.session.add(person)
+                _app.db.session.flush()
+            else:
+                if not person.email:
+                    person.email = profile.email
+                if not person.cell_phone:
+                    person.cell_phone = profile.phone
+            profile.person_id = person.id
+        return person
+
     def attach_supporter_person(contact, source=None):
         """Attach a case connection to exactly one canonical person."""
         if source is not None and source.person_id is None:
@@ -1251,6 +1310,7 @@ def create_app(test_config=None):
         'attach': attach_supporter_person,
         'update': update_supporter_person,
         'sync': sync_person_snapshots,
+        'profile_person': canonical_person_for_profile,
     }
 
     def ensure_extension_schema():
@@ -1266,6 +1326,17 @@ def create_app(test_config=None):
         _app.db.session.execute(text(
             'CREATE INDEX IF NOT EXISTS ix_contact_person_id ON contact (person_id)'
         ))
+        profile_columns = {
+            column['name'] for column in
+            _app.inspect(_app.db.engine).get_columns('supporter_profile')
+        }
+        if 'person_id' not in profile_columns:
+            _app.db.session.execute(text(
+                'ALTER TABLE supporter_profile ADD COLUMN person_id INTEGER '
+                'REFERENCES supporter_person(id)'))
+        _app.db.session.execute(text(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uq_supporter_profile_person_id '
+            'ON supporter_profile (person_id)'))
         task_columns = {
             column['name'] for column in _app.inspect(_app.db.engine).get_columns('staff_task')
         }
@@ -1324,6 +1395,9 @@ def create_app(test_config=None):
                 existing_profiles[normalized] = profile
             elif not profile.email and contact.email:
                 profile.email = contact.email
+        _app.db.session.flush()
+        for profile in _app.db.session.scalars(select(SupporterProfile)).all():
+            canonical_person_for_profile(profile)
         _app.db.session.commit()
         _migrate_canonical_rabbis()
         _migrate_canonical_helpers()
@@ -1369,7 +1443,18 @@ def create_app(test_config=None):
                 _app.flash('Enter a valid email address.', 'error')
                 return _app.render_template('person_new.html', title='Add person',
                                             return_to=return_to), 400
-            create_neutral_directory_person(name=name, phone=phone, email=email)
+            profile = create_neutral_directory_person(name=name, phone=phone, email=email)
+            _app.db.session.flush()
+            person = canonical_person_for_profile(profile)
+            for field_name, limit in (
+                    ('home_phone', 80), ('cell_phone', 80),
+                    ('home_address', 240), ('city', 120), ('state', 80),
+                    ('zip_code', 20), ('workplace', 160),
+                    ('work_phone', 80), ('notes', 5000)):
+                setattr(person, field_name, _app.request.form.get(
+                    field_name, '').strip()[:limit])
+            if not person.cell_phone:
+                person.cell_phone = phone[:80]
             _app.db.session.commit()
             _app.flash('Person added to the shared name list.')
             return _app.redirect(return_to)
@@ -1513,22 +1598,71 @@ def create_app(test_config=None):
     def edit_supporter_profile(profile_id):
         supporter_directory_families()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        person = canonical_person_for_profile(profile)
+        _app.db.session.commit()
+
+        def edit_context():
+            # Imports may have been added after worker startup. Make them
+            # immediately available for person-to-person connections.
+            unlinked_profiles = _app.db.session.scalars(select(
+                    SupporterProfile).where(
+                        SupporterProfile.person_id.is_(None))).all()
+            for directory_profile in unlinked_profiles:
+                canonical_person_for_profile(directory_profile)
+            if unlinked_profiles:
+                _app.db.session.commit()
+            relationship_rows = _app.db.session.scalars(select(PersonRelationship).where(
+                _app.or_(PersonRelationship.person_one_id == person.id,
+                         PersonRelationship.person_two_id == person.id)
+            ).order_by(PersonRelationship.id)).all()
+            related_people = []
+            for row in relationship_rows:
+                other_id = (row.person_two_id if row.person_one_id == person.id
+                            else row.person_one_id)
+                related_people.append((
+                    row, _app.db.session.get(SupporterPerson, other_id)))
+            connected_ids = {other.id for _, other in related_people if other}
+            available_statement = select(SupporterPerson).where(
+                SupporterPerson.id != person.id)
+            if connected_ids:
+                available_statement = available_statement.where(
+                    SupporterPerson.id.not_in(connected_ids))
+            affiliations = _app.db.session.scalars(select(
+                _app.PersonAffiliation).where(
+                    _app.PersonAffiliation.person_type == 'supporter_profile',
+                    _app.PersonAffiliation.person_id == profile.id
+                ).order_by(_app.PersonAffiliation.id)).all()
+            used_institutions = {row.institution_id for row in affiliations}
+            institution_statement = select(_app.Institution)
+            if used_institutions:
+                institution_statement = institution_statement.where(
+                    _app.Institution.id.not_in(used_institutions))
+            return dict(
+                profile=profile, person=person,
+                person_relationships=related_people,
+                relationship_types=PERSON_RELATIONSHIPS,
+                available_people=_app.db.session.scalars(
+                    available_statement.order_by(SupporterPerson.name)).all(),
+                affiliations=affiliations,
+                institutions=_app.db.session.scalars(
+                    institution_statement.order_by(
+                        _app.Institution.kind, _app.Institution.name)).all())
         if _app.request.method == 'POST':
             name = _app.request.form.get('name', '').strip()
             phone = _app.request.form.get('phone', '').strip()
             email = _app.request.form.get('email', '').strip()
             normalized = normalized_profile_phone(phone)
-            if not name or not normalized:
-                _app.flash('Name and a valid phone number are required.', 'error')
+            if not name or (phone and not normalized):
+                _app.flash('A name and a valid phone number are required.', 'error')
                 return _app.render_template(
                     'supporter_profile_edit.html', title='Edit imported person',
-                    profile=profile), 400
+                    **edit_context()), 400
 
-            duplicate = _app.db.session.scalar(select(SupporterProfile.id).where(
+            duplicate = (_app.db.session.scalar(select(SupporterProfile.id).where(
                 SupporterProfile.normalized_phone == normalized,
-                SupporterProfile.id != profile.id))
+                SupporterProfile.id != profile.id)) if normalized else None)
             old_key = 'phone:' + profile.normalized_phone
-            new_key = 'phone:' + normalized
+            new_key = ('phone:' + normalized) if normalized else person.identity_key
             case_duplicate = None
             if new_key != old_key:
                 case_duplicate = _app.db.session.scalar(select(_app.Contact.id).where(
@@ -1537,34 +1671,129 @@ def create_app(test_config=None):
                 _app.flash('That phone number already belongs to another person.', 'error')
                 return _app.render_template(
                     'supporter_profile_edit.html', title='Edit imported person',
-                    profile=profile), 409
+                    **edit_context()), 409
 
             linked_contacts = _app.db.session.scalars(select(_app.Contact).where(
-                _app.Contact.supporter_key == old_key)).all()
+                _app.or_(_app.Contact.person_id == person.id,
+                         _app.Contact.supporter_key == old_key))).all()
             profile.name = name[:160]
             profile.phone = phone[:80]
-            profile.normalized_phone = normalized
+            if normalized:
+                profile.normalized_phone = normalized
             profile.email = email[:254]
-            if linked_contacts:
-                try:
-                    update_supporter_person(linked_contacts[0], {
-                        'name': profile.name, 'phone': profile.phone,
-                        'cell_phone': profile.phone, 'email': profile.email,
-                        'supporter_key': new_key,
-                    })
-                except ValueError as exc:
-                    _app.db.session.rollback()
-                    _app.flash(str(exc), 'error')
-                    return _app.render_template(
-                        'supporter_profile_edit.html', title='Edit imported person',
-                        profile=profile), 409
+            values = {
+                'name': profile.name, 'phone': profile.phone,
+                'email': profile.email, 'supporter_key': new_key,
+            }
+            for field_name, limit in (
+                    ('home_phone', 80), ('cell_phone', 80),
+                    ('home_address', 240), ('city', 120), ('state', 80),
+                    ('zip_code', 20), ('workplace', 160),
+                    ('work_phone', 80), ('notes', 5000)):
+                values[field_name] = _app.request.form.get(
+                    field_name, '').strip()[:limit]
+            if not values['cell_phone']:
+                values['cell_phone'] = profile.phone
+            try:
+                if linked_contacts:
+                    person = update_supporter_person(linked_contacts[0], values)
+                else:
+                    person.identity_key = new_key
+                    for field_name in personal_fields:
+                        if field_name in values:
+                            setattr(person, field_name, values[field_name])
+                    sync_person_snapshots(person)
+            except ValueError as exc:
+                _app.db.session.rollback()
+                _app.flash(str(exc), 'error')
+                return _app.render_template(
+                    'supporter_profile_edit.html', title='Edit imported person',
+                    **edit_context()), 409
             _app.db.session.commit()
             _app.flash('Person updated everywhere they are connected.')
             return _app.redirect(_app.url_for('supporter_directory'))
 
         return _app.render_template(
             'supporter_profile_edit.html', title='Edit imported person',
-            profile=profile)
+            **edit_context())
+
+    @app.post('/supporter-directory/<int:profile_id>/relationships')
+    def add_person_relationship(profile_id):
+        supporter_directory_families()
+        profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        person = canonical_person_for_profile(profile)
+        other_id = _app.request.form.get('other_person_id', type=int)
+        other = _app.db.session.get(SupporterPerson, other_id)
+        relationship = _app.request.form.get('relationship', '').strip()
+        if other is None or other.id == person.id:
+            _app.abort(400, 'Choose another person.')
+        if relationship not in PERSON_RELATIONSHIPS:
+            _app.abort(400, 'Choose a valid relationship.')
+        one_id, two_id = sorted((person.id, other.id))
+        existing = _app.db.session.scalar(select(PersonRelationship.id).where(
+            PersonRelationship.person_one_id == one_id,
+            PersonRelationship.person_two_id == two_id))
+        if existing:
+            _app.abort(409, 'These people are already connected.')
+        _app.db.session.add(PersonRelationship(
+            person_one_id=one_id, person_two_id=two_id,
+            relationship=relationship,
+            notes=_app.request.form.get('relationship_notes', '').strip()[:500]))
+        _app.db.session.commit()
+        _app.flash('People connected.')
+        return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id))
+
+    @app.post('/supporter-directory/<int:profile_id>/relationships/<int:relationship_id>/delete')
+    def delete_person_relationship(profile_id, relationship_id):
+        supporter_directory_families()
+        profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        person = canonical_person_for_profile(profile)
+        row = _app.db.get_or_404(PersonRelationship, relationship_id)
+        if person.id not in (row.person_one_id, row.person_two_id):
+            _app.abort(403)
+        _app.db.session.delete(row)
+        _app.db.session.commit()
+        _app.flash('Person connection removed.')
+        return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id))
+
+    @app.post('/supporter-directory/<int:profile_id>/affiliations')
+    def add_profile_affiliation(profile_id):
+        supporter_directory_families()
+        profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        institution = _app.db.get_or_404(
+            _app.Institution, _app.request.form.get('institution_id', type=int))
+        duplicate = _app.db.session.scalar(select(_app.PersonAffiliation.id).where(
+            _app.PersonAffiliation.institution_id == institution.id,
+            _app.PersonAffiliation.person_type == 'supporter_profile',
+            _app.PersonAffiliation.person_id == profile.id))
+        if duplicate:
+            _app.abort(409, 'This person is already connected to that institution.')
+        year_from = _app.request.form.get('year_from', type=int)
+        year_to = _app.request.form.get('year_to', type=int)
+        if institution.kind == 'Yeshivah' and (
+                year_from is None or year_to is None or year_from > year_to):
+            _app.abort(400, 'Enter valid attendance years for the yeshivah.')
+        _app.db.session.add(_app.PersonAffiliation(
+            institution_id=institution.id, person_type='supporter_profile',
+            person_id=profile.id,
+            grade=_app.request.form.get('grade', '').strip()[:80],
+            year_from=year_from, year_to=year_to,
+            note=_app.request.form.get('affiliation_note', '').strip()[:300]))
+        _app.db.session.commit()
+        _app.flash('Institution connected to the person.')
+        return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id))
+
+    @app.post('/supporter-directory/<int:profile_id>/affiliations/<int:affiliation_id>/delete')
+    def delete_profile_affiliation(profile_id, affiliation_id):
+        supporter_directory_families()
+        profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        row = _app.db.get_or_404(_app.PersonAffiliation, affiliation_id)
+        if row.person_type != 'supporter_profile' or row.person_id != profile.id:
+            _app.abort(403)
+        _app.db.session.delete(row)
+        _app.db.session.commit()
+        _app.flash('Institution connection removed.')
+        return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id))
 
     def add_shared_gabbai(family_id):
         user = (_app.db.session.get(_app.StaffUser, _app.session.get('user_id'))

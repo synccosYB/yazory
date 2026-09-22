@@ -4,7 +4,8 @@ from io import BytesIO
 import pytest
 from sqlalchemy import event
 
-from app import Contact, Family, SupporterProfile, db
+from app import (Contact, Family, Institution, PersonAffiliation,
+                 PersonRelationship, SupporterPerson, SupporterProfile, db)
 
 
 @pytest.fixture
@@ -232,3 +233,75 @@ def test_edit_imported_profile_rejects_duplicate_phone(app, client):
     assert response.status_code == 409
     with app.app_context():
         assert db.session.get(SupporterProfile, first_id).normalized_phone == '8455552300'
+
+
+def test_standalone_person_keeps_full_details_without_a_case(app, client):
+    response = client.post('/people/new', data={
+        'csrf': csrf(client), 'name': 'Standalone Helper',
+        'phone': '845-555-2500', 'cell_phone': '845-555-2501',
+        'home_phone': '845-555-2502', 'email': 'helper@example.test',
+        'home_address': '10 Main Street', 'city': 'Monroe', 'state': 'NY',
+        'zip_code': '10950', 'workplace': 'Helper Services',
+        'work_phone': '845-555-2503', 'notes': 'Available before Yom Tov',
+        'next': '/supporter-directory'})
+    assert response.status_code == 302
+    with app.app_context():
+        profile = db.session.scalar(db.select(SupporterProfile).where(
+            SupporterProfile.normalized_phone == '8455552500'))
+        person = db.session.get(SupporterPerson, profile.person_id)
+        assert db.session.scalar(db.select(Contact.id).where(
+            Contact.person_id == person.id)) is None
+        assert (person.cell_phone, person.home_phone, person.home_address,
+                person.city, person.state, person.zip_code, person.workplace,
+                person.work_phone, person.notes) == (
+            '845-555-2501', '845-555-2502', '10 Main Street', 'Monroe',
+            'NY', '10950', 'Helper Services', '845-555-2503',
+            'Available before Yom Tov')
+
+
+def test_people_can_be_related_without_case_or_institution(app, client):
+    with app.app_context():
+        first = SupporterProfile(name='Avraham Aharon Roth', phone='845-555-2600',
+                                 normalized_phone='8455552600', email='')
+        second = SupporterProfile(name='Yoel Hersh Roth', phone='845-555-2601',
+                                  normalized_phone='8455552601', email='')
+        db.session.add_all([first, second])
+        db.session.commit()
+        first_id = first.id
+        client.get(f'/supporter-directory/{first.id}/edit')
+        second_person_id = db.session.get(SupporterProfile, second.id).person_id
+
+    response = client.post(f'/supporter-directory/{first_id}/relationships', data={
+        'csrf': csrf(client), 'other_person_id': second_person_id,
+        'relationship': 'Brothers', 'relationship_notes': 'Family connection'})
+    assert response.status_code == 302
+    with app.app_context():
+        row = db.session.scalar(db.select(PersonRelationship))
+        assert row.relationship == 'Brothers'
+        assert row.notes == 'Family connection'
+
+
+def test_person_can_join_shul_network_before_being_connected_to_case(app, client):
+    with app.app_context():
+        profile = SupporterProfile(name='Future Helper', phone='845-555-2700',
+                                   normalized_phone='8455552700', email='')
+        institution = Institution(kind='Shul', name='Shared Shul', city='Monroe')
+        db.session.add_all([profile, institution])
+        db.session.commit()
+        profile_id, institution_id = profile.id, institution.id
+
+    response = client.post(f'/supporter-directory/{profile_id}/affiliations', data={
+        'csrf': csrf(client), 'institution_id': institution_id,
+        'grade': '', 'year_from': '', 'year_to': '',
+        'affiliation_note': 'Weekday minyan'})
+    assert response.status_code == 302
+    with app.app_context():
+        row = db.session.scalar(db.select(PersonAffiliation).where(
+            PersonAffiliation.person_type == 'supporter_profile',
+            PersonAffiliation.person_id == profile_id))
+        assert row.institution_id == institution_id
+        assert row.note == 'Weekday minyan'
+
+    directory = client.get('/community-directories?kind=Shul')
+    assert directory.status_code == 200
+    assert 'Future Helper' in directory.text

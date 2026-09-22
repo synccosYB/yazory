@@ -9,15 +9,52 @@
 </div>
 
 <section class="card padded">
-  <form method="post" class="form-grid">
+  <form method="post">
     {{ token(csrf) }}
-    <label>{{ _('Name') }} *<input name="name" value="{{ profile.name }}" maxlength="160" required></label>
-    <label>{{ _('Phone') }} *<input name="phone" value="{{ profile.phone }}" maxlength="80" required></label>
-    <label>{{ _('Email address') }}<input type="email" name="email" value="{{ profile.email }}" maxlength="254"></label>
+    <div class="form-grid">
+      <label>{{ _('Name') }} *<input name="name" value="{{ person.name }}" maxlength="160" required></label>
+      <label>{{ _('Phone') }}<input name="phone" value="{{ person.phone }}" maxlength="80"></label>
+      <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ person.cell_phone }}" maxlength="80"></label>
+      <label>{{ _('Home phone') }}<input name="home_phone" value="{{ person.home_phone }}" maxlength="80"></label>
+      <label>{{ _('Email address') }}<input type="email" name="email" value="{{ person.email }}" maxlength="254"></label>
+      <label>{{ _('Home address') }}<input name="home_address" value="{{ person.home_address }}" maxlength="240"></label>
+      <label>{{ _('City') }}<input name="city" value="{{ person.city }}" maxlength="120"></label>
+      <label>{{ _('State') }}<input name="state" value="{{ person.state }}" maxlength="80"></label>
+      <label>{{ _('ZIP code') }}<input name="zip_code" value="{{ person.zip_code }}" maxlength="20"></label>
+      <label>{{ _('Workplace') }}<input name="workplace" value="{{ person.workplace }}" maxlength="160"></label>
+      <label>{{ _('Work phone') }}<input name="work_phone" value="{{ person.work_phone }}" maxlength="80"></label>
+      <label class="full-width">{{ _('Notes') }}<textarea name="notes" rows="3">{{ person.notes }}</textarea></label>
+    </div>
     <div class="form-actions">
       <button type="submit">{{ _('Save changes') }}</button>
       <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Cancel') }}</a>
     </div>
   </form>
+</section>
+
+<section class="card padded">
+  <div class="section-heading"><div><h2>{{ _('Connections to other people') }}</h2><p>{{ _('These connections belong to the person and do not depend on a case or institution.') }}</p></div></div>
+  <div class="table-wrap"><table><thead><tr><th>{{ _('Person') }}</th><th>{{ _('Connection') }}</th><th>{{ _('Notes') }}</th><th>{{ _('Actions') }}</th></tr></thead><tbody>
+    {% for connection, other in person_relationships %}<tr><td><strong>{{ other.name }}</strong>{% if other.phone %}<small><bdi dir="ltr">{{ other.phone|phone }}</bdi></small>{% endif %}</td><td>{{ _(connection.relationship) }}</td><td>{{ connection.notes or '—' }}</td><td><form method="post" action="{{ url_for('delete_person_relationship', profile_id=profile.id, relationship_id=connection.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Remove') }}</button></form></td></tr>{% else %}<tr><td colspan="4" class="empty">{{ _('No direct person connections entered.') }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if available_people %}<details><summary>{{ _('+ Connect another person') }}</summary><form method="post" action="{{ url_for('add_person_relationship', profile_id=profile.id) }}">{{ token(csrf) }}<div class="form-grid">
+    <label>{{ _('Person') }}<input type="search" class="select-search" data-select-filter="related-person" placeholder="{{ _('Search people') }}"><select name="other_person_id" id="related-person" required><option value="">{{ _('Choose') }}</option>{% for other in available_people %}<option value="{{ other.id }}">{{ other.name }}{% if other.phone %} · {{ other.phone|phone }}{% endif %}</option>{% endfor %}</select></label>
+    <label>{{ _('Connection') }}<select name="relationship" required>{% for item in relationship_types %}<option value="{{ item }}">{{ _(item) }}</option>{% endfor %}</select></label>
+    <label>{{ _('Notes') }}<input name="relationship_notes" maxlength="500"></label>
+  </div><button>{{ _('Connect people') }}</button></form></details>{% endif %}
+</section>
+
+<section class="card padded">
+  <div class="section-heading"><div><h2>{{ _('Shul and yeshivah connections') }}</h2><p>{{ _('Save these now so future cases connected to the same institution already have a network of possible helpers.') }}</p></div></div>
+  <div class="table-wrap"><table><thead><tr><th>{{ _('Type') }}</th><th>{{ _('Institution') }}</th><th>{{ _('Class entered') }}</th><th>{{ _('Years') }}</th><th>{{ _('Actions') }}</th></tr></thead><tbody>
+    {% for affiliation in affiliations %}<tr><td>{{ _(affiliation.institution.kind) }}</td><td>{{ affiliation.institution.name }}</td><td>{{ affiliation.grade or '—' }}</td><td>{% if affiliation.year_from %}{{ affiliation.year_from }}{% if affiliation.year_to %}–{{ affiliation.year_to }}{% endif %}{% else %}—{% endif %}</td><td><form method="post" action="{{ url_for('delete_profile_affiliation', profile_id=profile.id, affiliation_id=affiliation.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Remove') }}</button></form></td></tr>{% else %}<tr><td colspan="5" class="empty">{{ _('No shul or yeshivah connections entered.') }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if institutions %}<details><summary>{{ _('+ Connect shul or yeshivah') }}</summary><form method="post" action="{{ url_for('add_profile_affiliation', profile_id=profile.id) }}">{{ token(csrf) }}<div class="form-grid">
+    <label>{{ _('Institution') }}<input type="search" class="select-search" data-select-filter="profile-institution" placeholder="{{ _('Search') }}"><select name="institution_id" id="profile-institution" required><option value="">{{ _('Choose') }}</option>{% for institution in institutions %}<option value="{{ institution.id }}">{{ _(institution.kind) }} · {{ institution.name }}{% if institution.city %} · {{ institution.city }}{% endif %}</option>{% endfor %}</select></label>
+    <label>{{ _('Class entered') }}<input name="grade" maxlength="80"></label>
+    <label>{{ _('Year from') }}<input name="year_from" type="number" min="1900" max="2100"></label>
+    <label>{{ _('Year to') }}<input name="year_to" type="number" min="1900" max="2100"></label>
+    <label>{{ _('Notes') }}<input name="affiliation_note" maxlength="300"></label>
+  </div><button>{{ _('Connect institution') }}</button></form></details>{% endif %}
 </section>
 {% endblock %}
