@@ -667,3 +667,14 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
  .network-details{grid-template-columns:1fr!important}
  .network-contact-item{max-width:100%;width:100%}
 }
+
+
+/* Partner askan connection controls */
+.network-person-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.network-person-heading form{margin:0;flex:0 0 auto}
+.network-person-heading .button.danger{padding:5px 9px;border-color:#d9a7a2;background:#fff7f6;color:#8f2f25}
+.network-person-heading .button.danger:hover{background:#f9e8e6}
+.network-connect-form{display:grid;gap:12px;margin-top:12px}
+.network-form-divider{display:flex;align-items:center;gap:10px;color:var(--muted,#61707d);font-size:.76rem;font-weight:700}
+.network-form-divider::before,.network-form-divider::after{content:"";height:1px;flex:1;background:var(--line,#d9e0e5)}
+.network-connect-form .field-hint{margin:-4px 0 0}
