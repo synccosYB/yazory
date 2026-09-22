@@ -493,7 +493,7 @@ def test_filtered_lists_show_phone_column_and_print_action(app, client):
         '/supporters?relationship_group=siblings&family_id=1').text
     assert '<small>Phone</small>' in supporter_page
     assert '(845) 555-0142' in supporter_page
-    assert 'onclick="window.print()"' in supporter_page
+    assert 'data-print' in supporter_page
 
     directory_page = client.get(
         '/community-directories?kind=Shul&family_id=1').text
@@ -520,7 +520,10 @@ def test_supporter_phone_is_displayed_in_us_format(app, client):
     ('en', 'Print list'), ('he', 'הדפסת הרשימה'), ('yi', 'דרוקן די ליסטע')])
 def test_print_list_action_is_translated(client, language, label):
     client.get('/language/' + language)
-    assert label in client.get('/supporters').text
+    page = client.get('/supporters').text
+    assert label in page
+    assert 'data-print' in page
+    assert 'onclick="window.print()"' not in page
 
 def test_all_four_lists_can_be_filtered_by_applicant(app, client):
     assert post(client, '/families/new', {'name': 'Second applicant'}).status_code == 302
