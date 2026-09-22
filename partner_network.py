@@ -225,6 +225,10 @@ def install(app):
         db.session.add(core.Audit(actor=current.email if current else 'Demo user',
                                   action=action, family_id=family_id))
 
+    def sync_askan(askan):
+        for callback in app.extensions.get('askan_profile_person_sync', ()):
+            callback(askan)
+
     def twilio_service_sid():
         row = db.session.get(core.OrganizationSetting, 'twilio_messaging_service_sid')
         saved = row.value if row and isinstance(row.value, str) else ''
@@ -322,6 +326,8 @@ def install(app):
             preferred_method=value('preferred_method', 20) or 'Phone',
             notes=value('notes', 10000))
         db.session.add_all((askan, profile))
+        db.session.flush()
+        sync_askan(askan)
         audit(f'Added askan to directory: {name}')
         db.session.commit()
         core.flash('Askan added to directory.')
@@ -465,6 +471,7 @@ def install(app):
                 email=contact.email or '')
             db.session.add(askan)
             db.session.flush()
+        sync_askan(askan)
         existing = db.session.scalar(select(OrganizationAskan).where(
             OrganizationAskan.organization_id == org.id,
             OrganizationAskan.askan_id == askan.id))
@@ -498,6 +505,7 @@ def install(app):
                 askan = core.Askan(name=name, phone=phone, email=email)
                 db.session.add(askan)
                 db.session.flush()
+        sync_askan(askan)
         existing = db.session.scalar(select(OrganizationAskan).where(
             OrganizationAskan.organization_id == org.id,
             OrganizationAskan.askan_id == askan.id))
@@ -544,6 +552,7 @@ def install(app):
             profile.preferred_method = value('preferred_method', 20) or 'Phone'
             profile.notes = value('notes', 10000)
             askan.phone, askan.email = value('phone', 80), email_value()
+            sync_askan(askan)
             db.session.add(profile)
             audit(f'Updated askan network profile: {askan.name}')
             db.session.commit()
