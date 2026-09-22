@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
 from sqlalchemy import UniqueConstraint, inspect, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import load_only
 
 import app_original as core
@@ -266,23 +267,34 @@ def install(app):
 
     @app.context_processor
     def sponsor_context():
-        case_sponsor = None
-        if request.endpoint in ('family_detail', 'family_print_report'):
-            family_id = (request.view_args or {}).get('family_id')
-            if family_id:
-                case_sponsor = current_case_sponsorship(family_id)
-        # The public carousel is only rendered by the landing and sponsor
-        # directory pages.  Loading it for every staff screen used to fetch
-        # every published sponsor (including its logo BLOB) on every request.
-        public_sponsor_endpoints = {
-            'dashboard', 'about', 'public_sponsors_directory',
-            'localized_public_page',
-        }
-        public_sponsors = (current_public_sponsors()
-                           if request.endpoint in public_sponsor_endpoints else [])
-        return {'current_sponsor': current_sponsorship(), 'current_case_sponsor': case_sponsor,
-                'public_sponsors': public_sponsors,
-                'sponsorship_page_labels': PAGE_LABELS}
+        empty = {'current_sponsor': None, 'current_case_sponsor': None,
+                 'public_sponsors': [], 'sponsorship_page_labels': PAGE_LABELS}
+        try:
+            case_sponsor = None
+            if request.endpoint in ('family_detail', 'family_print_report'):
+                family_id = (request.view_args or {}).get('family_id')
+                if family_id:
+                    case_sponsor = current_case_sponsorship(family_id)
+            # The public carousel is only rendered by the landing and sponsor
+            # directory pages.  Loading it for every staff screen used to fetch
+            # every published sponsor (including its logo BLOB) on every request.
+            public_sponsor_endpoints = {
+                'dashboard', 'about', 'public_sponsors_directory',
+                'localized_public_page',
+            }
+            public_sponsors = (current_public_sponsors()
+                               if request.endpoint in public_sponsor_endpoints else [])
+            return {'current_sponsor': current_sponsorship(),
+                    'current_case_sponsor': case_sponsor,
+                    'public_sponsors': public_sponsors,
+                    'sponsorship_page_labels': PAGE_LABELS}
+        except SQLAlchemyError:
+            # Sponsorships are optional presentation data. A deployment with a
+            # temporarily stale sponsorship schema must not take the public
+            # site (and its platform health check) offline.
+            core.db.session.rollback()
+            app.logger.exception('Sponsor context unavailable; rendering without sponsors')
+            return empty
 
     @app.get('/sponsorships')
     def sponsorships():

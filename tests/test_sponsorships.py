@@ -202,6 +202,19 @@ def test_sponsor_directory_is_public_without_staff_login():
     assert 'public-sponsor-directory' in response.text or 'Our sponsors' in response.text
 
 
+def test_public_home_stays_available_when_sponsorship_schema_is_unavailable():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        db.session.execute(db.text('DROP TABLE monthly_sponsorship'))
+        db.session.commit()
+
+    response = client.get('/')
+
+    assert response.status_code == 200
+    assert 'Yazory' in response.text
+
+
 def test_sponsor_carousel_gives_tall_logos_full_height():
     css = make_app().test_client().get('/static/style.css').text
     assert '.public-sponsor-stage .public-sponsor-logos' in css
