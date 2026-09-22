@@ -144,6 +144,31 @@ def test_new_askan_does_not_match_an_unrelated_blank_email_and_can_be_removed(ap
         assert db.session.scalar(db.select(Askan).where(
             Askan.name == 'Correct Askan')) is not None
 
+def test_standalone_askan_can_be_added_and_filtered_before_any_connection(app, client):
+    response = post(client, '/partner-network/askonim', {
+        'name': 'Meir Eli Goldberger', 'phone': '845-555-1414',
+        'email': 'meir@example.org', 'community': 'Monroe',
+        'expertise': 'Yom Tov assistance', 'preferred_method': 'Phone'})
+    assert response.status_code == 302
+
+    with app.app_context():
+        askan = db.session.scalar(db.select(Askan).where(
+            Askan.name == 'Meir Eli Goldberger'))
+        assert askan is not None
+        assert askan.families == []
+        assert askan.organization_links == []
+        assert askan.network_profile.expertise == 'Yom Tov assistance'
+
+    page = client.get('/partner-network?askan_connection=unconnected&askan_q=Goldberger')
+    assert page.status_code == 200
+    assert b'Meir Eli Goldberger' in page.data
+    assert b'Not connected yet' in page.data
+
+    duplicate = post(client, '/partner-network/askonim', {
+        'name': 'Duplicate', 'phone': '845-555-1414'})
+    assert duplicate.status_code == 409
+
+
 def test_partner_network_is_visible_in_all_locales(client):
     for language in ('en', 'he', 'yi'):
         client.get(f'/language/{language}?next=/partner-network')

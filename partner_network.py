@@ -244,6 +244,8 @@ def install(app):
     def partner_network():
         require_network_access()
         query = core.request.args.get('q', '').strip()[:160]
+        askan_query = core.request.args.get('askan_q', '').strip()[:160]
+        askan_connection = core.request.args.get('askan_connection', '').strip()[:20]
         category = core.request.args.get('category', '').strip()[:50]
         statement = select(PartnerOrganization).order_by(PartnerOrganization.name)
         if query:
@@ -254,18 +256,61 @@ def install(app):
         if category in ORGANIZATION_CATEGORIES:
             statement = statement.where(PartnerOrganization.category == category)
         organizations = db.session.scalars(statement).all()
-        askonim = db.session.scalars(select(core.Askan).order_by(core.Askan.name)).all()
+        askan_statement = select(core.Askan).order_by(core.Askan.name)
+        if askan_query:
+            askan_statement = askan_statement.where(or_(
+                core.Askan.name.icontains(askan_query, autoescape=True),
+                core.Askan.phone.icontains(askan_query, autoescape=True),
+                core.Askan.email.icontains(askan_query, autoescape=True)))
+        askonim = db.session.scalars(askan_statement).unique().all()
+        if askan_connection == 'unconnected':
+            askonim = [askan for askan in askonim if not (
+                askan.families or askan.organization_links or askan.case_coordinations)]
+        askonim_total = db.session.scalar(
+            select(func.count()).select_from(core.Askan)) or 0
         due = db.session.scalars(select(CaseCoordination).where(
             CaseCoordination.status.notin_(('Completed', 'Declined')),
             CaseCoordination.follow_up_on.is_not(None),
             CaseCoordination.follow_up_on <= date.today()).order_by(CaseCoordination.follow_up_on)).all()
         due = [row for row in due if can_access_family(row.family_id)]
         return core.render_template('partner_network.html', title='Organizations & Askonim',
-                                    organizations=organizations, askonim=askonim, due=due,
+                                    organizations=organizations, askonim=askonim,
+                                    askonim_total=askonim_total, due=due,
                                     query=query, selected_category=category,
+                                    askan_query=askan_query,
+                                    askan_connection=askan_connection,
                                     categories=ORGANIZATION_CATEGORIES,
                                     community_options=COMMUNITY_OPTIONS,
                                     geographic_area_options=GEOGRAPHIC_AREA_OPTIONS)
+
+    @app.post('/partner-network/askonim')
+    def add_network_askan():
+        """Create an askan directory profile without requiring a case or organization."""
+        require_network_access()
+        name = value('name', 160, True)
+        phone = value('phone', 80)
+        email = email_value()
+        identity_matches = []
+        if phone:
+            identity_matches.append(core.Askan.phone == phone)
+        if email:
+            identity_matches.append(func.lower(core.Askan.email) == email)
+        if identity_matches and db.session.scalar(select(core.Askan.id).where(
+                or_(*identity_matches))):
+            core.abort(409, 'An askan with this phone or email is already in the directory.')
+        askan = core.Askan(name=name, phone=phone, email=email)
+        profile = AskanNetworkProfile(
+            askan=askan, community=value('community', 160),
+            shul=value('shul', 160), expertise=value('expertise', 500),
+            geographic_reach=value('geographic_reach', 300),
+            languages=value('languages', 160), availability=value('availability', 300),
+            preferred_method=value('preferred_method', 20) or 'Phone',
+            notes=value('notes', 10000))
+        db.session.add_all((askan, profile))
+        audit(f'Added askan to directory: {name}')
+        db.session.commit()
+        core.flash('Askan added to directory.')
+        return core.redirect(core.url_for('network_askan_detail', askan_id=askan.id))
 
     @app.post('/partner-network/organizations')
     def add_partner_organization():
