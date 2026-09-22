@@ -1,6 +1,6 @@
 import pytest
 
-from app import Askan, Audit, Family, db
+from app import Askan, Audit, Family, SupporterProfile, db
 from app_entry import create_app
 from partner_network import (CaseCoordination, OrganizationAskan,
                              PartnerCommunication, PartnerContact,
@@ -187,6 +187,10 @@ def test_standalone_askan_can_be_added_and_filtered_before_any_connection(app, c
         assert askan.families == []
         assert askan.organization_links == []
         assert askan.network_profile.expertise == 'Yom Tov assistance'
+        shared_person = db.session.scalar(db.select(SupporterProfile).where(
+            SupporterProfile.name == 'Meir Eli Goldberger'))
+        assert shared_person is not None
+        assert shared_person.phone == '845-555-1414'
 
     page = client.get('/partner-network?askan_connection=unconnected&askan_q=Goldberger')
     assert page.status_code == 200
