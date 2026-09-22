@@ -1181,6 +1181,7 @@ def create_app(test_config=None):
         create_neutral_directory_person)
 
     family_relative_fields = (
+        ('name', 'applicant', 'Applicant'),
         ('spouse', 'spouse', 'Spouse'),
         ('father', 'father', 'Father'),
         ('inlaws', 'inlaws', 'Father-in-law'),
@@ -1204,13 +1205,27 @@ def create_app(test_config=None):
                 SupporterProfile.normalized_phone == directory_key))
             if profile is None:
                 profile = SupporterProfile(
-                    name=name, phone='', normalized_phone=directory_key, email='')
+                    name=name,
+                    phone=(family.phone or '')[:80] if field_name == 'name' else '',
+                    normalized_phone=directory_key,
+                    email=(family.email or '')[:254] if field_name == 'name' else '')
                 _app.db.session.add(profile)
             else:
                 profile.name = name
+                if field_name == 'name':
+                    profile.phone = (family.phone or '')[:80]
+                    profile.email = (family.email or '')[:254]
             _app.db.session.flush()
             person = canonical_person_for_profile(profile)
             person.name = name
+            if field_name == 'name':
+                person.phone = (family.phone or '')[:80]
+                person.cell_phone = (family.phone or '')[:80]
+                person.email = (family.email or '')[:254]
+                person.home_address = (family.address or '')[:240]
+                person.city = (family.city or '')[:120]
+                person.state = (family.state or '')[:80]
+                person.zip_code = (family.zip_code or '')[:20]
             source_note = f'{relationship} of {family.name} (YZ-{family.id:04d})'
             generated_prefixes = tuple(
                 label for _, _, label in family_relative_fields)
@@ -1219,6 +1234,41 @@ def create_app(test_config=None):
 
     app.extensions.setdefault('family_profile_person_sync', []).append(
         sync_family_relatives_to_people)
+
+    def sync_askan_to_people(askan):
+        """Keep every askan in the same canonical people directory."""
+        _app.db.session.flush()
+        directory_key = f'askan:{askan.id}'
+        profile = _app.db.session.scalar(select(SupporterProfile).where(
+            SupporterProfile.normalized_phone == directory_key))
+        if profile is None:
+            normalized = normalized_profile_phone(askan.phone)
+            if normalized:
+                profile = _app.db.session.scalar(select(SupporterProfile).where(
+                    SupporterProfile.normalized_phone == normalized))
+            if profile is None and askan.email:
+                profile = _app.db.session.scalar(select(SupporterProfile).where(
+                    _app.func.lower(SupporterProfile.email) == askan.email.lower()))
+        if profile is None:
+            profile = SupporterProfile(
+                name=askan.name, phone=askan.phone or '',
+                normalized_phone=directory_key, email=askan.email or '')
+            _app.db.session.add(profile)
+        else:
+            profile.name = askan.name
+            profile.phone = askan.phone or ''
+            profile.email = askan.email or ''
+        _app.db.session.flush()
+        person = canonical_person_for_profile(profile)
+        person.name = askan.name
+        person.phone = askan.phone or ''
+        person.cell_phone = askan.phone or ''
+        person.email = askan.email or ''
+        if not person.notes or person.notes.startswith('Askan in Yazory directory'):
+            person.notes = 'Askan in Yazory directory'
+
+    app.extensions.setdefault('askan_profile_person_sync', []).append(
+        sync_askan_to_people)
     twilio_config = {
         'TWILIO_ACCOUNT_SID': os.getenv('TWILIO_ACCOUNT_SID', ''),
         'TWILIO_AUTH_TOKEN': os.getenv('TWILIO_AUTH_TOKEN', ''),
@@ -1440,6 +1490,8 @@ def create_app(test_config=None):
         # not have to be opened and saved again.
         for family in _app.db.session.scalars(select(_app.Family)).all():
             sync_family_relatives_to_people(family)
+        for askan in _app.db.session.scalars(select(_app.Askan)).all():
+            sync_askan_to_people(askan)
         _app.db.session.flush()
         for profile in _app.db.session.scalars(select(SupporterProfile)).all():
             canonical_person_for_profile(profile)
