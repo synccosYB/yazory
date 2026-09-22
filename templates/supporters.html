@@ -80,6 +80,19 @@
 </details>{% else %}<p class="empty">{{ _('No supporters found.') }}</p>{% endfor %}
 </div>
 </details>
+<section class="print-only supporter-print-list">
+<h2>{{ _('Supporters') }} <small>{{ contacts|length }} {{ _('records') }}</small></h2>
+<table>
+<thead><tr><th>{{ _('Supporter') }}</th><th>{{ _('Family') }}</th><th>{{ _('Relationship') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Donation commitment') }}</th><th>{{ _('Received to date') }}</th><th>{{ _('Follow-up status') }}</th></tr></thead>
+<tbody>{% for c in contacts %}<tr>
+<td>{{ c.name }}</td><td>{{ c.family.name }}</td>
+<td>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
+<td><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></td>
+<td>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</td>
+<td>{{ received[c.id]|money }}</td><td>{{ _(c.status) }}</td>
+</tr>{% else %}<tr><td colspan="7">{{ _('No supporters found.') }}</td></tr>{% endfor %}</tbody>
+</table>
+</section>
 <details class="card padded add-supporter-panel no-print" {% if selected_family_id %}open{% endif %}>
 <summary>{{ _('+ Add a new person') }}</summary>
 <form method="post" action="{{ url_for('add_contact') if families else '#' }}">
