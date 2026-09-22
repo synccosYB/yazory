@@ -769,6 +769,8 @@ from workflow_translations import install as install_workflow_translations
 install_workflow_translations(CATALOG)
 _ABCHARITY_ROWS = '''
 ABCharity donations|תרומות ABCharity|ABCharity נדבות
+Imported payments linked to this supporter.|תשלומים מיובאים המקושרים לתומך זה.|אריינגעברענגטע באצאלונגען צוגעבונדן צו דעם העלפער.
+ABCharity donation|תרומת ABCharity|ABCharity נדבה
 Back|חזרה|צוריק
 Last synced|סנכרון אחרון|לעצט אפדעיטעד
 Not synced yet|טרם סונכרן|נאך נישט אפדעיטעד

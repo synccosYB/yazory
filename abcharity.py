@@ -280,6 +280,20 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         allowed_ids=assigned_contacts(family_id)
         if allowed_ids is not None and (donor.contact_id not in allowed_ids or contact_id not in allowed_ids):abort(403)
         donor.contact_id = contact_id
+        # One ABCharity link owns both sides of the supporter record.  Imported
+        # receipts remain the authoritative payment records (and are not
+        # duplicated as manual receipts), while an active subscription supplies
+        # the supporter's recurring pledge.
+        if contact_id:
+            latest_subscription = db.session.scalar(select(Donation).where(
+                Donation.donor_id == donor.id,
+                Donation.subscription.is_(True),
+            ).order_by(Donation.donation_time.desc(), Donation.id.desc()))
+            if latest_subscription is not None:
+                contact = db.session.get(Contact, contact_id)
+                contact.monthly_cents = latest_subscription.amount_cents
+                contact.pledge_frequency = 'Monthly'
+                contact.status = 'Pledged'
         audit('Linked ABCharity donor to supporter', family_id)
         db.session.commit()
         return redirect(url_for('charity_donations', family_id=family_id))

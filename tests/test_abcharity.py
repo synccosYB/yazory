@@ -157,6 +157,40 @@ def test_subscription_counts_only_the_paid_installment():
     assert receipt['amount_cents'] == 10_000
     assert receipt['net_cents'] == 9_409
 
+def test_linking_subscription_updates_pledge_and_supporter_payment_history(setup, monkeypatch):
+    app, client = setup
+    monkeypatch.setattr('abcharity.fetch_donations', lambda key: [{
+        **ROW, 'amount': '1200.00', 'net': '94.09'
+    }])
+    assert connect(client).status_code == 302
+    with app.app_context():
+        supporter = Contact(family_id=1, name='Monthly donor', relationship='Friend')
+        db.session.add(supporter)
+        db.session.commit()
+        supporter_id = supporter.id
+        donor_id = CharityDonor.query.one().id
+
+    assert post(client, f'/families/1/donors/{donor_id}/link', {
+        'contact_id': supporter_id,
+    }).status_code == 302
+
+    with app.app_context():
+        supporter = db.session.get(Contact, supporter_id)
+        assert supporter.monthly_cents == 10_000
+        assert supporter.pledge_frequency == 'Monthly'
+        assert supporter.status == 'Pledged'
+        assert CharityDonor.query.one().contact_id == supporter_id
+
+    detail = client.get(f'/supporters/{supporter_id}').text
+    assert 'ABCharity donations' in detail
+    assert '$100.00' in detail
+    assert '$94.09' in detail
+    assert '#10' in detail
+
+    supporters = client.get('/supporters').text
+    assert 'Received to date' in supporters
+    assert '$100.00' in supporters
+
 def test_installment_commitment_must_split_into_exact_cents():
     with pytest.raises(ValueError):
         normalize({**ROW, 'amount': '1130.00', 'net': '90.00'}, '55')

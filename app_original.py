@@ -3266,6 +3266,13 @@ def create_app(test_config=None):
         totals = {contact_id: total for contact_id, total in db.session.execute(select(
             Receipt.contact_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
         ).where(Receipt.contact_id.in_(contact_ids)).group_by(Receipt.contact_id)).all()} if contact_ids else {}
+        if contact_ids:
+            for contact_id, total in db.session.execute(select(
+                CharityDonor.contact_id, func.coalesce(func.sum(CharityDonation.amount_cents), 0)
+            ).join(CharityDonation, CharityDonation.donor_id == CharityDonor.id).where(
+                CharityDonor.contact_id.in_(contact_ids)
+            ).group_by(CharityDonor.contact_id)).all():
+                totals[contact_id] = totals.get(contact_id, 0) + total
         return render_template('supporters.html', title='Supporters', contacts=contacts,
                                received=totals, query=query, families=families,
                                selected_family_id=family_id, possible_parents=possible_parents,
@@ -3304,6 +3311,11 @@ def create_app(test_config=None):
         receipts = db.session.scalars(select(Receipt).where(
             Receipt.contact_id.in_(contact_ids)
         ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if contact_ids else []
+        abcharity_donations = db.session.scalars(select(CharityDonation).join(
+            CharityDonor, CharityDonor.id == CharityDonation.donor_id
+        ).where(CharityDonor.contact_id.in_(contact_ids)).order_by(
+            CharityDonation.donation_time.desc(), CharityDonation.id.desc()
+        )).all() if contact_ids else []
         payments = db.session.scalars(select(StripePayment).where(
             StripePayment.contact_id.in_(contact_ids)
         ).order_by(StripePayment.created_at.desc())).all() if contact_ids else []
@@ -3345,12 +3357,14 @@ def create_app(test_config=None):
         return render_template('supporter_detail.html', title='Supporter history',
                                supporter=contact, linked_contacts=linked_contacts,
                                hierarchy_groups=hierarchy_groups,
-                               receipts=receipts, payments=payments,
+                               receipts=receipts, abcharity_donations=abcharity_donations,
+                               payments=payments,
                                possible_parents=possible_parents,
                                available_families=available_families,
                                available_parents=available_parents,
                                available_institutions=available_institutions,
-                               total_received=sum(receipt.amount_cents for receipt in receipts))
+                               total_received=(sum(receipt.amount_cents for receipt in receipts)
+                                               + sum(donation.amount_cents for donation in abcharity_donations)))
 
     @app.post('/supporters/<int:contact_id>/connect-family')
     def connect_supporter_to_family(contact_id):
