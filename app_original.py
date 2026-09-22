@@ -3,6 +3,7 @@ import secrets
 import hmac
 import re
 import hashlib
+import time
 from html import escape
 from io import BytesIO
 from datetime import date, datetime, timedelta, timezone
@@ -1361,6 +1362,11 @@ def create_app(test_config=None):
         return dict(language=language, languages=LANGUAGES, direction='rtl' if language in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], stripe_enabled=bool(app.config['STRIPE_SECRET_KEY']), categories=expense_categories(), relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, pledge_frequencies=PLEDGE_FREQUENCIES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), hebrew_calendar=calendar_line(eastern_today,language), document_allowed=app.extensions['workflows']['document_allowed'], contact_visible=contact_visible, current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
 
     @app.before_request
+    def start_request_timer():
+        """Measure every route without requiring production profiling tools."""
+        g.request_started_at = time.perf_counter()
+
+    @app.before_request
     def security():
         public_endpoints = ('static', 'health', 'set_language', 'login', 'forgot_password',
                             'reset_password', 'accept_invitation', 'dashboard', 'about',
@@ -1410,6 +1416,16 @@ def create_app(test_config=None):
 
     @app.after_request
     def headers(response):
+        started_at = getattr(g, 'request_started_at', None)
+        if started_at is not None:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            response.headers['Server-Timing'] = f'app;dur={elapsed_ms:.1f}'
+            slow_ms = float(app.config.get('SLOW_REQUEST_MS', 750))
+            if elapsed_ms >= slow_ms:
+                app.logger.warning(
+                    'Slow request method=%s endpoint=%s path=%s status=%s duration_ms=%.1f',
+                    request.method, request.endpoint or 'unknown', request.path,
+                    response.status_code, elapsed_ms)
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'

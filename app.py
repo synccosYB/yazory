@@ -1327,6 +1327,38 @@ def create_app(test_config=None):
             profile.person_id = person.id
         return person
 
+    def canonicalize_unlinked_profiles():
+        """Make imported profiles selectable using a fixed number of queries."""
+        profiles = _app.db.session.scalars(select(SupporterProfile).where(
+            SupporterProfile.person_id.is_(None))).all()
+        if not profiles:
+            return
+        identity_keys = ['phone:' + row.normalized_phone for row in profiles]
+        people_by_key = {
+            row.identity_key: row for row in _app.db.session.scalars(select(
+                SupporterPerson).where(
+                    SupporterPerson.identity_key.in_(identity_keys))).all()
+        }
+        profile_people = []
+        for profile, identity_key in zip(profiles, identity_keys):
+            person = people_by_key.get(identity_key)
+            if person is None:
+                person = SupporterPerson(
+                    identity_key=identity_key, name=profile.name,
+                    phone=profile.phone, cell_phone=profile.phone,
+                    email=profile.email)
+                _app.db.session.add(person)
+                people_by_key[identity_key] = person
+            else:
+                if not person.email:
+                    person.email = profile.email
+                if not person.cell_phone:
+                    person.cell_phone = profile.phone
+            profile_people.append((profile, person))
+        _app.db.session.flush()
+        for profile, person in profile_people:
+            profile.person_id = person.id
+
     def attach_supporter_person(contact, source=None):
         """Attach a case connection to exactly one canonical person."""
         if source is not None and source.person_id is None:
@@ -1509,22 +1541,28 @@ def create_app(test_config=None):
         with app.app_context():
             ensure_extension_schema()
 
-    def supporter_directory_families():
+    def require_supporter_directory_access():
         user_id = _app.session.get('user_id')
+        if app.config['DEMO']:
+            return None
+        user = _app.db.session.get(_app.StaffUser, user_id) if user_id else None
+        if user is None or user.role not in (
+                'organization_admin', 'family_admin', 'fundraiser'):
+            _app.abort(403)
+        return user
+
+    def supporter_directory_families():
+        user = require_supporter_directory_access()
         statement = select(_app.Family).order_by(_app.Family.name)
-        if not app.config['DEMO']:
-            user = _app.db.session.get(_app.StaffUser, user_id) if user_id else None
-            if user is None or user.role not in ('organization_admin', 'family_admin', 'fundraiser'):
-                _app.abort(403)
-            if user.role != 'organization_admin':
-                statement = statement.where(_app.Family.id.in_(select(
-                    _app.FamilyAssignment.family_id).where(
-                        _app.FamilyAssignment.staff_user_id == user.id)))
+        if user is not None and user.role != 'organization_admin':
+            statement = statement.where(_app.Family.id.in_(select(
+                _app.FamilyAssignment.family_id).where(
+                    _app.FamilyAssignment.staff_user_id == user.id)))
         return _app.db.session.scalars(statement).all()
 
     @app.route('/people/new', methods=['GET', 'POST'])
     def new_directory_person():
-        supporter_directory_families()
+        require_supporter_directory_access()
         return_to = _app.request.values.get('next', '').strip()
         if not return_to.startswith('/') or return_to.startswith('//'):
             return_to = _app.url_for('supporter_directory')
@@ -1639,10 +1677,14 @@ def create_app(test_config=None):
 
     @app.post('/supporter-directory/<int:profile_id>/connect')
     def connect_supporter_profile(profile_id):
-        families = supporter_directory_families()
-        allowed_family_ids = {family.id for family in families}
+        user = require_supporter_directory_access()
         family_id = _app.request.form.get('family_id', type=int)
-        if family_id not in allowed_family_ids:
+        allowed = family_id is not None and (
+            user is None or user.role == 'organization_admin' or
+            _app.db.session.scalar(select(_app.FamilyAssignment.id).where(
+                _app.FamilyAssignment.staff_user_id == user.id,
+                _app.FamilyAssignment.family_id == family_id)) is not None)
+        if not allowed:
             _app.abort(403, 'Choose a case you can access.')
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
         relationship = _app.request.form.get('relationship', 'Other').strip()
@@ -1693,31 +1735,34 @@ def create_app(test_config=None):
 
     @app.route('/supporter-directory/<int:profile_id>/edit', methods=['GET', 'POST'])
     def edit_supporter_profile(profile_id):
-        supporter_directory_families()
+        require_supporter_directory_access()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
         person = canonical_person_for_profile(profile)
         _app.db.session.commit()
 
         def edit_context():
-            # Imports may have been added after worker startup. Make them
-            # immediately available for person-to-person connections.
-            unlinked_profiles = _app.db.session.scalars(select(
-                    SupporterProfile).where(
-                        SupporterProfile.person_id.is_(None))).all()
-            for directory_profile in unlinked_profiles:
-                canonical_person_for_profile(directory_profile)
-            if unlinked_profiles:
-                _app.db.session.commit()
+            # Relationship choices include every imported person. Link newly
+            # imported profiles in one batch instead of issuing queries and a
+            # flush for every row as the directory grows.
+            canonicalize_unlinked_profiles()
+            _app.db.session.commit()
             relationship_rows = _app.db.session.scalars(select(PersonRelationship).where(
                 _app.or_(PersonRelationship.person_one_id == person.id,
                          PersonRelationship.person_two_id == person.id)
             ).order_by(PersonRelationship.id)).all()
-            related_people = []
-            for row in relationship_rows:
-                other_id = (row.person_two_id if row.person_one_id == person.id
-                            else row.person_one_id)
-                related_people.append((
-                    row, _app.db.session.get(SupporterPerson, other_id)))
+            other_ids = {
+                row.person_two_id if row.person_one_id == person.id else row.person_one_id
+                for row in relationship_rows
+            }
+            people_by_id = {
+                row.id: row for row in _app.db.session.scalars(select(
+                    SupporterPerson).where(SupporterPerson.id.in_(other_ids))).all()
+            } if other_ids else {}
+            related_people = [(
+                row, people_by_id.get(
+                    row.person_two_id if row.person_one_id == person.id
+                    else row.person_one_id))
+                for row in relationship_rows]
             connected_ids = {other.id for _, other in related_people if other}
             available_statement = select(SupporterPerson).where(
                 SupporterPerson.id != person.id)
@@ -1816,7 +1861,7 @@ def create_app(test_config=None):
 
     @app.post('/supporter-directory/<int:profile_id>/relationships')
     def add_person_relationship(profile_id):
-        supporter_directory_families()
+        require_supporter_directory_access()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
         person = canonical_person_for_profile(profile)
         other_id = _app.request.form.get('other_person_id', type=int)
@@ -1842,7 +1887,7 @@ def create_app(test_config=None):
 
     @app.post('/supporter-directory/<int:profile_id>/relationships/<int:relationship_id>/delete')
     def delete_person_relationship(profile_id, relationship_id):
-        supporter_directory_families()
+        require_supporter_directory_access()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
         person = canonical_person_for_profile(profile)
         row = _app.db.get_or_404(PersonRelationship, relationship_id)
@@ -1855,7 +1900,7 @@ def create_app(test_config=None):
 
     @app.post('/supporter-directory/<int:profile_id>/affiliations')
     def add_profile_affiliation(profile_id):
-        supporter_directory_families()
+        require_supporter_directory_access()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
         institution = _app.db.get_or_404(
             _app.Institution, _app.request.form.get('institution_id', type=int))
@@ -1882,7 +1927,7 @@ def create_app(test_config=None):
 
     @app.post('/supporter-directory/<int:profile_id>/affiliations/<int:affiliation_id>/delete')
     def delete_profile_affiliation(profile_id, affiliation_id):
-        supporter_directory_families()
+        require_supporter_directory_access()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
         row = _app.db.get_or_404(_app.PersonAffiliation, affiliation_id)
         if row.person_type != 'supporter_profile' or row.person_id != profile.id:
