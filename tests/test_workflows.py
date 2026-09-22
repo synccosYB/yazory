@@ -450,3 +450,17 @@ def test_network_preserves_shul_friend_shared_identity_and_son_in_law(env):
         assert child.supporter_key=='phone:8455550144'
     page=env.client().get(f'/families/{env.fid}/network?new=1')
     assert 'Shul friend' in page.text
+    assert 'id="network-relationship"' in page.text
+    assert 'data-relationship="Sibling"' in page.text
+
+
+def test_network_rejects_inconsistent_relationship_connections(env):
+    base={'csrf':'test','name':'Bad connection','phone':'8455550155','side':'Husband',
+        'parent_connection':'Son','permission':'Not requested','preference':'',
+        'introduced_by':'','verified':'','assigned_to':''}
+    wrong_parent=env.client().post(f'/families/{env.fid}/network',data={**base,
+        'relationship':'First cousin','parent_id':env.cid})
+    assert wrong_parent.status_code==400
+    wrong_ancestor=env.client().post(f'/families/{env.fid}/network',data={**base,
+        'relationship':'First cousin','parent_id':'family-father'})
+    assert wrong_ancestor.status_code==400

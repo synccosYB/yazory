@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Only family connections that match the selected relationship are shown.': {'he': 'מוצגים רק קשרי משפחה המתאימים לקרבה שנבחרה.', 'yi': 'עס ווערן בלויז געוויזן די משפחה פארבינדונגען וואס שטימען מיט דער אויסגעקליבענער קרבה.'},
     'Connections to other people': {'he': 'קשרים לאנשים אחרים', 'yi': 'פארבינדונגען צו אנדערע מענטשן'},
     'Institution': {'he': 'מוסד', 'yi': 'מוסד'},
     'These connections belong to the person and do not depend on a case or institution.': {'he': 'קשרים אלה שייכים לאדם ואינם תלויים בתיק או במוסד.', 'yi': 'די פארבינדונגען געהערן צום מענטש און זענען נישט אנגעהאנגען אין א קעיס אדער מוסד.'},

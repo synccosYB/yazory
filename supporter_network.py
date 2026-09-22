@@ -9,6 +9,8 @@ RELATIONS=['Sibling','Child of sibling','Uncle / aunt',*UNCLE_RELATIONS,'First c
 SIDES=['Husband','Wife','Community']
 PERMISSIONS=['Not requested','Permitted','Do not contact']
 PREFERENCES=['Phone','Text message','Email','Through family']
+PARENT_RELATIONS={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt',*UNCLE_RELATIONS},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
+ANCESTOR_RELATIONS={'Sibling',"Spouse’s sibling"}
 
 
 def install_network(app,db,entities,helpers):
@@ -187,6 +189,9 @@ def install_network(app,db,entities,helpers):
                 ancestor = family.father if parent_choice == 'family-father' else family.inlaws
                 if not ancestor:
                     abort(400,'That family connection has not been entered on the applicant profile.')
+                expected_side = 'Husband' if parent_choice == 'family-father' else 'Wife'
+                if side != expected_side or relation not in ANCESTOR_RELATIONS:
+                    abort(400,'The relationship does not match the selected family connection.')
                 ancestor_prefix = 'F:' if parent_choice == 'family-father' else 'I:'
             elif parent_choice:
                 try:
@@ -199,9 +204,8 @@ def install_network(app,db,entities,helpers):
                 while cursor:
                     if cursor in seen:abort(400,'Family connections cannot contain a cycle.')
                     seen.add(cursor);node=db.session.get(Link,cursor);person=db.session.get(Contact,cursor);cursor=node.parent_id if node else person.parent_contact_id if person else None
-                expected={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt',*UNCLE_RELATIONS},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
-                if relation in expected and (pl.relationship if pl else p.relationship) not in expected[relation]:abort(400,'The relationship does not match the selected family connection.')
-            elif not ancestor_prefix and relation in ('Nephew','Child of sibling','First cousin','Second cousin','Child of first cousin','Parent’s first cousin'):
+                if relation not in PARENT_RELATIONS or (pl.relationship if pl else p.relationship) not in PARENT_RELATIONS[relation]:abort(400,'The relationship does not match the selected family connection.')
+            elif not ancestor_prefix and relation in PARENT_RELATIONS:
                 abort(400,'Choose the relative this person connects through.')
             uid=request.form.get('assigned_to',type=int)
             if uid:
@@ -213,8 +217,7 @@ def install_network(app,db,entities,helpers):
             before={k:getattr(link,k,None) for k in ('parent_id','side','relationship','assigned_to','permission','verified')}
             before['parent_connection']=contact.parent_connection
             if any(x.parent_id==contact.id and x.side!=side for x in links.values()):abort(400,'Update the connected relatives before changing sides.')
-            expected_children={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{'Sibling',"Spouse’s sibling"},'First cousin':{'Uncle / aunt',*UNCLE_RELATIONS},'Second cousin':{'Parent’s first cousin'},'Child of first cousin':{'First cousin'},'Parent’s first cousin':{'Parent'}}
-            if any(x.parent_id==contact.id and x.relationship in expected_children and relation not in expected_children[x.relationship] for x in links.values()):abort(400,'Update the connected relatives before changing the relationship.')
+            if any(x.parent_id==contact.id and x.relationship in PARENT_RELATIONS and relation not in PARENT_RELATIONS[x.relationship] for x in links.values()):abort(400,'Update the connected relatives before changing the relationship.')
             connection=value('parent_connection') or contact.parent_connection
             if ancestor_prefix and connection.startswith(('F:','I:')):
                 connection=connection[2:]
