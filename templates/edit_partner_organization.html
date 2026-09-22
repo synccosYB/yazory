@@ -12,6 +12,7 @@
 <label>{{ _('Address') }}<input name="address" maxlength="300" value="{{ organization.address }}"></label>
 <label>{{ _('Hours') }}<input name="hours" maxlength="300" value="{{ organization.hours }}"></label>
 <label>{{ _('Response time') }}<input name="response_time" maxlength="160" value="{{ organization.response_time }}"></label>
+<label>{{ _('Relationship status') }}<select name="relationship_status">{% for item in relationship_statuses %}<option value="{{ item }}" {{ 'selected' if organization.relationship_status == item }}>{{ _(item) }}</option>{% endfor %}</select></label>
 <details class="network-multi-select"><summary>{{ _('Choose communities') }}</summary><div>{% for item in community_options %}<label><input type="checkbox" name="communities" value="{{ item }}" {{ 'checked' if item in selected_communities }}> {{ _(item) }}</label>{% endfor %}</div></details>
 <details class="network-multi-select"><summary>{{ _('Choose geographic areas') }}</summary><div>{% for item in geographic_area_options %}<label><input type="checkbox" name="geographic_area" value="{{ item }}" {{ 'checked' if item in selected_geographic_areas }}> {{ _(item) }}</label>{% endfor %}</div></details>
 </div>
