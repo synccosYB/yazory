@@ -46,6 +46,24 @@ def test_partner_data_center_coordination_and_communications(app, client):
         assert org.communities == 'Monsey / Spring Valley, New Square'
         assert org.geographic_area == 'Rockland County, New York State'
 
+    edit_page = client.get(f'/partner-network/organizations/{org_id}/edit')
+    assert edit_page.status_code == 200
+    assert b'Edit organization' in edit_page.data
+    edited = post(client, f'/partner-network/organizations/{org_id}/edit', {
+        'name': 'Refuah Helpline', 'category': 'Medical',
+        'phone': '845-555-2000', 'email': 'office@refuah.example',
+        'website': 'https://refuah.example',
+        'communities': ['Monsey / Spring Valley', 'New Square'],
+        'geographic_area': ['Rockland County'],
+        'services': 'Medical guidance and case navigation',
+        'relationship_status': 'New'})
+    assert edited.status_code == 302
+    with app.app_context():
+        org = db.session.get(PartnerOrganization, org_id)
+        assert org.phone == '845-555-2000'
+        assert org.email == 'office@refuah.example'
+        assert org.services == 'Medical guidance and case navigation'
+
     assert post(client, f'/partner-network/organizations/{org_id}/contacts', {
         'name': 'Medical Intake', 'title': 'Case coordinator',
         'cell_phone': '845-555-1212', 'email': 'medical@refuah.example',
