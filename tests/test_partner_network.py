@@ -177,14 +177,21 @@ def test_partner_network_is_visible_in_all_locales(client):
         assert 'partner-network' in page.text or 'ארג' in page.text
 
 
-def test_partner_network_metric_cards_link_to_their_sections_even_when_zero(client):
+def test_partner_network_metric_cards_open_separate_directory_views_even_when_zero(client):
     page = client.get('/partner-network')
 
     assert page.status_code == 200
-    assert 'href="#organization-directory"' in page.text
-    assert 'href="#askonim-directory"' in page.text
-    assert 'href="#coordination-follow-ups"' in page.text
-    assert 'id="organization-directory"' in page.text
-    assert 'id="askonim-directory"' in page.text
-    assert 'id="coordination-follow-ups"' in page.text
-    assert 'No follow-ups are due.' in page.text
+    assert 'href="/partner-network?view=organizations"' in page.text
+    assert 'href="/partner-network?view=askonim"' in page.text
+    assert 'href="/partner-network?view=followups"' in page.text
+
+    organizations = client.get('/partner-network?view=organizations')
+    assert '#coordination-follow-ups,#askonim-directory{display:none}' in organizations.text
+    assert 'class="active"' in organizations.text
+
+    askonim = client.get('/partner-network?view=askonim')
+    assert '#coordination-follow-ups,#organization-directory' in askonim.text
+
+    followups = client.get('/partner-network?view=followups')
+    assert '#organization-directory,#askonim-directory' in followups.text
+    assert 'No follow-ups are due.' in followups.text

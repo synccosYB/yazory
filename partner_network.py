@@ -243,6 +243,9 @@ def install(app):
     @app.get('/partner-network')
     def partner_network():
         require_network_access()
+        view = core.request.args.get('view', 'all').strip()[:20]
+        if view not in ('all', 'organizations', 'askonim', 'followups'):
+            view = 'all'
         query = core.request.args.get('q', '').strip()[:160]
         askan_query = core.request.args.get('askan_q', '').strip()[:160]
         askan_connection = core.request.args.get('askan_connection', '').strip()[:20]
@@ -279,6 +282,7 @@ def install(app):
                                     query=query, selected_category=category,
                                     askan_query=askan_query,
                                     askan_connection=askan_connection,
+                                    view=view,
                                     categories=ORGANIZATION_CATEGORIES,
                                     community_options=COMMUNITY_OPTIONS,
                                     geographic_area_options=GEOGRAPHIC_AREA_OPTIONS)
