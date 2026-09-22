@@ -17,6 +17,7 @@ COORDINATION_STATUSES = (
     'Identified', 'Introduction needed', 'Contacted', 'Referral submitted',
     'Accepted', 'Coordinating', 'Waiting', 'Completed', 'Declined')
 RELATIONSHIP_TYPES = ('Official role', 'Informal connection', 'Personal contact')
+ORGANIZATION_RELATIONSHIP_STATUSES = ('New', 'Active partner', 'Occasional contact', 'Inactive')
 COMMUNITY_OPTIONS = (
     'Kiryas Joel / Monroe', 'Williamsburg', 'Boro Park',
     'Monsey / Spring Valley', 'New Square', 'Lakewood', 'Bloomingburg',
@@ -342,6 +343,10 @@ def install(app):
             org.eligibility = value('eligibility', 5000)
             org.referral_method = value('referral_method', 5000)
             org.required_documents = value('required_documents', 5000)
+            relationship_status = value('relationship_status', 40) or 'New'
+            if relationship_status not in ORGANIZATION_RELATIONSHIP_STATUSES:
+                core.abort(400, 'Choose a valid relationship status.')
+            org.relationship_status = relationship_status
             org.notes = value('notes', 10000)
             audit(f'Updated partner organization: {name}')
             db.session.commit()
@@ -355,6 +360,7 @@ def install(app):
         return core.render_template(
             'edit_partner_organization.html', title=f'Edit {org.name}',
             organization=org, categories=ORGANIZATION_CATEGORIES,
+            relationship_statuses=ORGANIZATION_RELATIONSHIP_STATUSES,
             community_options=COMMUNITY_OPTIONS,
             geographic_area_options=GEOGRAPHIC_AREA_OPTIONS,
             selected_communities=selected_communities,
