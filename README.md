@@ -238,7 +238,10 @@ changing pledges or inventing relationship data. Anonymous donor identity and
 notes are hidden on donation screens. Subscription means only that the API
 marks the receipt as a subscription; no active mandate, next charge, failed
 payment, subscription management, campaign creation or write API is provided.
-Amounts are stored as integer cents and displayed in the configured currency;
+ABCharity reports a subscription's full twelve-month commitment in `amount`,
+so Yazory divides that value into twelve installments and counts only the
+installment represented by each imported receipt as received money. Amounts
+are stored as integer cents and displayed in the configured currency;
 only USD campaigns show net receipts less the family's recorded paid expenses.
 API behavior is covered by mocked fixtures based on the documentation; live
 family campaign credentials must be verified during setup. The Yomim Noraim key

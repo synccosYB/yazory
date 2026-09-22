@@ -14,6 +14,7 @@ from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 LIMIT = 100000
+SUBSCRIPTION_INSTALLMENTS = 12
 ERROR = 'ABCharity could not be synced. Check the campaign ID and API response.'
 INVALID_KEY = 'Enter the ABCharity API key for this campaign.'
 UNREADABLE_KEY = 'The saved ABCharity API key could not be read. Enter and save the key again.'
@@ -106,9 +107,21 @@ def normalize(row, campaign_id):
     # Never merge by name or phone: households may share both. No email means
     # a distinct donor per receipt until staff explicitly links the supporter.
     identity = 'email:' + email if email else 'receipt:' + external_id
-    return dict(external_id=external_id, amount_cents=cents('amount'), net_cents=cents('net'),
+    subscription = flag('is_subscription')
+    amount_cents = cents('amount')
+    net_cents = cents('net')
+    # For installment-plan subscription rows ABCharity returns the full
+    # 12-month commitment in ``amount`` but only the current settlement in
+    # ``net``. Some older subscription rows already contain one charge in
+    # ``amount``; keep those untouched when dividing would fall below net.
+    if (subscription
+            and amount_cents // SUBSCRIPTION_INSTALLMENTS >= net_cents):
+        if amount_cents % SUBSCRIPTION_INSTALLMENTS:
+            raise ValueError(ERROR)
+        amount_cents //= SUBSCRIPTION_INSTALLMENTS
+    return dict(external_id=external_id, amount_cents=amount_cents, net_cents=net_cents,
                 donation_time=stamp, anonymous=flag('anonymous_donation'),
-                subscription=flag('is_subscription'), team=text('team', 300), notes=text('notes', 20000)), dict(
+                subscription=subscription, team=text('team', 300), notes=text('notes', 20000)), dict(
                 identity=identity, name=text('name', 300), email=email, phone=phone, address=text('address', 5000))
 
 

@@ -136,6 +136,16 @@ def test_isolation_linking_and_atomic_error(setup,monkeypatch):
 def test_invalid_receipts(field,value):
     with pytest.raises(ValueError):normalize({**ROW,field:value},'55')
 
+def test_subscription_counts_only_the_paid_installment():
+    receipt, _ = normalize({**ROW, 'amount': '1200.00', 'net': '94.09'}, '55')
+    assert receipt['subscription'] is True
+    assert receipt['amount_cents'] == 10_000
+    assert receipt['net_cents'] == 9_409
+
+def test_installment_commitment_must_split_into_exact_cents():
+    with pytest.raises(ValueError):
+        normalize({**ROW, 'amount': '1130.00', 'net': '90.00'}, '55')
+
 def test_http_encoding_and_failure(monkeypatch):
     class Response:
         status_code=200
