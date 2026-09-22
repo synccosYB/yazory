@@ -68,6 +68,21 @@ def test_donation_page_uses_consistent_money_and_eastern_time(setup):
         eastern=app.jinja_env.filters['eastern_time']
         assert eastern(datetime(2026,9,9,14,9),'%m/%d/%Y %I:%M %p %Z') == '09/09/2026 10:09 AM EDT'
 
+def test_anonymous_donor_can_be_named_and_collapsed_details_are_copy_safe(setup, monkeypatch):
+    app,client=setup
+    monkeypatch.setattr('abcharity.fetch_donations', lambda key: [{
+        **ROW, 'anonymous_donation': '1', 'name': ''}])
+    connect(client)
+    body=client.get('/families/1/donations').text
+    assert 'class="donation-details"' in body
+    assert 'class="donation-details-body"' in body
+    assert 'name="donor_name"' in body
+    assert post(client, '/families/1/donors/1/name', {'donor_name': 'יוסף כהן'}).status_code == 302
+    with app.app_context():
+        assert CharityDonor.query.one().local_name == 'יוסף כהן'
+    post(client, '/families/1/donations/sync')
+    assert 'יוסף כהן' in client.get('/families/1/donations').text
+
 def test_profile_accepts_and_masks_campaign_key(setup):
     _,client=setup
     body=client.get('/families/1/donations').text
