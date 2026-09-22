@@ -98,20 +98,27 @@ def test_married_child_records_spouse(app, client):
     with app.app_context():
         family_id = db.session.scalar(db.select(Family.id).where(Family.name == 'Parents'))
     assert post(client, f'/families/{family_id}/children', {
-        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Spouse'
+        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Spouse',
+        'home_phone':'845-555-0101', 'cell_phone':'845-555-0102'
     }).status_code == 302
     with app.app_context():
         child = db.session.scalar(db.select(Child).where(Child.family_id == family_id))
         assert child.married is True
         assert child.spouse_name == 'Spouse'
+        assert child.home_phone == '845-555-0101'
+        assert child.cell_phone == '845-555-0102'
         child_id = child.id
     page = client.get(f'/families/{family_id}').text
     assert 'Spouse' in page
     assert post(client, f'/children/{child_id}', {
-        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Updated spouse'
+        'name':'Married child', 'age':'31', 'married':'yes', 'spouse_name':'Updated spouse',
+        'home_phone':'845-555-0201', 'cell_phone':'845-555-0202'
     }).status_code == 302
     with app.app_context():
-        assert db.session.get(Child, child_id).spouse_name == 'Updated spouse'
+        child = db.session.get(Child, child_id)
+        assert child.spouse_name == 'Updated spouse'
+        assert child.home_phone == '845-555-0201'
+        assert child.cell_phone == '845-555-0202'
 
 def test_family_directory_uses_reported_children_count_not_detail_rows(app, client):
     with app.app_context():
@@ -1090,7 +1097,7 @@ def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_p
         assert child.married is False
         assert child.spouse_name == ''
     assert {'city', 'state', 'zip_code'} <= family_columns
-    assert {'married', 'spouse_name'} <= child_columns
+    assert {'married', 'spouse_name', 'home_phone', 'cell_phone'} <= child_columns
 
 @pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','לוח בקרה'),('yi','rtl','איבערבליק')])
 def test_shared_language_screens(client,language,direction,label):

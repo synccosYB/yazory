@@ -207,6 +207,8 @@ class Child(db.Model):
     tuition_contact = db.Column(db.String(300), default='')
     married = db.Column(db.Boolean, default=False, nullable=False)
     spouse_name = db.Column(db.String(160), default='')
+    home_phone = db.Column(db.String(80), default='')
+    cell_phone = db.Column(db.String(80), default='')
 
 class SupporterPerson(db.Model):
     """One authoritative personal record shared by every case connection."""
@@ -823,6 +825,8 @@ def create_app(test_config=None):
             # the whole startup migration and left profile pages unusable.
             'married': 'BOOLEAN NOT NULL DEFAULT FALSE',
             'spouse_name': "VARCHAR(160) DEFAULT ''",
+            'home_phone': "VARCHAR(80) DEFAULT ''",
+            'cell_phone': "VARCHAR(80) DEFAULT ''",
         }.items():
             if column not in child_columns:
                 db.session.execute(text(f'ALTER TABLE child ADD COLUMN {column} {definition}'))
@@ -2521,7 +2525,8 @@ def create_app(test_config=None):
             abort(400, 'Age must be between 0 and 120.')
         child = Child(family_id=family_id, name=field('name', True), age=age,
             grade=field('grade', limit=80), school=field('school'), tuition_contact=field('tuition_contact', limit=300),
-            married=request.form.get('married') == 'yes', spouse_name=field('spouse_name'))
+            married=request.form.get('married') == 'yes', spouse_name=field('spouse_name'),
+            home_phone=field('home_phone', limit=80), cell_phone=field('cell_phone', limit=80))
         db.session.add(child)
         db.session.flush()
         connect_child_profile_directory(child)
@@ -2574,6 +2579,8 @@ def create_app(test_config=None):
         child.tuition_contact = field('tuition_contact', limit=300)
         child.married = request.form.get('married') == 'yes'
         child.spouse_name = field('spouse_name')
+        child.home_phone = field('home_phone', limit=80)
+        child.cell_phone = field('cell_phone', limit=80)
         connect_child_profile_directory(child)
         audit('Updated child and spouse details', child.family_id)
         db.session.commit()

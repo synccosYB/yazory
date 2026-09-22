@@ -159,4 +159,6 @@ def test_children_screen_uses_compact_records_without_losing_edit_forms():
     assert 'class="child-record" data-page-item' in template
     assert 'action="/children/{{ c.id }}"' in template
     assert 'class="add-child-record"' in template
+    assert 'name="home_phone"' in template
+    assert 'name="cell_phone"' in template
     assert '.child-records{display:grid;grid-template-columns:repeat(2' in css

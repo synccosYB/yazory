@@ -5,7 +5,7 @@
   <div class="child-records">
   {% for c in family.children %}
   <details class="child-record" data-page-item>
-    <summary><span class="child-record-name">{{ c.name }}</span><span class="child-record-facts"><span>{{ _('Age') }} <bdi dir="ltr">{{ c.age }}</bdi></span>{% if c.grade %}<span>{{ _('Grade') }} {{ c.grade }}</span>{% endif %}{% if c.school %}<span>{{ _('School') }}: {{ c.school }}</span>{% endif %}{% if c.married %}<span>{{ _('Spouse') }}: {{ c.spouse_name or _('Not entered') }}</span>{% endif %}</span><span class="child-record-edit">✎ {{ _('Edit') }}</span></summary>
+    <summary><span class="child-record-name">{{ c.name }}</span><span class="child-record-facts"><span>{{ _('Age') }} <bdi dir="ltr">{{ c.age }}</bdi></span>{% if c.grade %}<span>{{ _('Grade') }} {{ c.grade }}</span>{% endif %}{% if c.school %}<span>{{ _('School') }}: {{ c.school }}</span>{% endif %}{% if c.cell_phone %}<span>{{ _('Cell phone') }}: <bdi dir="ltr">{{ c.cell_phone|phone }}</bdi></span>{% endif %}{% if c.home_phone %}<span>{{ _('Home phone') }}: <bdi dir="ltr">{{ c.home_phone|phone }}</bdi></span>{% endif %}{% if c.married %}<span>{{ _('Spouse') }}: {{ c.spouse_name or _('Not entered') }}</span>{% endif %}</span><span class="child-record-edit">✎ {{ _('Edit') }}</span></summary>
     <form method="post" action="/children/{{ c.id }}">
       {{ token(csrf) }}
       <div class="form-grid">
@@ -14,6 +14,8 @@
         <label>{{ _("Grade") }}<input name="grade" maxlength="80" value="{{ c.grade }}"></label>
         <label>{{ _("School") }}<input name="school" maxlength="160" value="{{ c.school }}"></label>
         <label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300" value="{{ c.tuition_contact }}"></label>
+        <label>{{ _("Home phone") }}<input name="home_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr" value="{{ c.home_phone }}"></label>
+        <label>{{ _("Cell phone") }}<input name="cell_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr" value="{{ c.cell_phone }}"></label>
         <label>{{ _("Married?") }}<select name="married"><option value="no" {{ 'selected' if not c.married }}>{{ _('No') }}</option><option value="yes" {{ 'selected' if c.married }}>{{ _('Yes') }}</option></select></label>
         <label>{{ _("Spouse name") }}<input name="spouse_name" maxlength="160" value="{{ c.spouse_name }}"></label>
       </div>
@@ -24,7 +26,7 @@
   </div>
   <details class="add-child-record"><summary>{{ _("+ Add child") }}</summary><form method="post" action="/families/{{ family.id }}/children">{{ token(csrf) }}
     <div class="form-grid">
-      <label>{{ _("Child name *") }}<input name="name" required maxlength="160"></label><label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required></label><label>{{ _("Grade") }}<input name="grade" maxlength="80"></label><label>{{ _("School") }}<input name="school" maxlength="160"></label><label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300"></label>
+      <label>{{ _("Child name *") }}<input name="name" required maxlength="160"></label><label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required></label><label>{{ _("Grade") }}<input name="grade" maxlength="80"></label><label>{{ _("School") }}<input name="school" maxlength="160"></label><label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300"></label><label>{{ _("Home phone") }}<input name="home_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label><label>{{ _("Cell phone") }}<input name="cell_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label>
       <label>{{ _("Married?") }}<select name="married"><option value="no">{{ _('No') }}</option><option value="yes">{{ _('Yes') }}</option></select></label><label>{{ _("Spouse name") }}<input name="spouse_name" maxlength="160"></label>
     </div><button>{{ _("Add child") }}</button></form></details>
 </section>
