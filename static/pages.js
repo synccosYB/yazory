@@ -68,6 +68,16 @@ const revealCommunicationTarget=target=>{if(!target)return;const tools=target.cl
 document.querySelector('.mailbox-tools-link')?.addEventListener('click',event=>{const target=document.getElementById('communication-tools');if(!target)return;event.preventDefault();target.open=true;history.replaceState(null,'','#communication-tools');requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));});
 if(communicationMetricData&&communicationTable&&communicationSearch){const callbackData=JSON.parse(communicationMetricData.textContent),callbackIds=new Set(callbackData.callbacks),overdueIds=new Set(callbackData.overdue),metricLinks=[...document.querySelectorAll('[data-communication-filter]')];metricLinks.forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const filter=link.dataset.communicationFilter;for(const item of communicationTable.querySelectorAll(':scope > .communication-accordion-item')){const contactId=Number(item.dataset.contactId);item.dataset.metricMatch=String(filter==='all'||filter==='callbacks'&&callbackIds.has(contactId)||filter==='overdue'&&overdueIds.has(contactId));}communicationSearch.value='';communicationSearch.dispatchEvent(new Event('input'));metricLinks.forEach(item=>item.classList.toggle('selected',item===link));const section=document.getElementById('outreach-workflow');history.replaceState(null,'',link.hash);revealCommunicationTarget(section);}));document.querySelector('.communication-metrics>a:last-child')?.addEventListener('click',event=>{event.preventDefault();const section=document.getElementById('communication-history');history.replaceState(null,'',event.currentTarget.hash);revealCommunicationTarget(section);});}
 const revealCommunicationHash=()=>{const target=document.getElementById(location.hash.slice(1));if(target?.closest('details.communication-tools'))revealCommunicationTarget(target);};window.addEventListener('hashchange',revealCommunicationHash);if(location.hash)revealCommunicationHash();
+// A contact-specific Communications URL is a compose screen.
+const selectedCommunicationContact=new URLSearchParams(location.search).get('contact_id');
+if(selectedCommunicationContact){
+  const communicationTools=document.getElementById('communication-tools');
+  const outreachWorkflow=document.getElementById('outreach-workflow');
+  const selectedSupporter=document.querySelector(`#communications-supporters-list [data-contact-id="${CSS.escape(selectedCommunicationContact)}"]`);
+  if(communicationTools)communicationTools.open=true;
+  if(outreachWorkflow)outreachWorkflow.open=true;
+  if(selectedSupporter)selectedSupporter.open=true;
+}
 // The dashboard preview is already capped at six rows; keep all of them visible.
 main.querySelectorAll('.dashboard-overview table').forEach(table=>table.dataset.serverPaged='');
 // Choose a page size from the actual viewport, leaving room for pager and footer.
