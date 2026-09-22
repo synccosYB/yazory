@@ -678,3 +678,6 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 .network-form-divider{display:flex;align-items:center;gap:10px;color:var(--muted,#61707d);font-size:.76rem;font-weight:700}
 .network-form-divider::before,.network-form-divider::after{content:"";height:1px;flex:1;background:var(--line,#d9e0e5)}
 .network-connect-form .field-hint{margin:-4px 0 0}
+
+/* Exclude collapsed forms and select options from copied donation rows. */
+.donation-details:not([open])>.donation-details-body{display:none!important}
