@@ -2,6 +2,8 @@ from datetime import datetime
 from io import BytesIO
 import re
 
+from sqlalchemy import event
+
 from app_entry_intake import create_app
 from app_original import Family, db
 from application_intake import AssistanceApplication
@@ -99,6 +101,41 @@ def test_page_sponsor_banner_shows_three_dedications_with_saved_prefixes():
     assert 'לע״נ ראשון' in banner.group(1)
     assert 'לזכות שני' in banner.group(1)
     assert 'לזכות שלישי' in banner.group(1)
+
+
+def test_regular_pages_do_not_load_sponsor_logo_blobs_or_public_carousel():
+    app = make_app()
+    client = app.test_client()
+    month = datetime.now().strftime('%Y-%m')
+    with app.app_context():
+        db.session.add_all([
+            MonthlySponsorship(
+                month=month, page_key='expenses', company_name='Page Sponsor',
+                donor_name='Donor', fund_name='Fund', status='Published',
+                logo_data=b'a-large-logo', logo_mime='image/png'),
+            MonthlySponsorship(
+                month=month, page_key='overview', company_name='Public Sponsor',
+                donor_name='Donor', fund_name='Fund', status='Published',
+                logo_data=b'another-large-logo', logo_mime='image/png'),
+        ])
+        db.session.commit()
+        statements = []
+
+        def capture(_connection, _cursor, statement, _parameters, _context, _executemany):
+            if 'monthly_sponsorship' in statement.lower():
+                statements.append(statement.lower())
+
+        event.listen(db.engine, 'before_cursor_execute', capture)
+        try:
+            response = client.get('/expenses')
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', capture)
+
+    assert response.status_code == 200
+    assert 'Page Sponsor' in response.text
+    assert 'Public Sponsor' not in response.text
+    assert len(statements) == 1
+    assert 'logo_data' not in statements[0]
 
 
 def test_unpublished_sponsor_is_not_displayed():
