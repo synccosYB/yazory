@@ -2281,15 +2281,25 @@ def create_app(test_config=None):
         require_capability(('family_admin', 'office_employee'))
         family = accessible_family_or_404(family_id)
         name = field('name', True, 160)
-        email = email_field()
+        email = optional_email_field('email')
         phone = field('phone', limit=80)
-        if is_case_askan(family, email):
+        if email and is_case_askan(family, email):
             abort(400, 'This askan is already on the family file.')
-        askan = db.session.scalar(select(Askan).where(func.lower(Askan.email) == email.lower()))
+        if family.designated_askan and not email and (family.designated_askan.name.casefold() == name.casefold()
+                and family.designated_askan.phone == phone):
+            abort(400, 'This askan is already on the family file.')
+        askan = (db.session.scalar(select(Askan).where(func.lower(Askan.email) == email.lower()))
+                 if email else None)
+        if askan is None and phone:
+            askan = db.session.scalar(select(Askan).where(
+                func.lower(Askan.name) == name.lower(), Askan.phone == phone))
         if askan is None:
             askan = Askan(name=name, email=email, phone=phone)
             db.session.add(askan)
             db.session.flush()
+        if db.session.scalar(select(FamilyAskan.id).where(
+                FamilyAskan.family_id == family.id, FamilyAskan.askan_id == askan.id)):
+            abort(400, 'This askan is already on the family file.')
         db.session.add(FamilyAskan(family_id=family.id, askan_id=askan.id))
         audit(f'Added askan: {askan.name}', family.id)
         db.session.commit()
@@ -4504,24 +4514,30 @@ def create_app(test_config=None):
         require_organization_admin()
         user = db.get_or_404(StaffUser, user_id)
         family = db.get_or_404(Family, request.form.get('family_id', type=int))
+        operation = request.form.get('operation', 'assign')
+        if operation not in ('assign', 'revoke'):
+            abort(400, 'Choose a valid assignment action.')
         if user.role == 'organization_admin':
             abort(400, 'Organization administrators do not use family assignments.')
-        if user.role == 'askan' and (not is_case_askan(family, user.email) or
+        if user.role == 'askan' and operation == 'assign' and (not is_case_askan(family, user.email) or
                 (user.assignments and user.assignments[0].family_id != family.id)):
-            abort(400, 'An askan can only be assigned to their one designated family.')
+            abort(400, 'An askan can only be assigned to their one family file with a matching email.')
         assignment = db.session.scalar(select(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id, FamilyAssignment.family_id == family.id))
-        if assignment:
+        if operation == 'revoke' and assignment:
             db.session.delete(assignment)
             action = ('Revoked family administrator: ' if user.role == 'family_admin'
                       else 'Revoked staff assignment: ')
-        else:
+        elif operation == 'assign' and not assignment:
             db.session.add(FamilyAssignment(staff_user_id=user.id, family_id=family.id))
             action = ('Assigned family administrator: ' if user.role == 'family_admin'
                       else 'Assigned staff member: ')
+        else:
+            return redirect(url_for('staff'))
         audit(f'{action}{user.email}', family.id)
         if user.status == 'active':
-            change = 'removed from' if assignment else 'assigned to'
-            send_email('family_assignment', user.email, f'Yazory family access {"removed" if assignment else "assigned"}',
+            removed = operation == 'revoke'
+            change = 'removed from' if removed else 'assigned to'
+            send_email('family_assignment', user.email, f'Yazory family access {"removed" if removed else "assigned"}',
                 f'You were {change} case YZ-{family.id:04d}. Sign in to Yazory to review your current assignments.',
                 staff_user_id=user.id, family_id=family.id)
         db.session.commit()

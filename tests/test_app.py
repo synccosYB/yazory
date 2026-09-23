@@ -24,6 +24,23 @@ def post(client, path, data):
         csrf = session['csrf']
     return client.post(path, data={**data, 'csrf':csrf})
 
+def test_additional_askan_keeps_designated_askan(app, client):
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        primary = Askan(name='Primary askan', phone='8451111111', email='primary@example.com')
+        db.session.add(primary)
+        db.session.flush()
+        family.designated_askan = primary
+        db.session.commit()
+    path = '/families/1/additional-askanim'
+    assert post(client, path, {'name': 'Second askan', 'phone': '8452222222'}).status_code == 302
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        assert family.designated_askan.name == 'Primary askan'
+        assert [(link.askan.name, link.askan.phone) for link in family.additional_askanim] == [
+            ('Second askan', '8452222222')]
+    assert post(client, path, {'name': 'Second askan', 'phone': '8452222222'}).status_code == 400
+
 def test_pages(client):
     for path in ['/', '/families', '/families/new', '/families/1', '/families/1/edit', '/expenses', '/expenses?status=Requested', '/activity', '/community-directories?kind=Shul', '/community-directories?kind=Yeshivah', '/health', '/login']:
         assert client.get(path).status_code == 200, path
