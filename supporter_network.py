@@ -159,8 +159,8 @@ def install_network(app,db,entities,helpers):
             if not contact or contact.family_id!=family_id:abort(403)
             name=value('name',True)
             if len(name)>160:abort(400,'The text is too long.')
-            contact.name=name;contact.phone=value('phone');relation=value('relationship',True);side=value('side',True)
-            if len(contact.phone)>80 or relation not in relations or side not in SIDES:abort(400,'Choose a valid option.')
+            contact.name=name;contact.phone=value('phone');relation=value('relationship',True);side=value('side')
+            if len(contact.phone)>80 or relation not in relations:abort(400,'Choose a valid option.')
             # Keep the shared donor identity used by the central supporter lists and Stripe.
             old_key=contact.supporter_key
             key=helpers['supporter_key'](name,contact.phone,old_key)
@@ -190,8 +190,9 @@ def install_network(app,db,entities,helpers):
                 if not ancestor:
                     abort(400,'That family connection has not been entered on the applicant profile.')
                 expected_side = 'Husband' if parent_choice == 'family-father' else 'Wife'
-                if side != expected_side or relation not in ANCESTOR_RELATIONS:
+                if relation not in ANCESTOR_RELATIONS:
                     abort(400,'The relationship does not match the selected family connection.')
+                side = expected_side
                 ancestor_prefix = 'F:' if parent_choice == 'family-father' else 'I:'
             elif parent_choice:
                 try:
@@ -199,7 +200,8 @@ def install_network(app,db,entities,helpers):
                 except ValueError:
                     abort(400,'Choose a valid family connection.')
                 p=db.session.get(Contact,parent);pl=db.session.get(Link,parent)
-                if not p or p.family_id!=family_id or (pl and pl.side!=side):abort(400,'Choose a parent connection on the same side of this family.')
+                if not p or p.family_id!=family_id:abort(400,'Choose a family connection in this case.')
+                side = pl.side if pl else side
                 seen={contact.id};cursor=parent
                 while cursor:
                     if cursor in seen:abort(400,'Family connections cannot contain a cycle.')
@@ -207,6 +209,7 @@ def install_network(app,db,entities,helpers):
                 if relation not in PARENT_RELATIONS or (pl.relationship if pl else p.relationship) not in PARENT_RELATIONS[relation]:abort(400,'The relationship does not match the selected family connection.')
             elif not ancestor_prefix and relation in PARENT_RELATIONS:
                 abort(400,'Choose the relative this person connects through.')
+            if side not in SIDES:abort(400,'Choose a valid side of the family.')
             uid=request.form.get('assigned_to',type=int)
             if uid:
                 staff=db.session.get(User,uid)

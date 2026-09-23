@@ -464,3 +464,19 @@ def test_network_rejects_inconsistent_relationship_connections(env):
     wrong_ancestor=env.client().post(f'/families/{env.fid}/network',data={**base,
         'relationship':'First cousin','parent_id':'family-father'})
     assert wrong_ancestor.status_code==400
+
+
+def test_network_derives_side_from_selected_relative(env):
+    with env.app.app_context():
+        parent=db.session.get(Contact,env.cid)
+        parent.relationship='Sibling'
+        db.session.add(env.M['SupporterLink'](contact_id=parent.id,side='Wife',relationship='Sibling',permission='Not requested'))
+        db.session.commit()
+    response=env.client().post(f'/families/{env.fid}/network',data={
+        'csrf':'test','name':'Relative child','phone':'8455550199',
+        'relationship':'Child of sibling','side':'Husband','parent_id':env.cid,
+        'parent_connection':'Son','permission':'Not requested'})
+    assert response.status_code==302
+    with env.app.app_context():
+        child=db.session.scalar(db.select(Contact).where(Contact.family_id==env.fid,Contact.name=='Relative child'))
+        assert db.session.get(env.M['SupporterLink'],child.id).side=='Wife'

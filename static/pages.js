@@ -35,14 +35,17 @@ if(networkSide&&networkRelationship&&networkParent&&networkParentConnection){
   };
   const ancestorRelationships=['Sibling','Spouse’s sibling'];
   const updateNetworkConnections=()=>{
-    const relationship=networkRelationship.value,side=networkSide.value,allowed=parentRelationships[relationship]||[];
+    const relationship=networkRelationship.value,allowed=parentRelationships[relationship]||[];
     const needsPerson=Boolean(allowed.length),allowsAncestor=ancestorRelationships.includes(relationship);
     for(const option of networkParent.options){
       if(!option.value){option.hidden=needsPerson;continue;}
       const ancestor=option.dataset.relationship==='Family ancestor';
-      option.hidden=ancestor?(!allowsAncestor||Boolean(side&&option.dataset.side!==side)):(!needsPerson||!allowed.includes(option.dataset.relationship)||Boolean(side&&option.dataset.side&&option.dataset.side!==side));
+      option.hidden=ancestor?!allowsAncestor:(!needsPerson||!allowed.includes(option.dataset.relationship));
     }
     if(networkParent.selectedOptions[0]?.hidden)networkParent.value='';
+    const selectedSide=networkParent.selectedOptions[0]?.dataset.side;
+    if(selectedSide)networkSide.value=selectedSide;
+    networkSide.closest('label').hidden=Boolean(selectedSide);
     networkParent.required=needsPerson;
     networkParentField.hidden=!needsPerson&&!allowsAncestor;
     const hasParent=Boolean(networkParent.value);
