@@ -2,8 +2,10 @@
 
 ## Legacy page-data repair
 
-After publishing this version, run the idempotent maintenance command once in
-each environment, before normal traffic is resumed:
+The list-page performance changes work without running a maintenance command.
+If older records need missing follow-up tasks or blank supporter emails restored,
+review the affected records against a database copy first. Then run this
+explicit, idempotent command in the intended environment:
 
 ```bash
 flask --app app_entry repair-page-data
