@@ -1018,7 +1018,7 @@ def create_app(test_config=None):
     def organization_admin():
         return app.config['DEMO'] or (current_user() and current_user().role == 'organization_admin')
 
-    STAFF_ROLES = ('organization_admin', 'family_admin', 'office_employee', 'fundraiser')
+    STAFF_ROLES = ('organization_admin', 'family_admin', 'office_employee', 'fundraiser', 'askan')
 
     def has_role(*roles):
         return organization_admin() or bool(current_user() and current_user().role in roles)
@@ -1420,6 +1420,14 @@ def create_app(test_config=None):
                 session.clear()
                 session['language'] = language
                 return redirect(url_for('login'))
+        # Askan accounts have a single, read-only case view. Other endpoints
+        # include organization-wide data and must never be reachable by them.
+        user = current_user()
+        if user and user.role == 'askan' and request.endpoint not in (
+                'static', 'health', 'set_language', 'login', 'logout', 'dashboard',
+                'askan_case_view', 'forgot_password', 'reset_password',
+                'accept_invitation'):
+            abort(403)
 
     @app.before_request
     def audit_read_only():
@@ -2039,6 +2047,14 @@ def create_app(test_config=None):
     def dashboard():
         if current_user() is None and not app.config['DEMO']:
             return public_page('home', 'Family assistance with dignity')
+        if current_user() and current_user().role == 'askan':
+            family = db.session.scalar(select(Family).join(FamilyAssignment,
+                FamilyAssignment.family_id == Family.id).where(
+                FamilyAssignment.staff_user_id == current_user().id,
+                Family.designated_askan_id.in_(select(Askan.id).where(
+                    func.lower(Askan.email) == current_user().email.lower()))))
+            return redirect(url_for('askan_case_view', family_id=family.id)) if family else render_template(
+                'askan_case.html', title='My case', family=None)
         if current_user() and current_user().role == 'fundraiser':
             return redirect(url_for('fundraising'))
         statement = select(Family).options(
@@ -2333,6 +2349,14 @@ def create_app(test_config=None):
             abort(404)
         return render_template('askan.html', title=askan.name, askan=askan,
                                families=families)
+
+    @app.get('/askan/cases/<int:family_id>')
+    def askan_case_view(family_id):
+        require_capability(('askan',))
+        family = accessible_family_or_404(family_id)
+        if not family.designated_askan or (family.designated_askan.email or '').lower() != current_user().email.lower():
+            abort(403)
+        return render_template('askan_case.html', title=family.name, family=family)
 
     @app.get('/families/<int:family_id>')
     def family_detail(family_id):
@@ -4257,6 +4281,13 @@ def create_app(test_config=None):
             db.session.add(user)
             db.session.flush()
             family_id = request.form.get('family_id', type=int)
+            if role == 'askan':
+                if not family_id:
+                    abort(400, 'Choose the designated askan’s family.')
+                designated_family = db.session.get(Family, family_id)
+                if not designated_family or not designated_family.designated_askan or (
+                        designated_family.designated_askan.email or '').lower() != email.lower():
+                    abort(400, 'The invitation email must match the designated askan on this family file.')
             if family_id and role != 'organization_admin':
                 family = db.session.get(Family, family_id)
                 if family is None:
@@ -4398,6 +4429,11 @@ def create_app(test_config=None):
         role = field('role', True, 30)
         if role not in STAFF_ROLES:
             abort(400)
+        if role == 'askan' and (len(user.assignments) != 1 or
+                not (family := db.session.get(Family, user.assignments[0].family_id)) or
+                not family.designated_askan or
+                (family.designated_askan.email or '').lower() != user.email.lower()):
+            abort(400, 'Assign exactly one matching designated askan family first.')
         if user.email == app.config['ADMIN_EMAIL'].strip().lower() and role != 'organization_admin':
             abort(400, 'The owner organization administrator cannot be demoted.')
         if user.role == 'organization_admin' and role != 'organization_admin':
@@ -4422,6 +4458,10 @@ def create_app(test_config=None):
         family = db.get_or_404(Family, request.form.get('family_id', type=int))
         if user.role == 'organization_admin':
             abort(400, 'Organization administrators do not use family assignments.')
+        if user.role == 'askan' and (not family.designated_askan or
+                (family.designated_askan.email or '').lower() != user.email.lower() or
+                (user.assignments and user.assignments[0].family_id != family.id)):
+            abort(400, 'An askan can only be assigned to their one designated family.')
         assignment = db.session.scalar(select(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id, FamilyAssignment.family_id == family.id))
         if assignment:
             db.session.delete(assignment)

@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card padded">
+  <div class="eyebrow">{{ _('Askan · assigned case') }}</div>
+  {% if family %}
+  <h1>{{ family.name }} · YZ-{{ '%04d'|format(family.id) }}</h1>
+  <p>{{ _('Status') }}: {{ _(family.status) }}</p>
+  <dl class="staff-details">
+    <div><dt>{{ _('Phone') }}</dt><dd><bdi dir="ltr">{{ family.phone or '—' }}</bdi></dd></div>
+    <div><dt>{{ _('Email') }}</dt><dd>{{ family.email or '—' }}</dd></div>
+    <div><dt>{{ _('Address') }}</dt><dd>{{ family.full_address or '—' }}</dd></div>
+    <div><dt>{{ _('Designated askan') }}</dt><dd>{{ family.designated_askan.name }}</dd></div>
+    <div><dt>{{ _('Circumstances') }}</dt><dd>{{ family.circumstances or '—' }}</dd></div>
+  </dl>
+  <h2>{{ _('Children') }}</h2>
+  <div class="table-wrap"><table><thead><tr><th>{{ _('Name') }}</th><th>{{ _('School') }}</th><th>{{ _('Grade') }}</th></tr></thead><tbody>
+  {% for child in family.children %}<tr><td>{{ child.name }}</td><td>{{ child.school or '—' }}</td><td>{{ child.grade or '—' }}</td></tr>{% else %}<tr><td colspan="3">—</td></tr>{% endfor %}
+  </tbody></table></div>
+  <h2>{{ _('Circle of support') }}</h2>
+  <div class="table-wrap"><table><thead><tr><th>{{ _('Name') }}</th><th>{{ _('Relationship') }}</th><th>{{ _('Status') }}</th></tr></thead><tbody>
+  {% for contact in family.contacts %}<tr><td>{{ contact.name }}</td><td>{{ _(contact.relationship or 'Other') }}</td><td>{{ _(contact.status) }}</td></tr>{% else %}<tr><td colspan="3">—</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<h1>{{ _('No case assigned') }}</h1><p>{{ _('Ask Yazory to assign your family file.') }}</p>{% endif %}
+</section>
+{% endblock %}
