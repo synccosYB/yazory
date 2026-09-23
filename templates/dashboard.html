@@ -6,7 +6,7 @@
   {% if is_org_admin %}<a class="button" href="/families/new">{{ _("+ New family") }}</a>{% endif %}
 </div>
 <section class="card dashboard-task-summary">
-  <div class="section-heading"><div><h2>{{ _('My tasks') }}</h2><p>{{ _('Work assigned to you') }}</p></div><a href="{{ url_for('tasks') }}">{{ _('View all tasks') }}</a></div>
+  <div class="section-heading"><div><h2>{{ _('My tasks') }}</h2><p>{{ _('Work assigned to you') }}</p></div><div class="row-actions">{% if current_staff %}<a href="{{ url_for('work_queue') }}">{{ _('Work queue') }}</a>{% endif %}<a href="{{ url_for('tasks', assigned_to=current_staff.id) if current_staff and is_org_admin else url_for('tasks') }}">{{ _('View all tasks') }}</a></div></div>
   <div class="dashboard-task-counts"><a href="{{ url_for('tasks', assigned_to=current_staff.id, due='open') if current_staff and is_org_admin else url_for('tasks', due='open') }}"><strong>{{ my_task_count }}</strong><span>{{ _('Open tasks') }}</span></a><a href="{{ url_for('tasks', assigned_to=current_staff.id, due='today') if current_staff and is_org_admin else url_for('tasks', due='today') }}"><strong>{{ my_tasks_due }}</strong><span>{{ _('Due today') }}</span></a><a href="{{ url_for('tasks', assigned_to=current_staff.id, due='overdue') if current_staff and is_org_admin else url_for('tasks', due='overdue') }}"><strong>{{ my_tasks_overdue }}</strong><span>{{ _('Overdue tasks') }}</span></a></div>
   <div class="dashboard-task-list">{% for task in my_tasks %}<a href="{{ url_for('task_detail', task_id=task.id) }}"><strong>{{ task.title }}</strong><span>{{ task.due_date|american_date if task.due_date else _('No due date') }}</span></a>{% else %}<p class="empty">{{ _('No open tasks assigned to you.') }}</p>{% endfor %}</div>
 </section>

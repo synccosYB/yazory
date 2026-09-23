@@ -1,4 +1,5 @@
 from app_entry import create_app
+from datetime import date
 from werkzeug.security import generate_password_hash
 
 from app import StaffTask
@@ -59,6 +60,42 @@ def test_overview_and_navigation_show_only_my_open_tasks():
         assert b'My finished work' not in page.data
         assert b'My tasks' in page.data and b'All tasks' in page.data
         assert b'Open tasks' in page.data
+
+
+def test_work_queue_combines_assignments_and_limits_each_staff_view():
+    app = make_app()
+    with app.app_context():
+        admin = db.session.scalar(db.select(StaffUser).where(StaffUser.email == 'admin@example.test'))
+        other = db.session.scalar(db.select(StaffUser).where(StaffUser.email == 'outside@example.test'))
+        family = Family(name='Queue family')
+        db.session.add(family)
+        db.session.flush()
+        db.session.add(FamilyAssignment(staff_user_id=other.id, family_id=family.id))
+        db.session.add_all([
+            StaffTask(title='Admin staff task', assigned_to=admin.id, created_by=admin.id),
+            StaffTask(title='Other staff task', assigned_to=other.id, created_by=admin.id),
+        ])
+        Work = app.extensions['workflows']['models']['WorkItem']
+        db.session.add_all([
+            Work(kind='task', family_id=family.id, title='Admin case work',
+                 owner_id=admin.id, created_by=admin.id, due=date.today(), data={}),
+            Work(kind='task', family_id=family.id, title='Other case work',
+                 owner_id=other.id, created_by=admin.id, due=date.today(), data={}),
+        ])
+        db.session.commit()
+        admin_client = app.test_client()
+        login(admin_client, 'admin@example.test')
+        mine = admin_client.get('/work-queue').text
+        assert 'Admin staff task' in mine and 'Admin case work' in mine
+        assert 'Other staff task' not in mine and 'Other case work' not in mine
+        all_work = admin_client.get('/work-queue?view=all').text
+        assert 'Other staff task' in all_work and 'Other case work' in all_work
+        other_client = app.test_client()
+        login(other_client, 'outside@example.test')
+        mine = other_client.get('/work-queue').text
+        assert 'Other staff task' in mine and 'Other case work' in mine
+        assert 'Admin staff task' not in mine and 'Admin case work' not in mine
+        assert other_client.get('/work-queue?view=all').status_code == 400
 
 
 def test_admin_assigns_task_and_subtask_and_assignee_updates_status():

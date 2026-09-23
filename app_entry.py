@@ -13,6 +13,7 @@ import app_original as _app
 from notifications import install as install_notifications
 from sponsorships import install as install_sponsorships
 from partner_network import install as install_partner_network
+from unified_queue import install as install_unified_queue
 
 
 def _family_denial_reason(family):
@@ -39,6 +40,7 @@ def create_app(test_config=None):
     install_sponsorships(app)
     install_notifications(app)
     install_partner_network(app)
+    install_unified_queue(app)
 
     @app.context_processor
     def dashboard_task_summary():

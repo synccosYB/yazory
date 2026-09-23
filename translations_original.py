@@ -6,6 +6,15 @@ LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 _ROWS = '''
 Add contact details|הוספת פרטי קשר|צולייגן קאנטאקט פרטים
 Communication history|היסטוריית קשר|געשיכטע פון קשר
+Work queue|תור עבודה|רשימת ארבעט
+Staff tasks and case workflows assigned to you in one place.|משימות הצוות ותהליכי הטיפול שהוקצו לך במקום אחד.|דיינע צוגעטיילטע אויפגאבעס און פאל ארבעט אויף איין ארט.
+Staff tasks|משימות צוות|שטאב אויפגאבעס
+Work requiring action|עבודה הדורשת טיפול|ארבעט וואס דארף באהאנדלט ווערן
+Select a row to continue in its existing workflow.|בחרו שורה כדי להמשיך בתהליך הקיים שלה.|דריקט אויף א שורה צו ממשיך זיין מיט איר ארבעט.
+All work|כל העבודה|די גאנצע ארבעט
+Work|עבודה|ארבעט
+No work found in this view.|לא נמצאה עבודה בתצוגה זו.|נישטא קיין ארבעט אין דער רשימה.
+Staff task|משימת צוות|שטאב אויפגאבע
 My tasks|המשימות שלי|מיינע אויפגאבעס
 All tasks|כל המשימות|אלע אויפגאבעס
 Work assigned to you|עבודה שהוקצתה לך|ארבעט וואס איז דיר צוגעטיילט
