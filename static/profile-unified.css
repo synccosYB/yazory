@@ -374,13 +374,14 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
   border-inline-end: 0;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1500px) {
   body[data-endpoint="edit_family"] .applicant-grid,
   body[data-endpoint="new_family"] .applicant-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  body[data-endpoint="family_detail"] .profile-record-main {
-    grid-template-columns: minmax(320px, 1fr) auto;
+  body[data-endpoint="family_detail"] .profile-record-main,
+  body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 180px);
   }
   body[data-endpoint="family_detail"] .profile-record-contact {
     flex-wrap: wrap;
@@ -415,8 +416,9 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
   body[data-endpoint="edit_family"] .sheet-grid,
   body[data-endpoint="new_family"] .sheet-grid,
   body[data-endpoint="family_detail"] .profile-household-sheet .profile-sheet-layout .details,
-  body[data-endpoint="family_detail"] .profile-record-main {
-    grid-template-columns: 1fr;
+  body[data-endpoint="family_detail"] .profile-record-main,
+  body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
+    grid-template-columns: minmax(0, 1fr);
   }
   body[data-endpoint="family_detail"] .profile-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
