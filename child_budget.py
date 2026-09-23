@@ -1,7 +1,7 @@
 """Editable planning assumptions, never represented as published cost standards."""
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from datetime import date
-CATEGORIES = [('housing','Housing'),('taxes','Property taxes'),('utilities','Utilities'),('phone','Phone and internet'),('food','Groceries and household supplies'),('tuition','Tuition'),('childcare','Childcare'),('transport','Transportation'),('insurance','Insurance'),('medical','Medical'),('clothing','Clothing'),('upkeep','Home upkeep'),('debt','Debt payments'),('children','Children’s additional needs'),('holidays','Shabbos, Yom Tov and simchos'),('other','Other necessities')]
+CATEGORIES = [('housing','Rent / mortgage'),('food','Food'),('transport','Car / transportation'),('utilities','Utilities'),('phone','Phone and internet'),('tuition','Tuition'),('childcare','Childcare'),('insurance','Insurance'),('medical','Medical'),('clothing','Clothing'),('taxes','Property taxes'),('upkeep','Home upkeep'),('debt','Debt payments'),('children','Children’s additional needs'),('holidays','Shabbos, Yom Tov and simchos'),('other','Other necessities')]
 COMPONENTS = [r for r in CATEGORIES if r[0] in ('food','tuition','childcare','transport','medical','clothing','children','holidays')]
 BANDS = ['0–2','3–5','6–9','10–13','14–17','18–30']
 def band(age):
@@ -17,6 +17,24 @@ def money(value):
 def monthly(amount, period):
     return None if amount is None else int((Decimal(amount)/ (12 if period=='annual' else 1)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 def parse(form, children):
+    submitted_keys=form.getlist('expense_key') if hasattr(form,'getlist') else []
+    if submitted_keys:
+        labels=form.getlist('expense_label'); amounts=form.getlist('expense_amount')
+        balances=form.getlist('expense_balance'); unavailable=set(form.getlist('expense_na'))
+        if not (len(submitted_keys)==len(labels)==len(amounts)==len(balances)):
+            raise ValueError('Enter a valid expense line.')
+        categories={}; seen=set(); standard=dict(CATEGORIES)
+        for index,(key,label,amount_value,balance_value) in enumerate(zip(submitted_keys,labels,amounts,balances)):
+            key=key.strip(); label=label.strip()
+            if not key or key in seen or len(key)>80 or len(label)>160:
+                raise ValueError('Enter a valid expense line.')
+            seen.add(key); is_na=str(index) in unavailable
+            if key in standard: label=standard[key]
+            elif not label: raise ValueError('Enter a name for every added expense line.')
+            categories[key]={'amount':None if is_na else money(amount_value),
+                             'balance':None if is_na else money(balance_value),
+                             'period':'monthly','n_a':is_na,'label':label}
+        return {'categories':categories,'rates':{},'children':{}}
     data={'categories':{},'rates':{},'children':{}}
     for key,_ in CATEGORIES:
         period=form.get('period_'+key,'monthly')
@@ -77,19 +95,25 @@ def calculate(data, intake, children, fallback_bands=None):
         key={'utility':'utilities','grocery':'food','mosdos':'tuition'}.get(account.get('kind'),'other')
         known.add(key); provider[key]+=account['monthly_bill']
     rows=[]
-    for key,label in CATEGORIES:
+    saved_categories=data.get('categories',{})
+    category_rows=list(CATEGORIES)+[(key,entry.get('label') or key) for key,entry in saved_categories.items()
+                                     if key not in dict(CATEGORIES)]
+    for key,label in category_rows:
         entry=data.get('categories',{}).get(key,{})
+        is_na=bool(entry.get('n_a'))
         actual=monthly(entry.get('amount'),entry.get('period','monthly'))
         legacy=intake.get({'housing':'rent','food':'food'}.get(key,''))
         # Explicit category totals supersede provider bills and child estimates.
-        if actual is not None: value=actual; source='Actual household total'
+        if is_na: value=None; source='N/A'
+        elif actual is not None: value=actual; source='Actual household total'
         elif legacy is not None or key in known: value=(legacy or 0)+provider[key]; source='Saved household bills'
         elif key in estimates and children:
             value=estimates[key] + actual_children[key]; source='Child estimate'
             missing+=sum(part['amount'] is None for child in child_rows for part in child['parts'] if part['key']==key)
         else: value=None; source='Not entered'
-        missing+=value is None
-        rows.append(dict(key=key,label=label,amount=value,source=source))
+        missing+=value is None and not is_na
+        rows.append(dict(key=key,label=label,amount=value,source=source,n_a=is_na,
+                         balance=entry.get('balance')))
     income=sum(intake.get(k) or 0 for k in ('his_income','her_income','other_income'))
     missing+=sum(intake.get(k) is None for k in ('his_income','her_income','other_income'))
     missing+=sum(intake.get(k) not in ('yes','no') for k in ('foodstamps','other_assistance'))

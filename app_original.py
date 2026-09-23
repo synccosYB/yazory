@@ -2469,7 +2469,8 @@ def create_app(test_config=None):
                     db.session.add(record)
                 record.data = data
                 for child in family.children:
-                    child.age = data['children'][str(child.id)]['age']
+                    if str(child.id) in data.get('children', {}):
+                        child.age = data['children'][str(child.id)]['age']
                 audit('Updated household expense plan', family_id)
                 db.session.commit()
                 flash('Profile updated.')

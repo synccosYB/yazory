@@ -5,6 +5,17 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Expense': {'he': 'הוצאה', 'yi': 'הוצאה'},
+    'Monthly amount': {'he': 'סכום חודשי', 'yi': 'חודש׳ליכע סכום'},
+    'Balance': {'he': 'יתרה', 'yi': 'באלאנס'},
+    'N/A': {'he': 'לא שייך', 'yi': 'נישט שייך'},
+    '+ Add expense line': {'he': '+ הוספת שורת הוצאה', 'yi': '+ לייג צו אן הוצאה שורה'},
+    'Car / transportation': {'he': 'רכב ותחבורה', 'yi': 'קאר און טראנספארטאציע'},
+    'Enter each expense on one line. Balance is the amount still outstanding. Choose N/A when an expense does not apply to this family.': {'he': 'הזינו כל הוצאה בשורה נפרדת. היתרה היא הסכום שעדיין פתוח. בחרו לא שייך כאשר ההוצאה אינה חלה על המשפחה.', 'yi': 'לייגט אריין יעדע הוצאה אויף א באזונדערע שורה. באלאנס איז די סכום וואס איז נאך אפן. קלויבט נישט שייך ווען די הוצאה איז נישט נוגע פאר דער משפחה.'},
+    'Incomplete plan: enter an amount or choose N/A for each expense.': {'he': 'התכנית אינה שלמה. הזינו סכום או בחרו לא שייך לכל הוצאה.', 'yi': 'דער פלאן איז נישט פארענדיגט. לייגט אריין א סכום אדער קלויבט נישט שייך ביי יעדע הוצאה.'},
+    'Balance is the amount still outstanding.': {'he': 'היתרה היא הסכום שעדיין פתוח.', 'yi': 'באלאנס איז די סכום וואס איז נאך אפן.'},
+    'Edit income and assistance': {'he': 'עריכת הכנסות וסיוע', 'yi': 'פאררעכט הכנסות און הילף'},
+    'Remaining need equals expenses minus income and applicable assistance.': {'he': 'הצורך הנותר הוא ההוצאות פחות ההכנסות והסיוע המתאים.', 'yi': 'דער איבערגעבליבענער געברויך איז די הוצאות ווייניגער די הכנסות און הילף וואס קומט אריין.'},
     'Only family connections that match the selected relationship are shown.': {'he': 'מוצגים רק קשרי משפחה המתאימים לקרבה שנבחרה.', 'yi': 'עס ווערן בלויז געוויזן די משפחה פארבינדונגען וואס שטימען מיט דער אויסגעקליבענער קרבה.'},
     'Connections to other people': {'he': 'קשרים לאנשים אחרים', 'yi': 'פארבינדונגען צו אנדערע מענטשן'},
     'Institution': {'he': 'מוסד', 'yi': 'מוסד'},

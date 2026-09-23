@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from datetime import date
 import pytest
 from child_budget import parse, calculate, band
+from werkzeug.datastructures import MultiDict
 
 
 def test_age_boundaries_actual_override_and_cents():
@@ -46,6 +47,23 @@ def test_birthday_and_invalid_values():
     with pytest.raises(ValueError): parse({'dob_1':'3000-01-01'},[child])
 
 
+def test_simple_expense_rows_store_balance_na_and_custom_lines():
+    form=MultiDict([
+        ('expense_key','housing'),('expense_label','Housing'),('expense_amount','1600'),('expense_balance','2000'),
+        ('expense_key','food'),('expense_label','Food'),('expense_amount','500'),('expense_balance','1300'),
+        ('expense_key','transport'),('expense_label','Transportation'),('expense_amount',''),('expense_balance',''),
+        ('expense_key','custom_car'),('expense_label','Car'),('expense_amount','700'),('expense_balance','1400'),
+        ('expense_na','2'),
+    ])
+    data=parse(form,[])
+    assert data['categories']['housing']['amount']==160000
+    assert data['categories']['housing']['balance']==200000
+    assert data['categories']['transport']['n_a'] is True
+    report=calculate(data,{},[])
+    assert report['costs']==280000
+    assert next(row for row in report['rows'] if row['key']=='custom_car')['balance']==140000
+
+
 def test_save_permissions_locales_and_intake_isolation(monkeypatch):
     from app import db, Family, Child, HouseholdBudget, HouseholdIntake, StaffUser, FamilyAssignment
     for k in ('APP_ENV','DATABASE_URL','ADMIN_EMAIL','ADMIN_PASSWORD_HASH','SESSION_SECRET'): monkeypatch.delenv(k,raising=False)
@@ -65,7 +83,7 @@ def test_save_permissions_locales_and_intake_isolation(monkeypatch):
         c.get('/language/'+lang)
         page=c.get(url)
         assert page.status_code==200 and '$1,300.00' in page.text
-        assert f'name="child_{cid}_food"' in page.text
+        assert 'name="expense_amount"' in page.text
     with app.app_context():
         assert db.session.get(Child,cid).age==9
         assert db.session.get(HouseholdBudget,fid).data['categories']['housing']['amount']==120000
