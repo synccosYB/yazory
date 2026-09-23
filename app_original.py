@@ -2726,6 +2726,23 @@ def create_app(test_config=None):
         monthly_cents = amount('monthly', allow_zero=status!='Pledged')
         pledge_frequency = field('pledge_frequency') or 'Monthly'
         if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
+        if 'name' in request.form:
+            name = field('name', True)
+            phone = field('phone', limit=80)
+            new_key = supporter_key(name, phone, contact.supporter_key)
+            identity = app.extensions.get('supporter_identity')
+            if identity:
+                try:
+                    identity['update'](contact, dict(name=name, phone=phone,
+                                                     supporter_key=new_key))
+                except ValueError as exc:
+                    abort(409, str(exc))
+            else:
+                contact.name, contact.phone, contact.supporter_key = name, phone, new_key
+            relationship = field('relationship', True)
+            if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS:
+                abort(400, 'Choose a valid relationship.')
+            contact.relationship = relationship
         contact.status = status
         contact.monthly_cents = monthly_cents
         contact.pledge_frequency = pledge_frequency
@@ -2734,6 +2751,8 @@ def create_app(test_config=None):
             sync_followup(contact)
         audit(f'Updated donor pledge: {status}', contact.family_id)
         db.session.commit()
+        if request.form.get('from_supporters') == '1':
+            return redirect(url_for('supporters', family_id=contact.family_id, edited=contact.id))
         return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
 
     @app.route('/contacts/<int:contact_id>/edit', methods=['GET', 'POST'])

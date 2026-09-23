@@ -27,10 +27,10 @@
 <div class="list-filter-actions"><button type="submit">{{ _('Apply filters') }}</button><a class="button secondary" href="{{ url_for('supporters') }}">{{ _('Clear filters') }}</a></div>
 </form>
 </section>
-<details class="card supporter-list-card foldable-supporter-list">
+<details class="card supporter-list-card foldable-supporter-list" {% if request.args.get('edited', type=int) %}open{% endif %}>
 <summary class="supporter-list-summary"><span><strong>{{ _('Supporters') }}</strong><small>{{ contacts|length }} {{ _('records') }}</small></span><span>{{ _('Open tools') }}</span></summary>
 <div class="supporter-accordion">
-{% for c in contacts %}<details class="supporter-accordion-item {{ 'nested-supporter-row' if c.parent_supporter }}">
+{% for c in contacts %}<details class="supporter-accordion-item {{ 'nested-supporter-row' if c.parent_supporter }}" {% if request.args.get('edited', type=int) == c.id %}open{% endif %}>
 <summary>
 <span class="supporter-accordion-name"><strong>{{ c.name }}</strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% elif c.parent_connection.startswith('F:') %}<small>{{ _('Son of applicant’s father') if c.parent_connection == 'F:Son' else _('Son-in-law of applicant’s father') }} · {{ c.family.father }}</small>{% elif c.parent_connection.startswith('I:') %}<small>{{ _('Son of applicant’s father-in-law') if c.parent_connection == 'I:Son' else _('Son-in-law of applicant’s father-in-law') }} · {{ c.family.inlaws }}</small>{% endif %}</span>
 <span><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi><small>{{ c.family.name }}</small></span>
@@ -50,7 +50,13 @@
 <div class="pledge-cell">
 <form class="inline-pledge-form no-print" method="post" action="{{ url_for('update_contact', contact_id=c.id) }}">
 {{ token(csrf) }}
-<input type="hidden" name="status" value="{{ c.status }}">
+<input type="hidden" name="from_supporters" value="1">
+<div class="supporter-quick-fields">
+<label>{{ _('Name *') }}<input name="name" value="{{ c.name }}" required maxlength="160"></label>
+<label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship == c.relationship }}>{{ _(relationship) }}</option>{% endfor %}{% if c.relationship not in relationships %}<option value="{{ c.relationship }}" selected>{{ _(c.relationship) }}</option>{% endif %}</select></label>
+<label>{{ _('Phone') }}<input name="phone" value="{{ c.phone or '' }}" maxlength="80" type="tel"></label>
+<label>{{ _('Follow-up status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status == c.status }}>{{ _(status) }}</option>{% endfor %}</select></label>
+</div>
 <label class="sr-only" for="pledge-amount-{{ c.id }}">{{ _('Donation amount ($)') }} — {{ c.name }}</label>
 <div class="pledge-amount-input"><span aria-hidden="true">$</span><input id="pledge-amount-{{ c.id }}" name="monthly" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(c.monthly_cents/100) }}" required></div>
 <label class="sr-only" for="pledge-frequency-{{ c.id }}">{{ _('Donation frequency') }} — {{ c.name }}</label>

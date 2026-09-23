@@ -681,3 +681,9 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 
 /* Exclude collapsed forms and select options from copied donation rows. */
 .donation-details:not([open])>.donation-details-body{display:none!important}
+/* Keep the main supporter edits together on the list card. */
+.supporter-record-tools .inline-pledge-form{flex-wrap:wrap;min-width:0}
+.supporter-quick-fields{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:10px;width:100%}
+.supporter-quick-fields label{font-size:12px;min-width:0}
+.supporter-quick-fields input,.supporter-quick-fields select{display:block;width:100%;margin:4px 0 0}
+@media(max-width:520px){.supporter-quick-fields{grid-template-columns:1fr}}
