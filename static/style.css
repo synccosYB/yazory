@@ -164,12 +164,12 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 @media(min-width:1101px){
   body[data-page-tabs] main{max-width:none;padding:14px 18px 24px}
   body[data-page-tabs] .profile-record-header{padding:9px 12px;margin-bottom:6px}
-  body[data-page-tabs] .profile-record-main{display:flex;align-items:center;justify-content:flex-start;gap:14px}
+  body[data-page-tabs] .profile-record-main{display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:14px}
   body[data-page-tabs] .profile-record-identity{flex:1 1 auto;min-width:360px}
   body[data-page-tabs] .profile-record-metrics{display:block;flex:0 0 auto;width:auto;border:0}
   body[data-page-tabs] .profile-record-metrics>div{display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;background:#fafbfc;white-space:nowrap}
   body[data-page-tabs] .profile-record-metrics small{display:inline;margin:0}
-  body[data-page-tabs] .profile-record-actions{flex:0 0 auto;margin-inline-start:auto;flex-wrap:nowrap}
+  body[data-page-tabs] .profile-record-actions{flex:0 1 auto;margin-inline-start:auto;flex-wrap:wrap}
   body[data-page-tabs] .profile-record-actions>.profile-status-control{width:auto;margin:0;padding:5px 7px;border-top:0;flex-wrap:nowrap}
   body[data-page-tabs] .profile-record-actions>.profile-status-control label,
   body[data-page-tabs] .profile-record-actions>.profile-status-control select,
@@ -193,6 +193,9 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
   body[data-page-tabs] .profile-household-sheet .details .profile-circumstances dd{min-height:36px}
 }
 .selected-family-funds{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:7px;padding:8px 10px;border-inline-start:3px solid var(--gold);border-radius:4px;background:var(--gold-soft)}.selected-family-funds[hidden]{display:none}.selected-family-funds small{color:var(--ink)}.selected-family-funds strong{direction:ltr;unicode-bidi:isolate;font-size:16px;color:var(--navy);font-variant-numeric:tabular-nums}
+/* The later profile grid declarations must retain the one-column mobile layout. */
+@media(max-width:1100px){.profile-record-main{grid-template-columns:minmax(0,1fr) auto}.profile-record-identity{min-width:0}}
+@media(max-width:650px){.profile-record-main{grid-template-columns:minmax(0,1fr)}.profile-record-actions,.profile-record-metrics{grid-column:1;min-width:0}.profile-record-contact{min-width:0;overflow-wrap:anywhere}}
 .supporter-inline-edit > summary{width:max-content;cursor:pointer;list-style:none}
 .supporter-inline-edit > summary::-webkit-details-marker{display:none}
 .supporter-inline-edit[open] > summary{margin-bottom:1.25rem}

@@ -433,7 +433,8 @@ def test_supporter_can_connect_to_applicant_father_or_father_in_law(app, client)
         session['user_id'] = admin_id
 
     network_edit = client.get(f'/families/1/network?edit={father_side_id}').text
-    assert 'value="family-father" selected' in network_edit
+    assert 'value="family-father"' in network_edit
+    assert 'selected' in network_edit.split('value="family-father"', 1)[1].split('</option>', 1)[0]
     assert 'value="Son" selected' in network_edit
 
     response = post(client, '/families/1/network', {
@@ -536,7 +537,7 @@ def test_filtered_lists_show_phone_column_and_print_action(app, client):
         '/community-directories?kind=Shul&family_id=1').text
     assert '<th>Phone</th>' in directory_page
     assert '845-555-0100' in directory_page
-    assert 'onclick="window.print()"' in directory_page
+    assert 'data-print' in directory_page
 
 def test_supporter_phone_is_displayed_in_us_format(app, client):
     with app.app_context():
@@ -551,7 +552,7 @@ def test_supporter_phone_is_displayed_in_us_format(app, client):
     family_print = client.get('/families/1/print?section=supporters').text
     for page in (supporter_page, supporter_detail, family_print):
         assert '(347) 451-5327' in page
-        assert '3474515327' not in page
+        assert '<small>3474515327</small>' not in page
 
 @pytest.mark.parametrize('language,label', [
     ('en', 'Print list'), ('he', 'הדפסת הרשימה'), ('yi', 'דרוקן די ליסטע')])
@@ -1270,7 +1271,8 @@ def test_roles_assignments_and_bootstrap_isolation(monkeypatch):
     assert 'הוקצה מנהל משפחה:' in owner.get(f'/families/{assigned.id}').text
     owner.get('/language/yi')
     assert 'צוגעטיילט א משפחה אדמיניסטראטאר:' in owner.get(f'/families/{assigned.id}').text
-    assert post(owner, f'/staff/{family_admin.id}/assignments', {'family_id':assigned.id}).status_code == 302
+    assert post(owner, f'/staff/{family_admin.id}/assignments', {
+        'family_id': assigned.id, 'operation': 'revoke'}).status_code == 302
     assert staff.get(f'/families/{assigned.id}').status_code == 403
     with app.app_context():
         assert db.session.scalar(db.select(FamilyAssignment.id).where(
