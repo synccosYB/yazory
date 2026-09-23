@@ -1,5 +1,7 @@
 import os
 from datetime import date
+from zoneinfo import ZoneInfo
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
@@ -37,6 +39,29 @@ def create_app(test_config=None):
     install_sponsorships(app)
     install_notifications(app)
     install_partner_network(app)
+
+    @app.context_processor
+    def dashboard_task_summary():
+        if _app.request.endpoint != 'dashboard':
+            return {}
+        if app.config['DEMO']:
+            return dict(my_tasks=[], my_task_count=0, my_tasks_due=0,
+                        my_tasks_overdue=0)
+        user = _app.db.session.get(_app.StaffUser, _app.session.get('user_id'))
+        if user is None:
+            return {}
+        today = datetime.now(ZoneInfo('America/New_York')).date()
+        statement = select(_base.StaffTask).where(
+            _base.StaffTask.assigned_to == user.id,
+            _base.StaffTask.parent_id.is_(None),
+            _base.StaffTask.status.notin_(('Completed', 'Cancelled')))
+        tasks = _app.db.session.scalars(statement.order_by(
+            _base.StaffTask.due_date.is_(None), _base.StaffTask.due_date,
+            _base.StaffTask.id.desc())).all()
+        return dict(my_tasks=tasks[:4], my_task_count=len(tasks),
+                    my_tasks_due=sum(task.due_date == today for task in tasks),
+                    my_tasks_overdue=sum(bool(task.due_date and task.due_date < today)
+                                         for task in tasks), task_today=today)
 
     @app.cli.command('translations-push')
     def translations_push():

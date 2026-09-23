@@ -4,6 +4,14 @@ from flask import session
 LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 # English | Hebrew | Heimish Yiddish
 _ROWS = '''
+My tasks|המשימות שלי|מיינע אויפגאבעס
+All tasks|כל המשימות|אלע אויפגאבעס
+Work assigned to you|עבודה שהוקצתה לך|ארבעט וואס איז דיר צוגעטיילט
+View all tasks|הצגת כל המשימות|זען אלע אויפגאבעס
+Open tasks|משימות פתוחות|אפענע אויפגאבעס
+Due today|לביצוע היום|צו ערלעדיגן היינט
+Overdue tasks|משימות באיחור|פארשפעטיגטע אויפגאבעס
+No open tasks assigned to you.|אין לך משימות פתוחות.|נישטא קיין אפענע אויפגאבעס וואס זענען דיר צוגעטיילט.
 Account settings|הגדרות חשבון|חשבון איינשטעלונגען
 Invitation pending. The person must accept before signing in.|ההזמנה ממתינה לאישור. יש לקבל אותה לפני הכניסה למערכת.|די איינלאדונג ווארט נאך אויף אננעמען. מען דארף זי אננעמען איידער מען קען זיך איינלאגן.
 Family access|גישה למשפחות|צוטריט צו משפחות

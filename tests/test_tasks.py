@@ -34,6 +34,33 @@ def login(client, email):
         session['csrf'] = 'test-csrf'
 
 
+def test_overview_and_navigation_show_only_my_open_tasks():
+    app = make_app()
+    with app.app_context():
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        outsider = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'outside@example.test'))
+        db.session.add_all([
+            StaffTask(title='My open work', assigned_to=admin.id,
+                      created_by=admin.id),
+            StaffTask(title='Someone else work', assigned_to=outsider.id,
+                      created_by=admin.id),
+            StaffTask(title='My finished work', assigned_to=admin.id,
+                      created_by=admin.id, status='Completed'),
+        ])
+        db.session.commit()
+        client = app.test_client()
+        login(client, 'admin@example.test')
+        page = client.get('/')
+        assert page.status_code == 200
+        assert b'My open work' in page.data
+        assert b'Someone else work' not in page.data
+        assert b'My finished work' not in page.data
+        assert b'My tasks' in page.data and b'All tasks' in page.data
+        assert b'Open tasks' in page.data
+
+
 def test_admin_assigns_task_and_subtask_and_assignee_updates_status():
     app = make_app()
     admin_client = app.test_client()

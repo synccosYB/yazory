@@ -3792,6 +3792,18 @@ def create_app(test_config=None):
                 _app.abort(400)
             statement = statement.where(StaffTask.priority == selected_priority)
 
+        selected_due = _app.request.args.get('due', '').strip()
+        if selected_due:
+            if selected_due not in ('open', 'today', 'overdue'):
+                _app.abort(400)
+            from zoneinfo import ZoneInfo
+            eastern_today = _app.datetime.now(ZoneInfo('America/New_York')).date()
+            statement = statement.where(StaffTask.status.notin_(('Completed', 'Cancelled')))
+            if selected_due == 'today':
+                statement = statement.where(StaffTask.due_date == eastern_today)
+            elif selected_due == 'overdue':
+                statement = statement.where(StaffTask.due_date < eastern_today)
+
         status_rank = case(
             (StaffTask.status == 'In progress', 0),
             (StaffTask.status == 'To do', 1),
@@ -3815,6 +3827,7 @@ def create_app(test_config=None):
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
             selected_status=selected_status, selected_assignee_id=selected_assignee_id,
             selected_family_id=selected_family_id, selected_priority=selected_priority,
+            selected_due=selected_due,
             may_assign=task_is_admin(user), today=_app.date.today())
 
     @app.get('/tasks/<int:task_id>')
