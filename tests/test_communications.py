@@ -68,6 +68,18 @@ def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
     assert '09/25/2026 02:30 PM EDT' in client.get('/tasks').text
     assert '09/25/2026 02:30 PM EDT' in client.get('/work-queue').text
 
+    # Saving the case-specific pledge does not undo a scheduled call.
+    assert post(client, f'/contacts/{contact_id}', {
+        'status': 'To contact', 'monthly': '36',
+        'pledge_frequency': 'Monthly'}).status_code == 302
+    with app.app_context():
+        task = db.session.get(StaffTask, task_id)
+        callback = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.status == 'scheduled'))
+        assert task.status == 'Waiting'
+        assert task.due_date == callback.scheduled_for.date()
+
     assert post(client, f'/contacts/{contact_id}/communications/callback', {
         'scheduled_for': '2026-09-26T10:00', 'note': 'New time'}).status_code == 302
     with app.app_context():

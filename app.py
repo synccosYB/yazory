@@ -3705,6 +3705,12 @@ def create_app(test_config=None):
                 add_audit(f'Created automatic supporter follow-up: {contact.name}')
             else:
                 task.assigned_to = assignee.id
+            callback = scheduled_callback(contact.id)
+            if callback:
+                task.status = 'Waiting'
+                task.due_date = callback.scheduled_for.date()
+                task.completed_at = None
+            elif task.status in ('Completed', 'Cancelled'):
                 task.status = 'To do'
                 task.completed_at = None
         elif task and task.status not in ('Completed', 'Cancelled'):
