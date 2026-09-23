@@ -3816,7 +3816,7 @@ def create_app(test_config=None):
         # resetting work already marked in progress or waiting.
         backfill_missing_supporter_tasks()
 
-        statement = select(StaffTask).where(StaffTask.parent_id.is_(None))
+        statement = select(StaffTask)
         if not task_is_admin(user):
             statement = statement.where(StaffTask.assigned_to == (user.id if user else -1))
         selected_status = _app.request.args.get('status', '').strip()

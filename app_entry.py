@@ -55,7 +55,6 @@ def create_app(test_config=None):
         today = datetime.now(ZoneInfo('America/New_York')).date()
         statement = select(_base.StaffTask).where(
             _base.StaffTask.assigned_to == user.id,
-            _base.StaffTask.parent_id.is_(None),
             _base.StaffTask.status.notin_(('Completed', 'Cancelled')))
         tasks = _app.db.session.scalars(statement.order_by(
             _base.StaffTask.due_date.is_(None), _base.StaffTask.due_date,
