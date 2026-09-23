@@ -304,7 +304,7 @@ def test_yiddish_supporter_email_is_delivered_rtl(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     delivered = {}
 
-    def capture_delivery(api_key, sender, recipient, subject, html, text):
+    def capture_delivery(api_key, sender, recipient, subject, html, text, **options):
         delivered.update(html=html, text=text)
         return 'email_rtl', None
 
@@ -832,6 +832,7 @@ def test_twilio_reply_rejects_invalid_signature(monkeypatch):
 
 def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)
+    app.config['TWILIO_MESSAGING_SERVICE_SID'] = ''
     overview = {
         'account': {'friendly_name': 'Yazory', 'status': 'active', 'type': 'Full'},
         'numbers': [{'sid': 'PN' + '1' * 32, 'phone_number': '+12513063232',
