@@ -4,6 +4,12 @@ from flask import session
 LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 # English | Hebrew | Heimish Yiddish
 _ROWS = '''
+Account settings|הגדרות חשבון|חשבון איינשטעלונגען
+Invitation pending. The person must accept before signing in.|ההזמנה ממתינה לאישור. יש לקבל אותה לפני הכניסה למערכת.|די איינלאדונג ווארט נאך אויף אננעמען. מען דארף זי אננעמען איידער מען קען זיך איינלאגן.
+Family access|גישה למשפחות|צוטריט צו משפחות
+Add family access|הוספת גישה למשפחה|צולייגן צוטריט צו א משפחה
+Choose a family|בחרו משפחה|וועלט אויס א משפחה
+Delete account|מחיקת חשבון|מעקן דעם חשבון
 Overview|לוח בקרה|איבערבליק
 COMMUNITY DIRECTORY|רשימת הקהילה|די קהילה ליסטעס
 Shul list|רשימת בתי כנסת|שול ליסטע
