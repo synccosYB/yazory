@@ -140,6 +140,43 @@ def test_admin_assigns_task_and_subtask_and_assignee_updates_status():
         assert db.session.get(StaffTask, subtask_id).status == 'Completed'
 
 
+def test_subtask_assigned_to_another_person_appears_in_their_work_views():
+    app = make_app()
+    with app.app_context():
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        staff = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'outside@example.test'))
+        parent = StaffTask(title='Private parent plan', assigned_to=admin.id,
+                           created_by=admin.id)
+        db.session.add(parent)
+        db.session.flush()
+        child = StaffTask(title='Prepare documents', parent_id=parent.id,
+                          assigned_to=staff.id, created_by=admin.id)
+        db.session.add(child)
+        db.session.commit()
+        parent_id, child_id = parent.id, child.id
+
+        client = app.test_client()
+        login(client, 'outside@example.test')
+        tasks_page = client.get('/tasks').text
+        assert f'href="/tasks/{child_id}"' in tasks_page
+        assert 'Prepare documents' in tasks_page
+        assert 'Part of' in tasks_page and 'Private parent plan' in tasks_page
+        assert f'href="/tasks/{parent_id}"' not in tasks_page
+        assert 'Prepare documents' in client.get('/work-queue').text
+        assert 'Prepare documents' in client.get('/').text
+        detail = client.get(f'/tasks/{child_id}').text
+        assert 'Private parent plan' in detail
+        assert f'href="/tasks/{parent_id}"' not in detail
+        assert client.get(f'/tasks/{parent_id}').status_code == 403
+
+        admin_client = app.test_client()
+        login(admin_client, 'admin@example.test')
+        assert 'Prepare documents' in admin_client.get('/tasks').text
+        assert 'Prepare documents' in admin_client.get('/work-queue?view=all').text
+
+
 def test_staff_cannot_view_someone_elses_task_or_assign_work():
     app = make_app()
     admin_client = app.test_client()

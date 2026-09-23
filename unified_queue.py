@@ -39,6 +39,7 @@ def install(app):
             if view == 'overdue' and not overdue:
                 continue
             records.append(dict(kind='Staff task', title=task.title,
+                                parent_title=task.parent.title if task.parent else '',
                                 family=task.family.name if task.family else '',
                                 assignee=task.assignee.name or task.assignee.email,
                                 due=task.due_date, status=task.status,
@@ -63,6 +64,7 @@ def install(app):
             owner = core.db.session.get(core.StaffUser, item.owner_id)
             family = core.db.session.get(core.Family, item.family_id) if item.family_id else None
             records.append(dict(kind='Operations', title=item.title,
+                                parent_title='',
                                 family=family.name if family else '',
                                 assignee=(owner.name or owner.email) if owner else '',
                                 due=item.due, status=workflow['status'](item),
