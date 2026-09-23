@@ -1,8 +1,76 @@
 from app_entry import create_app
 from io import BytesIO
 
-from app import db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment
+from app import db, Family, Expense, Contact, Audit, Document, StaffUser, FamilyAssignment, Askan
 from werkzeug.security import generate_password_hash
+
+
+def test_revoked_assignment_and_deactivated_staff_lose_existing_session(monkeypatch):
+    for key in ('APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET'):
+        monkeypatch.delenv(key, raising=False)
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SECRET_KEY': 'revocation-test'})
+    with app.app_context():
+        family = Family(name='Private assignment', status='Active')
+        owner = StaffUser(email='owner@example.test', password_hash='unused',
+                          role='organization_admin', status='active')
+        worker = StaffUser(email='worker@example.test', password_hash='unused',
+                           role='office_employee', status='active')
+        db.session.add_all((family, owner, worker))
+        db.session.flush()
+        db.session.add(FamilyAssignment(staff_user_id=worker.id, family_id=family.id))
+        db.session.commit()
+        family_id, worker_id, owner_id = family.id, worker.id, owner.id
+    admin, staff = app.test_client(), app.test_client()
+    with admin.session_transaction() as state:
+        state.update(user_id=owner_id, csrf='admin-csrf')
+    with staff.session_transaction() as state:
+        state.update(user_id=worker_id, csrf='worker-csrf')
+    assert staff.get(f'/families/{family_id}').status_code == 200
+    assert admin.post(f'/staff/{worker_id}/assignments', data={
+        'csrf': 'admin-csrf', 'family_id': family_id, 'operation': 'revoke'}).status_code == 302
+    for path in (f'/families/{family_id}', f'/families/{family_id}/edit',
+                 f'/families/{family_id}/messages', f'/families/{family_id}/ledger',
+                 f'/families/{family_id}/coordination',
+                 f'/families/{family_id}/network'):
+        assert staff.get(path).status_code == 403, path
+    assert staff.post(f'/families/{family_id}/expenses', data={
+        'csrf': 'worker-csrf', 'category': 'Groceries', 'payee': 'Denied',
+        'amount': '10', 'month': '2026-09'}).status_code == 403
+    with app.app_context():
+        assert db.session.scalar(db.select(Expense).where(Expense.payee == 'Denied')) is None
+        db.session.get(StaffUser, worker_id).status = 'inactive'
+        db.session.commit()
+    assert staff.get('/families').location.endswith('/login')
+
+
+def test_askan_only_opens_own_read_only_case(monkeypatch):
+    for key in ('APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET'):
+        monkeypatch.delenv(key, raising=False)
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SECRET_KEY': 'askan-test'})
+    with app.app_context():
+        own = Family(name='Assigned askan family', circumstances='Private notes')
+        other = Family(name='Another family', circumstances='Other private notes')
+        askan = Askan(name='Assigned askan', email='askan@example.test')
+        user = StaffUser(email='askan@example.test', password_hash='unused',
+                         role='askan', status='active')
+        own.designated_askan = askan
+        db.session.add_all((own, other, user))
+        db.session.flush()
+        db.session.add(FamilyAssignment(staff_user_id=user.id, family_id=own.id))
+        db.session.commit()
+        own_id, other_id, user_id = own.id, other.id, user.id
+    client = app.test_client()
+    with client.session_transaction() as state:
+        state.update(user_id=user_id, csrf='askan-csrf')
+    own_page = client.get(f'/askan/cases/{own_id}')
+    assert own_page.status_code == 200
+    assert 'Other private notes' not in own_page.text
+    assert client.get(f'/askan/cases/{other_id}').status_code == 403
+    for path in (f'/families/{own_id}', f'/families/{own_id}/edit',
+                 '/supporters', '/payouts', '/workflow-access'):
+        assert client.get(path).status_code == 403, path
 
 def post(client, path, data):
     client.get('/')

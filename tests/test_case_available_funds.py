@@ -31,6 +31,16 @@ def test_payout_gate_uses_lower_workflow_balance(monkeypatch, tmp_path):
     client = app.test_client()
     page = client.get('/payouts')
     assert '$100.00' in page.text
+    assert 'Other ledger adjustments and holds' in page.text
+    profile = client.get(f'/families/{family_id}')
+    assert profile.status_code == 200
+    assert 'Available to give out' in profile.text
+    assert '$100.00' in profile.text
+    assert 'Other ledger adjustments and holds' in profile.text
+    for language, label in (('he', 'התאמות ועיכובים נוספים בספר החשבונות'),
+                            ('yi', 'נאך חשבון בוך תיקונים און אפגעהאלטענע געלטער')):
+        client.get('/language/' + language)
+        assert label in client.get(f'/families/{family_id}').text
     with client.session_transaction() as session:
         csrf = session['csrf']
     response = client.post('/payouts/checks', data={

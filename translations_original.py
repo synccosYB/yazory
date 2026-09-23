@@ -852,3 +852,18 @@ Linked ABCharity donor to supporter|תורם ABCharity קושר לתומך|צו�
 for _row in _ABCHARITY_ROWS.strip().splitlines():
     _en, _he, _yi = _row.split('|')
     CATALOG.setdefault(_en, {'he': _he, 'yi': _yi})
+
+_AUDIT_FIX_ROWS = '''
+Other ledger adjustments and holds|התאמות ועיכובים נוספים בספר החשבונות|נאך חשבון בוך תיקונים און אפגעהאלטענע געלטער
+Available is limited by posted ledger entries and reserved funds.|הסכום הזמין מוגבל לפי הרישומים בספר החשבונות והסכומים השמורים.|וויפיל ס'איז פאראן ווערט באגרעניצט לויט די איינגעשריבענע חשבונות און די צוריקגעהאלטענע געלטער.
+Grant responsibility|הענקת אחריות|געבן אחריות
+Revoke responsibility|ביטול אחריות|אוועקנעמען אחריות
+Save responsibility|שמירת האחריות|אויפהיטן די אחריות
+Choose grant or revoke.|בחרו להעניק או לבטל.|וועלט אויס צי צו געבן אדער אוועקנעמען.
+Choose an active staff member.|בחרו איש צוות פעיל.|וועלט אויס אן אקטיווען שטאב מיטגליד.
+Responsibilities without an active reviewer|תחומי אחריות ללא בודק פעיל|אחריותן אן אן אקטיוון בודק
+Assign these responsibilities to active staff. Family workflows also require access to the relevant case.|הקצו את תחומי האחריות לאנשי צוות פעילים. תהליכי משפחה דורשים גם גישה לתיק המתאים.|טיילט צו די אחריותן צו אקטיווע שטאב מיטגלידער. משפחה ארבעט דארף אויך צוטריט צום באטרעפנדן פאל.
+'''
+for _row in _AUDIT_FIX_ROWS.strip().splitlines():
+    _en, _he, _yi = _row.split('|')
+    CATALOG.setdefault(_en, {'he': _he, 'yi': _yi})

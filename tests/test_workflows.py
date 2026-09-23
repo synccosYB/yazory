@@ -214,6 +214,71 @@ def test_staff_deactivation_revokes_existing_session(env):
     assert c.get('/families').status_code==302
 
 
+def test_workflow_responsibility_grant_and_revoke_are_explicit(env):
+    client = env.client()
+    owner_id = env.ids['owner']
+    with env.app.app_context():
+        finance_grant = db.session.scalar(db.select(env.M['WorkflowRole']).where(
+            env.M['WorkflowRole'].user_id == env.ids['finance'],
+            env.M['WorkflowRole'].role == 'finance'))
+        db.session.delete(finance_grant)
+        db.session.commit()
+    page = client.get('/workflow-access')
+    assert page.status_code == 200
+    assert 'name="operation"' in page.text
+    assert 'Grant responsibility' in page.text
+    assert 'Revoke responsibility' in page.text
+    assert 'Responsibilities without an active reviewer' in page.text
+    endpoint = '/workflow-access'
+    data = {'csrf': 'test', 'user_id': owner_id, 'role': 'finance'}
+    assert client.post(endpoint, data=data).status_code == 400
+    assert client.post(endpoint, data={**data, 'operation': 'grant'}).status_code == 302
+    assert client.post(endpoint, data={**data, 'operation': 'grant'}).status_code == 302
+    with env.app.app_context():
+        grant = env.M['WorkflowRole']
+        assert db.session.scalar(db.select(db.func.count()).select_from(grant).where(
+            grant.user_id == owner_id, grant.role == 'finance')) == 1
+    assert client.post(endpoint, data={**data, 'operation': 'revoke'}).status_code == 302
+    assert client.post(endpoint, data={**data, 'operation': 'revoke'}).status_code == 302
+    with env.app.app_context():
+        assert db.session.scalar(db.select(db.func.count()).select_from(grant).where(
+            grant.user_id == owner_id, grant.role == 'finance')) == 0
+        db.session.get(StaffUser, env.ids['outsider']).status = 'inactive'
+        db.session.commit()
+    assert client.post(endpoint, data={'csrf': 'test', 'user_id': env.ids['outsider'],
+        'role': 'finance', 'operation': 'grant'}).status_code == 400
+
+
+def test_finance_review_requires_grant_and_case_assignment(env):
+    work_id = env.create('collection', {'contact_id': env.cid, 'amount': '10',
+        'reference': 'review-1', 'restrictions': 'Case', 'payment_method': 'Bank',
+        'receipt_preference': 'Email'})
+    finance_id = env.ids['finance']
+    with env.app.app_context():
+        item = db.session.get(env.M['WorkItem'], work_id)
+        item.stage = 2  # The first independent finance review.
+        db.session.commit()
+        with env.app.test_request_context('/operations'):
+            from flask import session
+            session['user_id'] = finance_id
+            assert env.app.extensions['workflows']['can_sign'](item)
+            grant = db.session.scalar(db.select(env.M['WorkflowRole']).where(
+                env.M['WorkflowRole'].user_id == finance_id,
+                env.M['WorkflowRole'].role == 'finance'))
+            db.session.delete(grant)
+            db.session.commit()
+            assert not env.app.extensions['workflows']['can_sign'](item)
+            db.session.add(env.M['WorkflowRole'](user_id=finance_id, role='finance'))
+            db.session.commit()
+            assert env.app.extensions['workflows']['can_sign'](item)
+            assignment = db.session.scalar(db.select(FamilyAssignment).where(
+                FamilyAssignment.staff_user_id == finance_id,
+                FamilyAssignment.family_id == env.fid))
+            db.session.delete(assignment)
+            db.session.commit()
+            assert not env.app.extensions['workflows']['can_sign'](item)
+
+
 def test_escalation_is_idempotent_and_evidence_is_preserved(env):
     w=env.create('task',{'summary':'Call family','documents':'Consent','escalation_user':env.ids['case_admin']})
     with env.app.app_context():

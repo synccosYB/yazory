@@ -1552,8 +1552,11 @@ def create_app(test_config=None):
                 manual_receipts, charity_receipts, paid, payouts)).one()
         collected = manual_collected + abcharity_collected
         given_out = paid_expenses + direct_payouts
+        legacy_available = collected - given_out
+        available = case_payout_available(family_id, legacy_available)
         return {'collected': collected, 'given_out': given_out,
-                'available': collected - given_out}
+                'available': available,
+                'ledger_adjustments_and_holds': legacy_available - available}
 
     def case_payout_available(family_id, legacy_available=None):
         """Use the lower available balance until legacy and ledger views reconcile."""
@@ -2481,6 +2484,7 @@ def create_app(test_config=None):
                                budget=budget_totals(family),
                                collected=fund_totals['collected'], sent=fund_totals['given_out'],
                                available_to_give=fund_totals['available'],
+                               ledger_adjustments_and_holds=fund_totals['ledger_adjustments_and_holds'],
                                pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family.id))
 
     @app.get('/families/<int:family_id>/print')
@@ -3999,9 +4003,6 @@ def create_app(test_config=None):
         bank_accounts = db.session.scalars(select(CheckBankAccount).where(
             CheckBankAccount.active.is_(True)).order_by(CheckBankAccount.name)).all()
         family_funds = {family.id: case_fund_totals(family.id) for family in families}
-        for family in families:
-            totals = family_funds[family.id]
-            totals['available'] = case_payout_available(family.id, totals['available'])
         download_id = request.args.get('download', type=int)
         newly_created_check = (db.session.get(ApplicantPayout, download_id)
                                if download_id else None)
