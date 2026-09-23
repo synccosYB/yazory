@@ -739,3 +739,15 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 [dir=rtl] .family-supporters-table .supporter-contact-panel{transform:translate(50%,-50%)}
 @media(max-width:900px){.family-supporters-table .compact-form{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.family-supporters-table{min-width:760px}}
+
+/* The closed supporter row stays on one line; household editing lives in Contact. */
+.family-supporters-table .supporter-name{display:flex;align-items:center;gap:5px;min-width:0;flex-wrap:wrap}
+.family-supporters-table .supporter-name>.strong{font-weight:700}
+.family-supporters-table .supporter-name>.supporter-children{flex-basis:100%;margin:3px 0 0}
+.family-supporters-table .supporter-row-edit,.family-supporters-table .supporter-contact-actions{margin:0;flex:none}
+.family-supporters-table .supporter-contact-actions>summary{white-space:nowrap}
+.family-supporters-table .supporter-contact-panel{width:min(440px,calc(100vw - 32px));gap:6px}
+.family-supporters-table .supporter-contact-panel .add-child-panel{display:block;margin:0;padding:7px 0;border-top:1px solid var(--line)}
+.family-supporters-table .supporter-contact-panel .supporter-child-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+.family-supporters-table .supporter-contact-panel .supporter-child-form button{grid-column:1/-1}
+@media(max-width:700px){.family-supporters-table .supporter-contact-panel .supporter-child-form{grid-template-columns:1fr}}
