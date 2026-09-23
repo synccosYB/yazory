@@ -464,6 +464,26 @@ def test_supporter_relationships_use_current_heimish_yiddish(client):
     assert 'ליסטע פון ברידער / שוואגערס' in page
     assert 'ליסטע פון פלימעניקעס' in page
 
+
+def test_supporter_directory_bounds_initial_records_and_keeps_direct_profiles(app, client):
+    with app.app_context():
+        family = db.session.get(Family, 1)
+        rows = [Contact(family_id=family.id, name=f'Volume person {number:03d}',
+                        relationship='Friend', status='To contact')
+                for number in range(105)]
+        db.session.add_all(rows)
+        db.session.commit()
+        last_id = rows[-1].id
+
+    page = client.get('/supporters')
+    assert page.status_code == 200
+    assert page.text.count('class="supporter-accordion-item ') == 100
+    assert 'page=2' in page.text
+    assert 'Volume person' in client.get('/supporters?page=2').text
+    profile = client.get(f'/supporters/{last_id}')
+    assert profile.status_code == 200
+    assert 'Volume person 104' in profile.text
+
 def test_supporter_list_filters_by_siblings_and_nephews(app, client):
     for name, relationship in (
         ('Only brother', 'Sibling'),

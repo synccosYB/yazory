@@ -1,5 +1,22 @@
 # Yazory
 
+## Legacy page-data repair
+
+The list-page performance changes work without running a maintenance command.
+If older records need missing follow-up tasks or blank supporter emails restored,
+review the affected records against a database copy first. Then run this
+explicit, idempotent command in the intended environment:
+
+```bash
+flask --app app_entry repair-page-data
+```
+
+It creates missing follow-up tasks for existing supporters marked **To contact**
+and restores blank supporter emails from prior sent-email records. These repairs
+are deliberately not run by the Tasks or Communications GET routes. The command
+preserves existing task statuses and populated email addresses, and can be run
+again safely.
+
 ## Current operating application
 
 See [WORKFLOW_IMPLEMENTATION.md](WORKFLOW_IMPLEMENTATION.md) for the connected
