@@ -20,23 +20,29 @@ def install(app):
         workflow = app.extensions['workflows']
         if not workflow['active_user'](user):
             abort(403)
-        today = datetime.now(ZoneInfo('America/New_York')).date()
+        now_local = datetime.now(ZoneInfo('America/New_York')).replace(tzinfo=None)
+        today = now_local.date()
         view = request.args.get('view', 'mine')
         if view not in ('mine', 'overdue', 'all') or (view == 'all' and user.role != 'organization_admin'):
             abort(400)
 
         tasks = core.db.session.scalars(select(extended.StaffTask).where(
             extended.StaffTask.status.notin_(('Completed', 'Cancelled')))).all()
+        callbacks = app.extensions['scheduled_callback_map'](tasks)
         records = []
         for task in tasks:
             if view != 'all' and task.assigned_to != user.id:
                 continue
-            if view == 'overdue' and (not task.due_date or task.due_date >= today):
+            callback = callbacks.get(task.source_contact_id)
+            overdue = (callback.scheduled_for < now_local if callback else
+                       bool(task.due_date and task.due_date < today))
+            if view == 'overdue' and not overdue:
                 continue
             records.append(dict(kind='Staff task', title=task.title,
                                 family=task.family.name if task.family else '',
                                 assignee=task.assignee.name or task.assignee.email,
                                 due=task.due_date, status=task.status,
+                                callback_at=callback.scheduled_for if callback else None,
                                 url=url_for('task_detail', task_id=task.id),
                                 mine=task.assigned_to == user.id))
 
@@ -60,9 +66,11 @@ def install(app):
                                 family=family.name if family else '',
                                 assignee=(owner.name or owner.email) if owner else '',
                                 due=item.due, status=workflow['status'](item),
+                                callback_at=None,
                                 url=url_for('work_detail', item_id=item.id), mine=mine))
 
         records.sort(key=lambda row: (row['due'] is None, row['due'] or today,
                                       not row['mine'], row['title'].casefold()))
         return render_template('work_queue.html', title='Work queue',
-                               records=records, view=view, today=today)
+                               records=records, view=view, today=today,
+                               callback_now=now_local)

@@ -2624,6 +2624,15 @@ def create_app(test_config=None):
         except (TypeError, ValueError):
             _app.abort(400, 'Enter a valid follow-up date and time.')
 
+    @app.template_filter('callback_time')
+    def callback_time(value):
+        """Scheduled callbacks are stored as Eastern local wall times."""
+        if value is None:
+            return ''
+        from zoneinfo import ZoneInfo
+        return value.replace(tzinfo=ZoneInfo('America/New_York')).strftime(
+            '%m/%d/%Y %I:%M %p %Z')
+
     def supporter_pledge_delivery(contact):
         """Choose the payment destination from the supporter's current pledges.
 
@@ -2738,7 +2747,8 @@ def create_app(test_config=None):
         if repaired_email:
             _app.db.session.commit()
         due = [row for row in history if row.status == 'scheduled']
-        now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+        from zoneinfo import ZoneInfo
+        now = _app.datetime.now(ZoneInfo('America/New_York')).replace(tzinfo=None)
         callback_contact_ids = {row.contact_id for row in due}
         overdue_contact_ids = {
             row.contact_id for row in due
@@ -3457,6 +3467,12 @@ def create_app(test_config=None):
         scheduled_for = parse_communication_time(
             _app.request.form.get('scheduled_for', ''))
         note = _app.request.form.get('note', '').strip()[:5000]
+        previous = _app.db.session.scalars(select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact.id,
+            SupporterCommunication.kind == 'callback',
+            SupporterCommunication.status == 'scheduled')).all()
+        for callback in previous:
+            callback.status = 'cancelled'
         communication_row(contact, 'callback', 'Good time to call', note,
                           status='scheduled', scheduled_for=scheduled_for)
         task = _app.db.session.scalar(select(StaffTask).where(
@@ -3473,6 +3489,7 @@ def create_app(test_config=None):
             task.status = 'Waiting'
             task.due_date = scheduled_for.date()
             task.description = note
+            task.completed_at = None
         contact.status = 'To contact'
         add_audit(f'Scheduled supporter callback: {contact.name}')
         _app.db.session.commit()
@@ -3718,6 +3735,34 @@ def create_app(test_config=None):
         if missing_ids:
             sync_contact_ids(missing_ids)
 
+    def scheduled_callback(contact_id):
+        if not contact_id:
+            return None
+        return _app.db.session.scalar(select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'callback',
+            SupporterCommunication.status == 'scheduled').order_by(
+                SupporterCommunication.created_at.desc(),
+                SupporterCommunication.id.desc()))
+
+    def scheduled_callback_map(tasks):
+        ids = {task.source_contact_id for task in tasks if task.source_contact_id}
+        if not ids:
+            return {}
+        callbacks = _app.db.session.scalars(select(SupporterCommunication).where(
+            SupporterCommunication.contact_id.in_(ids),
+            SupporterCommunication.kind == 'callback',
+            SupporterCommunication.status == 'scheduled').order_by(
+                SupporterCommunication.created_at.desc(),
+                SupporterCommunication.id.desc())).all()
+        result = {}
+        for callback in callbacks:
+            result.setdefault(callback.contact_id, callback)
+        return result
+
+    app.extensions['scheduled_callback'] = scheduled_callback
+    app.extensions['scheduled_callback_map'] = scheduled_callback_map
+
     def parsed_due_date():
         raw = _app.request.form.get('due_date', '').strip()
         if not raw:
@@ -3824,6 +3869,7 @@ def create_app(test_config=None):
                     if task_is_admin(user) else [])
         return _app.render_template(
             'tasks.html', title='Tasks', tasks=rows, staff=staff, families=families,
+            callbacks=scheduled_callback_map(rows),
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
             selected_status=selected_status, selected_assignee_id=selected_assignee_id,
             selected_family_id=selected_family_id, selected_priority=selected_priority,
@@ -3838,6 +3884,7 @@ def create_app(test_config=None):
                 _app.StaffUser.name, _app.StaffUser.email)).all()
         return _app.render_template(
             'task_detail.html', title='Task details', task=task,
+            callback=scheduled_callback(task.source_contact_id),
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
             staff=staff, may_assign=task_is_admin(task_user()), today=_app.date.today())
 
@@ -3847,10 +3894,23 @@ def create_app(test_config=None):
         status = _app.request.form.get('status', '')
         if status not in TASK_STATUSES:
             _app.abort(400, 'Choose a valid task status.')
+        previous_status = task.status
         task.status = status
         task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
                              if status == 'Completed' else None)
         if task.source_contact:
+            pending_callbacks = _app.db.session.scalars(select(SupporterCommunication).where(
+                SupporterCommunication.contact_id == task.source_contact_id,
+                SupporterCommunication.kind == 'callback',
+                SupporterCommunication.status == 'scheduled')).all()
+            if pending_callbacks and status in ('Completed', 'Cancelled'):
+                for callback in pending_callbacks:
+                    callback.status = 'completed' if status == 'Completed' else 'cancelled'
+                    callback.completed_at = task.completed_at if status == 'Completed' else None
+                if status == 'Completed' and previous_status != 'Completed':
+                    communication_row(task.source_contact, 'phone_call',
+                                      'Phone call completed',
+                                      _app.request.form.get('note', '').strip()[:5000])
             linked = [task.source_contact]
             if task.source_contact.supporter_key:
                 linked = _app.db.session.scalars(select(_app.Contact).where(

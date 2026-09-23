@@ -54,6 +54,73 @@ def setup_workspace(monkeypatch):
         return app, client, contact.id
 
 
+def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    assert post(client, f'/contacts/{contact_id}/communications/callback', {
+        'scheduled_for': '2026-09-25T14:30', 'note': 'After work'}).status_code == 302
+    with app.app_context():
+        task_id = db.session.scalar(db.select(StaffTask.id).where(
+            StaffTask.source_contact_id == contact_id))
+    detail = client.get(f'/tasks/{task_id}').text
+    assert '09/25/2026 02:30 PM EDT' in detail
+    assert 'After work' in detail
+    assert f'/communications?contact_id={contact_id}#outreach-workflow' in detail
+    assert '09/25/2026 02:30 PM EDT' in client.get('/tasks').text
+    assert '09/25/2026 02:30 PM EDT' in client.get('/work-queue').text
+
+    assert post(client, f'/contacts/{contact_id}/communications/callback', {
+        'scheduled_for': '2026-09-26T10:00', 'note': 'New time'}).status_code == 302
+    with app.app_context():
+        callbacks = db.session.scalars(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'callback').order_by(
+                SupporterCommunication.id)).all()
+        assert [row.status for row in callbacks] == ['cancelled', 'scheduled']
+    assert '09/26/2026 10:00 AM EDT' in client.get(f'/tasks/{task_id}').text
+
+    assert post(client, f'/tasks/{task_id}/status', {
+        'status': 'Completed', 'note': 'Spoke with supporter'}).status_code == 302
+    with app.app_context():
+        callback = db.session.get(SupporterCommunication, callbacks[-1].id)
+        task = db.session.get(StaffTask, task_id)
+        calls = db.session.scalars(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'phone_call')).all()
+        assert callback.status == 'completed' and callback.completed_at
+        assert task.status == 'Completed'
+        assert len(calls) == 1 and calls[0].body == 'Spoke with supporter'
+
+
+def test_cancelling_callback_task_cancels_pending_communication(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    post(client, f'/contacts/{contact_id}/communications/callback', {
+        'scheduled_for': '2026-09-25T14:30'})
+    with app.app_context():
+        task_id = db.session.scalar(db.select(StaffTask.id).where(
+            StaffTask.source_contact_id == contact_id))
+    assert post(client, f'/tasks/{task_id}/status', {'status': 'Cancelled'}).status_code == 302
+    with app.app_context():
+        callback = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'callback'))
+        assert callback.status == 'cancelled'
+
+
+def test_recorded_call_completes_callback_task(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    post(client, f'/contacts/{contact_id}/communications/callback', {
+        'scheduled_for': '2026-09-25T14:30'})
+    assert post(client, f'/contacts/{contact_id}/communications/call', {
+        'note': 'Spoke by phone'}).status_code == 302
+    with app.app_context():
+        callback = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'callback'))
+        task = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        assert callback.status == 'completed' and task.status == 'Completed'
+
+
 def test_family_supporter_contact_actions_open_the_existing_workflow(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     with app.app_context():

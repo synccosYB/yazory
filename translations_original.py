@@ -4,6 +4,9 @@ from flask import session
 LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 # English | Hebrew | Heimish Yiddish
 _ROWS = '''
+Supporter callback|שיחת חזרה לתומך|צוריקרופן דעם העלפער
+Scheduled for|נקבע ל|באשטימט אויף
+Open communication|פתיחת תקשורת|עפענען דעם קשר
 Add contact details|הוספת פרטי קשר|צולייגן קאנטאקט פרטים
 Communication history|היסטוריית קשר|געשיכטע פון קשר
 Work queue|תור עבודה|רשימת ארבעט
