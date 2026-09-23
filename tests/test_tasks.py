@@ -135,9 +135,15 @@ def test_admin_assigns_task_and_subtask_and_assignee_updates_status():
     assert collector_client.get('/tasks').status_code == 200
     assert collector_client.get(f'/tasks/{subtask_id}').status_code == 200
     assert collector_client.post(f'/tasks/{subtask_id}/status', data={
-        'csrf': 'test-csrf', 'status': 'Completed'}).status_code == 302
+        'csrf': 'test-csrf', 'status': 'Completed'}).status_code == 400
+    with app.app_context():
+        assert db.session.get(StaffTask, subtask_id).status == 'To do'
+    assert collector_client.post(f'/tasks/{subtask_id}/status', data={
+        'csrf': 'test-csrf', 'status': 'Completed',
+        'outcome': 'Prepared the call list and sent it to the team.'}).status_code == 302
     with app.app_context():
         assert db.session.get(StaffTask, subtask_id).status == 'Completed'
+        assert 'Prepared the call list' in db.session.get(StaffTask, subtask_id).outcome
 
 
 def test_subtask_assigned_to_another_person_appears_in_their_work_views():
@@ -343,6 +349,7 @@ def test_to_contact_automatically_creates_and_completes_one_task():
             StaffTask.source_contact_id == contact_id))
     assert client.post(f'/tasks/{task_id}/status', data={
         'csrf': 'test-csrf', 'status': 'Completed',
+        'outcome': 'Spoke with supporter.', 'outreach_status': 'Contacted',
     }).status_code == 302
     with app.app_context():
         assert db.session.get(Contact, contact_id).status == 'Contacted'
@@ -352,3 +359,38 @@ def test_to_contact_automatically_creates_and_completes_one_task():
     }).status_code == 302
     with app.app_context():
         assert db.session.get(StaffTask, task_id) is None
+
+
+def test_supporter_task_verdict_does_not_claim_an_unanswered_call_was_contacted():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        login(client, 'admin@example.test')
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        family = Family(name='Outreach result family')
+        db.session.add(family)
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Unanswered supporter',
+                          relationship='Friend', status='To contact')
+        db.session.add(contact)
+        db.session.flush()
+        task = StaffTask(title='Contact unanswered supporter',
+                         source_contact_id=contact.id, family_id=family.id,
+                         assigned_to=admin.id, created_by=admin.id)
+        db.session.add(task)
+        db.session.commit()
+        task_id, contact_id = task.id, contact.id
+
+    response = client.post(f'/tasks/{task_id}/status', data={
+        'csrf': 'test-csrf', 'status': 'Completed',
+        'outcome': 'Called twice; there was no answer.',
+        'outreach_status': 'No answer'})
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(StaffTask, task_id).status == 'Completed'
+        assert db.session.get(StaffTask, task_id).outcome == 'Called twice; there was no answer.'
+        assert db.session.get(Contact, contact_id).status == 'No answer'
+    page = client.get(f'/tasks/{task_id}').text
+    assert 'Called twice; there was no answer.' in page
+    assert 'Supporter outreach result' in page

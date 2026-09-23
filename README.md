@@ -1,5 +1,13 @@
 # Yazory
 
+## Task completion verdict schema
+
+After pulling the version that adds task completion verdicts into Replit, run
+`APP_ENV=production python -m flask --app app_entry migrate-db` in its Shell
+before publishing. The idempotent migration adds a task outcome column and
+preserves existing tasks. Older completed tasks remain completed without an
+invented verdict; new completions require one.
+
 ## Legacy page-data repair
 
 The list-page performance changes work without running a maintenance command.
