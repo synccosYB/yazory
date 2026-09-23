@@ -2749,7 +2749,7 @@ def create_app(test_config=None):
         home_phone = field('home_phone', limit=80)
         # Keep the legacy phone field as the primary contact number for
         # supporter identity, while storing the phone types separately.
-        phone = cell_phone or home_phone
+        phone = cell_phone or home_phone or field('phone', limit=80)
         email = optional_email_field()
         profile_model = app.extensions.get('supporter_profile_model')
         selected_profile_id = request.form.get('supporter_profile_id', type=int)

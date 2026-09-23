@@ -69,7 +69,7 @@ def test_supporter_directory_uses_expandable_records_without_table_pagination():
     assert 'class="supporter-accordion-panel"' in template
     assert 'class="card supporter-list-card foldable-supporter-list"' in template
     assert 'class="supporter-list-summary"' in template
-    assert '<table>' not in template
+    assert 'class="print-only"' in template
     assert '.supporter-accordion-item>summary' in css
     assert '.supporter-list-summary' in css
 
