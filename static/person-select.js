@@ -4,6 +4,7 @@
   document.querySelectorAll('[data-local-select-filter]').forEach((search) => {
     const select = document.getElementById(search.dataset.localSelectFilter);
     if (!select) return;
+    select.classList.add('select-search-source');
     const results = document.createElement('div');
     results.className = 'select-search-results';
     results.hidden = true;
