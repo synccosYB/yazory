@@ -3179,7 +3179,10 @@ def create_app(test_config=None):
             link = app.extensions['workflows']['models']['SupporterLink']
             ids = set(db.session.scalars(select(link.contact_id).where(link.assigned_to == current_user().id)))
             contacts = [c for c in contacts if c.id in ids]
-        pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family_id,current_user())
+        pledged = (sum(contact.monthly_equivalent_cents for contact in contacts
+                       if contact.status == 'Pledged')
+                   if not app.extensions['workflows']['enforced']()
+                   else app.extensions['workflows']['monthly_pledged'](family_id, current_user()))
         for contact in contacts:
             contact.connected_cases = linked_contact_count(contact)
         return render_template('fundraising_detail.html', title='Fundraising workspace', family=family,
