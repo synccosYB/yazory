@@ -23,9 +23,9 @@
     <button>{{ _('Send invitation') }}</button><small>{{ _('The user will create their own password. Invitations expire after 48 hours.') }}</small>
   </form>
 </section>
-<section class="card padded">
+<section class="card padded" data-initial-panel="true">
   <h2>{{ _('Staff accounts') }}</h2>
-  {% for user in users %}<article data-page-item class="staff-entry">
+  {% for user in users %}<article data-page-item data-staff-id="{{ user.id }}" class="staff-entry">
     <div class="activity-row"><div><strong>{{ user.name or user.email }}</strong><small>{{ user.email }} · {{ _({'organization_admin':'Organization administrator','family_admin':'Family administrator','office_employee':'Office employee','fundraiser':'Fundraiser','askan':'Askan'}[user.role]) }}{% if user.job_title %} · {{ user.job_title }}{% endif %}</small></div><span class="badge {{ user.status }}">{{ _(user.status.title()) }}</span></div>
     <dl class="staff-details">
       <div><dt>{{ _('Phone') }}</dt><dd>{{ user.phone or '—' }}</dd></div>

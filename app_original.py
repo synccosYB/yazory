@@ -2838,7 +2838,10 @@ def create_app(test_config=None):
         db.session.commit()
         if request.form.get('from_supporters') == '1':
             return redirect(url_for('supporters', family_id=contact.family_id, edited=contact.id))
-        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+        if current_user() and current_user().role == 'fundraiser':
+            return redirect(url_for('fundraising_detail', family_id=contact.family_id))
+        return redirect(url_for('family_detail', family_id=contact.family_id,
+                                _anchor='circle-of-support'))
 
     @app.route('/contacts/<int:contact_id>/edit', methods=['GET', 'POST'])
     def edit_contact(contact_id):
@@ -2985,7 +2988,10 @@ def create_app(test_config=None):
                 identity['attach'](new_contact)
         audit(f'Added child as supporter under: {contact.name}', contact.family_id)
         db.session.commit()
-        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+        if current_user() and current_user().role == 'fundraiser':
+            return redirect(url_for('fundraising_detail', family_id=contact.family_id))
+        return redirect(url_for('family_detail', family_id=contact.family_id,
+                                _anchor='circle-of-support'))
 
     @app.post('/contacts/<int:contact_id>/delete')
     def delete_contact(contact_id):
@@ -4365,7 +4371,7 @@ def create_app(test_config=None):
             flash('Invitation created, but email delivery failed. Check Email history.' if
                   user.status == 'pending' and message.status == 'failed' else
                   'Invitation created and email queued.')
-            return redirect(url_for('staff'))
+            return redirect(url_for('staff', panel=2, staff_id=user.id))
         owner = db.session.scalar(select(StaffUser).where(StaffUser.email == app.config['ADMIN_EMAIL'].strip().lower()))
         return render_template('staff.html', title='Staff & assignments', users=db.session.scalars(select(StaffUser).order_by(StaffUser.email)).all(), families=db.session.scalars(select(Family).order_by(Family.name)).all(), owner_user_id=owner.id if owner else None)
 
@@ -4393,7 +4399,7 @@ def create_app(test_config=None):
         audit(f'Updated staff details: {old_email}')
         db.session.commit()
         flash('Staff details updated.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/delete')
     def delete_staff(user_id):
@@ -4424,7 +4430,7 @@ def create_app(test_config=None):
         audit(f'Deleted staff user: {email}')
         db.session.commit()
         flash('Staff account deleted.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2))
 
     @app.post('/staff/<int:user_id>/resend-invitation')
     def resend_invitation(user_id):
@@ -4444,7 +4450,7 @@ def create_app(test_config=None):
         db.session.commit()
         flash('Invitation renewed, but email delivery failed. Check Email history.' if
               message.status == 'failed' else 'Invitation resent.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/status')
     def staff_status(user_id):
@@ -4460,7 +4466,7 @@ def create_app(test_config=None):
         audit(f'{"Activated" if new_status == "active" else "Deactivated"} staff user: {user.email}')
         db.session.commit()
         flash('Account status updated.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/cancel-invitation')
     def cancel_invitation(user_id):
@@ -4475,7 +4481,7 @@ def create_app(test_config=None):
         audit(f'Cancelled staff invitation: {user.email}')
         db.session.commit()
         flash('Invitation cancelled.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.get('/settings')
     def settings():
@@ -4508,7 +4514,7 @@ def create_app(test_config=None):
             db.session.execute(db.delete(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id))
         audit(f'Updated staff role for {user.email}')
         db.session.commit()
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/assignments')
     def staff_assignment(user_id):
@@ -4533,7 +4539,7 @@ def create_app(test_config=None):
             action = ('Assigned family administrator: ' if user.role == 'family_admin'
                       else 'Assigned staff member: ')
         else:
-            return redirect(url_for('staff'))
+            return redirect(url_for('staff', panel=2, staff_id=user.id))
         audit(f'{action}{user.email}', family.id)
         if user.status == 'active':
             removed = operation == 'revoke'
@@ -4542,7 +4548,7 @@ def create_app(test_config=None):
                 f'You were {change} case YZ-{family.id:04d}. Sign in to Yazory to review your current assignments.',
                 staff_user_id=user.id, family_id=family.id)
         db.session.commit()
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     from abcharity import register_abcharity
     register_abcharity(app, db, CharityCampaign, CharityDonor, CharityDonation,
