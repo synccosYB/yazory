@@ -68,6 +68,18 @@ def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
     assert '09/25/2026 02:30 PM EDT' in client.get('/tasks').text
     assert '09/25/2026 02:30 PM EDT' in client.get('/work-queue').text
 
+    # Saving the case-specific pledge does not undo a scheduled call.
+    assert post(client, f'/contacts/{contact_id}', {
+        'status': 'To contact', 'monthly': '36',
+        'pledge_frequency': 'Monthly'}).status_code == 302
+    with app.app_context():
+        task = db.session.get(StaffTask, task_id)
+        callback = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.status == 'scheduled'))
+        assert task.status == 'Waiting'
+        assert task.due_date == callback.scheduled_for.date()
+
     assert post(client, f'/contacts/{contact_id}/communications/callback', {
         'scheduled_for': '2026-09-26T10:00', 'note': 'New time'}).status_code == 302
     with app.app_context():
@@ -160,7 +172,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'class="card foldable-communication-section" id="communication-history"' in page.text
     assert 'class="mailbox-list-fold"' in page.text
     assert '<div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260923-contact-v4' in page.text
+    assert 'pages.js?v=20260924-navigation-v2' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript

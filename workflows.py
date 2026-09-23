@@ -831,15 +831,27 @@ def install_workflows(app, db, entities, helpers):
         if not org_admin():abort(403)
         if request.method=='POST':
             uid=request.form.get('user_id',type=int);role=field('role');target=db.get_or_404(StaffUser,uid)
+            operation=field('operation')
+            if operation not in ('grant','revoke'):abort(400,'Choose grant or revoke.')
             if role not in ROLES:abort(400)
+            if operation=='grant' and not active_user(target):abort(400,'Choose an active staff member.')
             if target.role=='fundraiser' and role not in ('fundraising',):fail('Fundraiser accounts cannot receive confidential workflow responsibilities.')
             grant=db.session.scalar(select(Grant).where(Grant.user_id==uid,Grant.role==role))
-            if grant:db.session.delete(grant)
-            else:db.session.add(Grant(user_id=uid,role=role))
-            emit(None,'Workflow responsibility changed',{'user_id':uid,'role':role,'granted':not bool(grant)});save()
+            if operation=='revoke' and grant:db.session.delete(grant)
+            elif operation=='grant' and not grant:db.session.add(Grant(user_id=uid,role=role))
+            else:return redirect(url_for('workflow_access'))
+            emit(None,'Workflow responsibility changed',{'user_id':uid,'role':role,'granted':operation=='grant'});save()
             return redirect(url_for('workflow_access'))
         users=db.session.scalars(select(StaffUser).order_by(StaffUser.email)).all()
-        return render_template('workflow_access.html',title='Workflow responsibilities',users=users,grants={u.id:roles(u) for u in users},roles=ROLES)
+        active_grants=set(db.session.scalars(select(Grant.role).join(
+            StaffUser, StaffUser.id==Grant.user_id).where(
+            StaffUser.status=='active')).all())
+        required_roles={step[1] for spec in CATALOG.values() for step in spec['steps']}
+        missing_roles=[label for key,label in ROLES.items()
+                       if key in required_roles and key not in active_grants]
+        return render_template('workflow_access.html',title='Workflow responsibilities',
+            users=users,grants={u.id:roles(u) for u in users},roles=ROLES,
+            missing_roles=missing_roles)
 
     def document_allowed(document):
         control=db.session.get(Control,document.id)

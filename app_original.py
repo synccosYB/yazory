@@ -1552,8 +1552,20 @@ def create_app(test_config=None):
                 manual_receipts, charity_receipts, paid, payouts)).one()
         collected = manual_collected + abcharity_collected
         given_out = paid_expenses + direct_payouts
+        legacy_available = collected - given_out
+        available = case_payout_available(family_id, legacy_available)
         return {'collected': collected, 'given_out': given_out,
-                'available': collected - given_out}
+                'available': available,
+                'ledger_adjustments_and_holds': legacy_available - available}
+
+    def case_payout_available(family_id, legacy_available=None):
+        """Use the lower available balance until legacy and ledger views reconcile."""
+        available = (case_fund_totals(family_id)['available']
+                     if legacy_available is None else legacy_available)
+        if app.extensions['workflows']['enforced']():
+            available = min(available,
+                            app.extensions['workflows']['financials'](family_id)['available'])
+        return available
 
     def stripe_value(value, key, default=None):
         if value is None:
@@ -2472,6 +2484,7 @@ def create_app(test_config=None):
                                budget=budget_totals(family),
                                collected=fund_totals['collected'], sent=fund_totals['given_out'],
                                available_to_give=fund_totals['available'],
+                               ledger_adjustments_and_holds=fund_totals['ledger_adjustments_and_holds'],
                                pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family.id))
 
     @app.get('/families/<int:family_id>/print')
@@ -2838,7 +2851,10 @@ def create_app(test_config=None):
         db.session.commit()
         if request.form.get('from_supporters') == '1':
             return redirect(url_for('supporters', family_id=contact.family_id, edited=contact.id))
-        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+        if current_user() and current_user().role == 'fundraiser':
+            return redirect(url_for('fundraising_detail', family_id=contact.family_id))
+        return redirect(url_for('family_detail', family_id=contact.family_id,
+                                _anchor='circle-of-support'))
 
     @app.route('/contacts/<int:contact_id>/edit', methods=['GET', 'POST'])
     def edit_contact(contact_id):
@@ -2985,7 +3001,10 @@ def create_app(test_config=None):
                 identity['attach'](new_contact)
         audit(f'Added child as supporter under: {contact.name}', contact.family_id)
         db.session.commit()
-        return redirect(url_for('fundraising_detail' if current_user() and current_user().role == 'fundraiser' else 'family_detail', family_id=contact.family_id))
+        if current_user() and current_user().role == 'fundraiser':
+            return redirect(url_for('fundraising_detail', family_id=contact.family_id))
+        return redirect(url_for('family_detail', family_id=contact.family_id,
+                                _anchor='circle-of-support'))
 
     @app.post('/contacts/<int:contact_id>/delete')
     def delete_contact(contact_id):
@@ -3173,7 +3192,10 @@ def create_app(test_config=None):
             link = app.extensions['workflows']['models']['SupporterLink']
             ids = set(db.session.scalars(select(link.contact_id).where(link.assigned_to == current_user().id)))
             contacts = [c for c in contacts if c.id in ids]
-        pledged = sum(contact.monthly_cents for contact in contacts if contact.status == 'Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family_id,current_user())
+        pledged = (sum(contact.monthly_equivalent_cents for contact in contacts
+                       if contact.status == 'Pledged')
+                   if not app.extensions['workflows']['enforced']()
+                   else app.extensions['workflows']['monthly_pledged'](family_id, current_user()))
         for contact in contacts:
             contact.connected_cases = linked_contact_count(contact)
         return render_template('fundraising_detail.html', title='Fundraising workspace', family=family,
@@ -4019,12 +4041,13 @@ def create_app(test_config=None):
         audit(f'Added secure check-writing account: {account_name}')
         db.session.commit()
         flash('Check-writing account saved securely.')
-        return redirect(url_for('payouts'))
+        return redirect(url_for('payouts', panel=2))
 
     @app.post('/payouts/checks')
     def create_check_payout():
         require_organization_admin()
-        family = db.session.get(Family, request.form.get('family_id', type=int))
+        family = db.session.scalar(select(Family).where(
+            Family.id == request.form.get('family_id', type=int)).with_for_update())
         if family is None:
             abort(400, 'Choose a valid family.')
         if family.status != 'Active':
@@ -4063,7 +4086,7 @@ def create_app(test_config=None):
         if not re.search(r'[A-Za-z]', payee_name) or re.search(r'[^A-Za-z0-9 .,&\'()-]', payee_name):
             abort(400, 'Enter the check payee name in English.')
         payout_amount = amount('amount')
-        available = case_fund_totals(family.id)['available']
+        available = case_payout_available(family.id)
         if payout_amount > available:
             abort(400, 'This check is greater than the amount available for this case.')
         payout = ApplicantPayout(
@@ -4087,22 +4110,26 @@ def create_app(test_config=None):
         audit(f'Created applicant payout check #{check_number} for ${payout.amount_cents / 100:,.2f}', family.id)
         db.session.commit()
         flash('Check created and added to manual check history.')
-        return redirect(url_for('payouts', panel=3, download=payout.id))
+        return redirect(url_for('payouts', panel=4, download=payout.id))
 
     @app.post('/payouts/stripe')
     def create_stripe_payout():
         require_organization_admin()
         if not app.config['STRIPE_SECRET_KEY']:
             abort(503, 'Stripe payments are not configured.')
-        family = db.session.get(Family, request.form.get('family_id', type=int))
+        family = db.session.scalar(select(Family).where(
+            Family.id == request.form.get('family_id', type=int)).with_for_update())
         recipient = db.session.get(StripeRecipient, request.form.get('recipient_id', type=int))
         if family is None or family.status != 'Active':
             abort(400, 'Choose an active family.')
         if (recipient is None or recipient.kind != 'family' or
                 recipient.family_id != family.id or not recipient.payouts_enabled):
             abort(400, 'Choose the verified Stripe recipient for this family.')
+        payout_amount = amount('amount')
+        if payout_amount > case_payout_available(family.id):
+            abort(400, 'This payout is greater than the amount available for this case.')
         payout = ApplicantPayout(
-            family_id=family.id, method='stripe', amount_cents=amount('amount'),
+            family_id=family.id, method='stripe', amount_cents=payout_amount,
             payee_name=recipient.name, mailing_address='', memo=field('memo', limit=160),
             status='processing', created_by=current_user().id if current_user() else None)
         db.session.add(payout)
@@ -4126,7 +4153,7 @@ def create_app(test_config=None):
         audit(f'Sent applicant payout #{payout.id} through Stripe: {payout.stripe_reference}', family.id)
         db.session.commit()
         flash('Applicant payout sent through Stripe.')
-        return redirect(url_for('payouts'))
+        return redirect(url_for('payouts', panel=6))
 
     @app.get('/payouts/<int:payout_id>/check.pdf')
     def download_payout_check(payout_id):
@@ -4165,7 +4192,7 @@ def create_app(test_config=None):
         db.session.commit()
         flash({'mailed': 'Check marked as mailed.', 'cleared': 'Check marked as cleared.',
                'voided': 'Check voided.'}[next_status])
-        return redirect(url_for('payouts', panel=3))
+        return redirect(url_for('payouts', panel=4))
 
     @app.post('/payouts/<int:payout_id>/delete')
     def delete_voided_payout_check(payout_id):
@@ -4178,7 +4205,7 @@ def create_app(test_config=None):
         audit(f'Deleted voided applicant payout check #{check_number}', family_id)
         db.session.commit()
         flash('Voided check deleted.')
-        return redirect(url_for('payouts', panel=3))
+        return redirect(url_for('payouts', panel=4))
 
     @app.post('/payouts/recipients')
     def create_payout_recipient():
@@ -4365,7 +4392,7 @@ def create_app(test_config=None):
             flash('Invitation created, but email delivery failed. Check Email history.' if
                   user.status == 'pending' and message.status == 'failed' else
                   'Invitation created and email queued.')
-            return redirect(url_for('staff'))
+            return redirect(url_for('staff', panel=2, staff_id=user.id))
         owner = db.session.scalar(select(StaffUser).where(StaffUser.email == app.config['ADMIN_EMAIL'].strip().lower()))
         return render_template('staff.html', title='Staff & assignments', users=db.session.scalars(select(StaffUser).order_by(StaffUser.email)).all(), families=db.session.scalars(select(Family).order_by(Family.name)).all(), owner_user_id=owner.id if owner else None)
 
@@ -4393,7 +4420,7 @@ def create_app(test_config=None):
         audit(f'Updated staff details: {old_email}')
         db.session.commit()
         flash('Staff details updated.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/delete')
     def delete_staff(user_id):
@@ -4424,7 +4451,7 @@ def create_app(test_config=None):
         audit(f'Deleted staff user: {email}')
         db.session.commit()
         flash('Staff account deleted.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2))
 
     @app.post('/staff/<int:user_id>/resend-invitation')
     def resend_invitation(user_id):
@@ -4444,7 +4471,7 @@ def create_app(test_config=None):
         db.session.commit()
         flash('Invitation renewed, but email delivery failed. Check Email history.' if
               message.status == 'failed' else 'Invitation resent.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/status')
     def staff_status(user_id):
@@ -4460,7 +4487,7 @@ def create_app(test_config=None):
         audit(f'{"Activated" if new_status == "active" else "Deactivated"} staff user: {user.email}')
         db.session.commit()
         flash('Account status updated.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/cancel-invitation')
     def cancel_invitation(user_id):
@@ -4475,7 +4502,7 @@ def create_app(test_config=None):
         audit(f'Cancelled staff invitation: {user.email}')
         db.session.commit()
         flash('Invitation cancelled.')
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.get('/settings')
     def settings():
@@ -4508,7 +4535,7 @@ def create_app(test_config=None):
             db.session.execute(db.delete(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id))
         audit(f'Updated staff role for {user.email}')
         db.session.commit()
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     @app.post('/staff/<int:user_id>/assignments')
     def staff_assignment(user_id):
@@ -4533,7 +4560,7 @@ def create_app(test_config=None):
             action = ('Assigned family administrator: ' if user.role == 'family_admin'
                       else 'Assigned staff member: ')
         else:
-            return redirect(url_for('staff'))
+            return redirect(url_for('staff', panel=2, staff_id=user.id))
         audit(f'{action}{user.email}', family.id)
         if user.status == 'active':
             removed = operation == 'revoke'
@@ -4542,7 +4569,7 @@ def create_app(test_config=None):
                 f'You were {change} case YZ-{family.id:04d}. Sign in to Yazory to review your current assignments.',
                 staff_user_id=user.id, family_id=family.id)
         db.session.commit()
-        return redirect(url_for('staff'))
+        return redirect(url_for('staff', panel=2, staff_id=user.id))
 
     from abcharity import register_abcharity
     register_abcharity(app, db, CharityCampaign, CharityDonor, CharityDonation,
