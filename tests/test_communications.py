@@ -590,9 +590,76 @@ def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):
         db.session.get(Contact, contact_id).email = ''
         db.session.commit()
     repaired = client.get('/communications')
+    assert 'value="new-address@example.test"' not in repaired.text
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).email == ''
+        app.extensions['repair_page_data']()
+    repaired = client.get('/communications')
     assert 'value="new-address@example.test"' in repaired.text
     with app.app_context():
         assert db.session.get(Contact, contact_id).email == 'new-address@example.test'
+
+
+def test_communications_overview_bounds_supporters_but_direct_view_remains_available(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        family_id = db.session.get(Contact, contact_id).family_id
+        db.session.add_all([
+            Contact(family_id=family_id, name=f'Volume supporter {number:03d}',
+                    relationship='Friend', status='To contact')
+            for number in range(80)
+        ])
+        db.session.commit()
+        last_id = db.session.scalar(db.select(Contact.id).where(
+            Contact.name == 'Volume supporter 079'))
+
+    overview = client.get('/communications')
+    assert overview.status_code == 200
+    assert overview.text.count('class="communication-accordion-item outreach-supporter"') == 75
+    assert 'supporter_page=2' in overview.text
+    second_page = client.get('/communications?supporter_page=2')
+    assert 'Volume supporter 079' in second_page.text
+    search = client.get('/communications?supporter_q=Volume+supporter+079')
+    assert 'Volume supporter 079' in search.text
+    assert 'Volume supporter 078' not in search.text
+    direct = client.get(f'/communications?contact_id={last_id}')
+    assert direct.status_code == 200
+    assert 'Volume supporter 079' in direct.text
+
+
+def test_repair_page_data_cli_syncs_email_for_supporter_shared_across_cases(monkeypatch):
+    app, _, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        original = db.session.get(Contact, contact_id)
+        original.email = ''
+        second_family = Family(name='Second shared-supporter family')
+        db.session.add(second_family)
+        db.session.flush()
+        shared = Contact(
+            family_id=second_family.id, name=original.name,
+            relationship='Friend', status='Pledged',
+            supporter_key=original.supporter_key, email='')
+        message = EmailMessage(
+            kind='supporter_initial', recipient='shared@example.test',
+            subject='Earlier message', text_body='Hello', status='sent',
+            family_id=original.family_id)
+        db.session.add_all([shared, message])
+        db.session.flush()
+        db.session.add(SupporterCommunication(
+            contact_id=original.id, family_id=original.family_id,
+            email_message_id=message.id, kind='initial_email',
+            status='sent'))
+        db.session.commit()
+        shared_id = shared.id
+
+    result = app.test_cli_runner().invoke(args=['repair-page-data'])
+    assert result.exit_code == 0, result.output
+    assert '1 supporter emails restored' in result.output
+    with app.app_context():
+        original = db.session.get(Contact, contact_id)
+        shared = db.session.get(Contact, shared_id)
+        assert original.email == shared.email == 'shared@example.test'
+        assert original.person_id == shared.person_id
 
 
 def test_compose_can_send_to_email_not_connected_to_system(monkeypatch):

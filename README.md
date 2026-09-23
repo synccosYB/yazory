@@ -1,5 +1,20 @@
 # Yazory
 
+## Legacy page-data repair
+
+After publishing this version, run the idempotent maintenance command once in
+each environment, before normal traffic is resumed:
+
+```bash
+flask --app app_entry repair-page-data
+```
+
+It creates missing follow-up tasks for existing supporters marked **To contact**
+and restores blank supporter emails from prior sent-email records. These repairs
+are deliberately not run by the Tasks or Communications GET routes. The command
+preserves existing task statuses and populated email addresses, and can be run
+again safely.
+
 ## Current operating application
 
 See [WORKFLOW_IMPLEMENTATION.md](WORKFLOW_IMPLEMENTATION.md) for the connected

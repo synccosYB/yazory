@@ -87,6 +87,7 @@
 </details>{% else %}<p class="empty">{{ _('No supporters found.') }}</p>{% endfor %}
 </div>
 </details>
+{% if page > 1 or has_next %}<nav class="padded no-print" aria-label="{{ _('Supporter pages') }}">{% if page > 1 %}<a href="{{ url_for('supporters',page=page-1,q=query or None,family_id=selected_family_id or None,relationship_group=relationship_group or None,relationship=selected_relationship or None,status=selected_status or None,pledge_frequency=selected_pledge_frequency or None) }}">{{ _('Previous') }}</a>{% endif %} {{ page }} {% if has_next %}<a href="{{ url_for('supporters',page=page+1,q=query or None,family_id=selected_family_id or None,relationship_group=relationship_group or None,relationship=selected_relationship or None,status=selected_status or None,pledge_frequency=selected_pledge_frequency or None) }}">{{ _('Next') }}</a>{% endif %}</nav>{% endif %}
 <section class="print-only supporter-print-list">
 <h2>{{ _('Supporters') }} <small>{{ contacts|length }} {{ _('records') }}</small></h2>
 <table>

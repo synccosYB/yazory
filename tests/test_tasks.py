@@ -235,7 +235,7 @@ def test_task_filters_and_open_task_ordering():
     assert 'Completed item' not in page.text
 
 
-def test_tasks_page_backfills_all_existing_to_contact_supporters_once():
+def test_tasks_page_is_read_only_and_explicit_repair_backfills_supporters():
     app = make_app()
     client = app.test_client()
     with app.app_context():
@@ -254,10 +254,33 @@ def test_tasks_page_backfills_all_existing_to_contact_supporters_once():
         db.session.commit()
 
     assert client.get('/tasks').status_code == 200
-    assert client.get('/tasks').status_code == 200
     with app.app_context():
         assert db.session.scalar(db.select(db.func.count(StaffTask.id)).where(
+            StaffTask.source_contact_id.is_not(None))) == 0
+        app.extensions['repair_page_data']()
+        assert db.session.scalar(db.select(db.func.count(StaffTask.id)).where(
             StaffTask.source_contact_id.is_not(None))) == 20
+
+
+def test_tasks_page_bounds_the_initial_result_set():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        login(client, 'admin@example.test')
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        db.session.add_all([
+            StaffTask(title=f'Bounded task {number}', assigned_to=admin.id,
+                      created_by=admin.id)
+            for number in range(105)
+        ])
+        db.session.commit()
+
+    page = client.get('/tasks')
+    assert page.status_code == 200
+    assert page.text.count('Bounded task ') == 100
+    assert 'page=2' in page.text
+    assert client.get('/tasks?page=2').text.count('Bounded task ') == 5
 
 
 def test_to_contact_automatically_creates_and_completes_one_task():

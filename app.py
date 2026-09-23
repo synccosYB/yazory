@@ -12,6 +12,7 @@ import app_original as _app
 from flask import Response, current_app, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.orm.exc import StaleDataError
 from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
@@ -2252,10 +2253,10 @@ def create_app(test_config=None):
             _app.abort(403)
 
     def add_audit(action):
-        user = (_app.db.session.get(_app.StaffUser, _app.session.get('user_id'))
-                if _app.session.get('user_id') else None)
+        user_id = _app.session.get('user_id') if has_request_context() else None
+        user = (_app.db.session.get(_app.StaffUser, user_id) if user_id else None)
         _app.db.session.add(_app.Audit(
-            actor=user.email if user else 'Demo user', action=action))
+            actor=user.email if user else 'System', action=action))
 
     @app.post('/community-directories/shuls/<int:institution_id>/rabbis')
     def add_shul_rabbi(institution_id):
@@ -2689,6 +2690,9 @@ def create_app(test_config=None):
             _app.abort(403)
         selected_contact_id = (ai_contact.id if ai_contact else
                                _app.request.args.get('contact_id', type=int))
+        supporter_query = _app.request.args.get('supporter_q', '').strip()[:160]
+        supporter_page = max(
+            _app.request.args.get('supporter_page', 1, type=int), 1)
         external_email = _app.request.args.get('recipient_email', '').strip().lower()[:254]
         sms_phone = _app.request.args.get('sms_phone', '').strip()[:80]
         sms_name = _app.request.args.get('sms_name', '').strip()[:160]
@@ -2701,10 +2705,23 @@ def create_app(test_config=None):
                 sms_family = _app.db.get_or_404(_app.Family, sms_family_id)
         if external_email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', external_email):
             _app.abort(400, 'Enter a valid email address.')
-        contact_statement = select(_app.Contact).order_by(_app.Contact.name)
+        # The overview is intentionally bounded.  A specific supporter remains
+        # directly addressable from Tasks and Supporters, while avoiding the
+        # former all-supporters render (and its per-supporter pledge queries).
+        contact_statement = select(_app.Contact).options(
+            joinedload(_app.Contact.family),
+            joinedload(_app.Contact.parent_supporter),
+        ).order_by(_app.Contact.name)
         if selected_contact_id is not None:
             contact_statement = contact_statement.where(
                 _app.Contact.id == selected_contact_id)
+        elif supporter_query:
+            contact_statement = contact_statement.where(_app.or_(
+                _app.Contact.name.icontains(supporter_query, autoescape=True),
+                _app.Contact.phone.icontains(supporter_query, autoescape=True),
+                _app.Contact.cell_phone.icontains(supporter_query, autoescape=True),
+                _app.Contact.email.icontains(supporter_query, autoescape=True),
+            ))
         if not task_is_admin(user):
             contact_statement = contact_statement.where(_app.Contact.family_id.in_(select(
                 _app.FamilyAssignment.family_id).where(
@@ -2713,7 +2730,13 @@ def create_app(test_config=None):
             link_model = app.extensions['workflows']['models']['SupporterLink']
             contact_statement = contact_statement.where(_app.Contact.id.in_(select(
                 link_model.contact_id).where(link_model.assigned_to == user.id)))
-        contacts = _app.db.session.scalars(contact_statement).all()
+        if selected_contact_id is None:
+            contact_statement = contact_statement.offset(
+                (supporter_page - 1) * 75).limit(76)
+        contacts = _app.db.session.scalars(contact_statement).unique().all()
+        supporters_have_next = selected_contact_id is None and len(contacts) > 75
+        if supporters_have_next:
+            contacts = contacts[:75]
         if selected_contact_id is not None and not contacts:
             _app.abort(404)
         selected_contact = contacts[0] if selected_contact_id is not None else None
@@ -2726,26 +2749,6 @@ def create_app(test_config=None):
         latest = {}
         for row in history:
             latest.setdefault(row.contact_id, row)
-        # Older communication records may have the delivered address even when
-        # the supporter profile was not updated at the time. Repair that once so
-        # the pledge workflow never asks staff to enter the same address again.
-        repaired_email = False
-        for contact in contacts:
-            if contact.email:
-                continue
-            sent_address = next((
-                row.email_message.recipient.strip().lower()
-                for row in history
-                if row.contact_id == contact.id and row.email_message
-                and row.email_message.recipient
-                and re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',
-                                 row.email_message.recipient.strip())
-            ), '')
-            if sent_address:
-                update_supporter_person(contact, {'email': sent_address[:254]})
-                repaired_email = True
-        if repaired_email:
-            _app.db.session.commit()
         due = [row for row in history if row.status == 'scheduled']
         from zoneinfo import ZoneInfo
         now = _app.datetime.now(ZoneInfo('America/New_York')).replace(tzinfo=None)
@@ -2835,6 +2838,8 @@ def create_app(test_config=None):
             ai_contact=ai_contact, ai_subject=ai_subject, ai_body=ai_body,
             external_email=external_email,
             sms_phone=sms_phone, sms_name=sms_name, sms_family=sms_family,
+            supporter_query=supporter_query, supporter_page=supporter_page,
+            supporters_have_next=supporters_have_next,
             now=now)
 
     def contact_mobile(contact):
@@ -3741,6 +3746,41 @@ def create_app(test_config=None):
         if missing_ids:
             sync_contact_ids(missing_ids)
 
+    def repair_page_data():
+        """Run legacy page-data repairs explicitly, never during a GET."""
+        backfill_missing_supporter_tasks()
+        candidates = _app.db.session.execute(select(
+            _app.Contact, _app.EmailMessage.recipient
+        ).join(
+            SupporterCommunication,
+            SupporterCommunication.contact_id == _app.Contact.id,
+        ).join(
+            _app.EmailMessage,
+            _app.EmailMessage.id == SupporterCommunication.email_message_id,
+        ).where(
+            _app.Contact.email == '',
+            _app.EmailMessage.recipient != '',
+        ).order_by(
+            _app.Contact.id, SupporterCommunication.created_at.desc(),
+        )).all()
+        repaired = set()
+        for contact, recipient in candidates:
+            address = recipient.strip().lower()
+            if (contact.id not in repaired and not contact.email and
+                    re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', address)):
+                update_supporter_person(contact, {'email': address[:254]})
+                repaired.add(contact.id)
+        _app.db.session.commit()
+        return len(repaired)
+
+    app.extensions['repair_page_data'] = repair_page_data
+
+    @app.cli.command('repair-page-data')
+    def repair_page_data_command():
+        """Backfill legacy task and supporter-email data outside requests."""
+        repaired_emails = repair_page_data()
+        print(f'Page data repaired; {repaired_emails} supporter emails restored.')
+
     def scheduled_callback(contact_id):
         if not contact_id:
             return None
@@ -3817,12 +3857,9 @@ def create_app(test_config=None):
             _app.flash('Task created and assigned.')
             return _app.redirect(_app.url_for('task_detail', task_id=task.id))
 
-        # Older supporters may predate automatic task creation. Reconcile only
-        # missing rows here so opening this page repairs the list once without
-        # resetting work already marked in progress or waiting.
-        backfill_missing_supporter_tasks()
-
-        statement = select(StaffTask)
+        statement = select(StaffTask).options(
+            joinedload(StaffTask.assignee), joinedload(StaffTask.family),
+            joinedload(StaffTask.source_contact), selectinload(StaffTask.subtasks))
         if not task_is_admin(user):
             statement = statement.where(StaffTask.assigned_to == (user.id if user else -1))
         selected_status = _app.request.args.get('status', '').strip()
@@ -3866,9 +3903,14 @@ def create_app(test_config=None):
             (StaffTask.priority == 'High', 1),
             (StaffTask.priority == 'Normal', 2),
             else_=3)
+        page = max(_app.request.args.get('page', 1, type=int), 1)
+        page_size = 100
         rows = _app.db.session.scalars(statement.order_by(
             status_rank, priority_rank, StaffTask.due_date.is_(None),
-            StaffTask.due_date, StaffTask.id.desc())).all()
+            StaffTask.due_date, StaffTask.id.desc()).offset(
+                (page - 1) * page_size).limit(page_size + 1)).all()
+        has_next = len(rows) > page_size
+        rows = rows[:page_size]
         staff = _app.db.session.scalars(select(_app.StaffUser).where(
             _app.StaffUser.status == 'active').order_by(_app.StaffUser.name, _app.StaffUser.email)).all()
         families = (_app.db.session.scalars(select(_app.Family).order_by(_app.Family.name)).all()
@@ -3879,7 +3921,7 @@ def create_app(test_config=None):
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
             selected_status=selected_status, selected_assignee_id=selected_assignee_id,
             selected_family_id=selected_family_id, selected_priority=selected_priority,
-            selected_due=selected_due,
+            selected_due=selected_due, page=page, has_next=has_next,
             may_assign=task_is_admin(user), today=_app.date.today())
 
     @app.get('/tasks/<int:task_id>')

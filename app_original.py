@@ -3348,7 +3348,14 @@ def create_app(test_config=None):
             statement = statement.where(Contact.status == supporter_status)
         if pledge_frequency:
             statement = statement.where(Contact.pledge_frequency == pledge_frequency)
-        contacts = db.session.scalars(statement).all()
+        # Keep the initial directory bounded and paginate without an expensive
+        # full count. Server-side filters and direct profiles retain access.
+        page = max(request.args.get('page', 1, type=int), 1)
+        page_size = 100
+        contacts = db.session.scalars(statement.offset(
+            (page - 1) * page_size).limit(page_size + 1)).all()
+        has_next = len(contacts) > page_size
+        contacts = contacts[:page_size]
         # Never show a matching son or son-in-law as an orphaned top-level row.
         # Include his parent as context, then keep nested supporters immediately
         # beneath their parent in the organization-wide directory too.
@@ -3388,7 +3395,7 @@ def create_app(test_config=None):
         family_ids = [family.id for family in families]
         possible_parents = db.session.scalars(scoped_contacts_statement().where(
             Contact.family_id.in_(family_ids)
-        ).order_by(Contact.family_id, Contact.name)).all() if family_ids else []
+        ).order_by(Contact.family_id, Contact.name).limit(100)).all() if family_ids else []
         contact_ids = [contact.id for contact in contacts]
         totals = {contact_id: total for contact_id, total in db.session.execute(select(
             Receipt.contact_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
@@ -3406,7 +3413,8 @@ def create_app(test_config=None):
                                relationship_group=relationship_group,
                                selected_relationship=relationship,
                                selected_status=supporter_status,
-                               selected_pledge_frequency=pledge_frequency)
+                               selected_pledge_frequency=pledge_frequency,
+                               page=page, has_next=has_next)
 
     @app.get('/supporters/<int:contact_id>')
     def supporter_detail(contact_id):
