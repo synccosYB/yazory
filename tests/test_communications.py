@@ -54,6 +54,23 @@ def setup_workspace(monkeypatch):
         return app, client, contact.id
 
 
+def test_family_supporter_contact_actions_open_the_existing_workflow(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        family_id = db.session.get(Contact, contact_id).family_id
+    page = client.get(f'/families/{family_id}')
+    assert page.status_code == 200
+    assert 'supporter-contact-actions' in page.text
+    assert f'/contacts/{contact_id}/communications/message/sms' in page.text
+    assert f'/contacts/{contact_id}/communications/callback' in page.text
+    assert f'/contacts/{contact_id}/communications/call' in page.text
+    assert f'/communications?contact_id={contact_id}#outreach-workflow' in page.text
+    conversation = client.get(f'/communications?contact_id={contact_id}')
+    assert conversation.status_code == 200
+    assert 'id="outreach-workflow" open' in conversation.text
+    assert f'data-contact-id="{contact_id}" open' in conversation.text
+
+
 def test_full_supporter_communication_workflow(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     page = client.get('/communications')

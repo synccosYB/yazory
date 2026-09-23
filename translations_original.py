@@ -4,6 +4,8 @@ from flask import session
 LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 # English | Hebrew | Heimish Yiddish
 _ROWS = '''
+Add contact details|הוספת פרטי קשר|צולייגן קאנטאקט פרטים
+Communication history|היסטוריית קשר|געשיכטע פון קשר
 My tasks|המשימות שלי|מיינע אויפגאבעס
 All tasks|כל המשימות|אלע אויפגאבעס
 Work assigned to you|עבודה שהוקצתה לך|ארבעט וואס איז דיר צוגעטיילט
