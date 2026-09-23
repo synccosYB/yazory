@@ -720,10 +720,22 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 .supporter-contact-panel form{display:grid;gap:8px;margin-top:8px}
 .supporter-contact-panel textarea,.supporter-contact-panel input{width:100%;box-sizing:border-box}
 
-/* Contact actions occupy the fifth column when present. */
-.family-supporters-table:has(.supporter-contact-actions){min-width:1000px}
-.family-supporters-table:has(.supporter-contact-actions) th:nth-child(1){width:23%}
-.family-supporters-table:has(.supporter-contact-actions) th:nth-child(2){width:16%}
-.family-supporters-table:has(.supporter-contact-actions) th:nth-child(3){width:11%}
-.family-supporters-table:has(.supporter-contact-actions) th:nth-child(4){width:34%}
-.family-supporters-table:has(.supporter-contact-actions) th:nth-child(5){width:16%}
+/* Keep the family supporter list on four compact columns. Contact opens over the table. */
+.family-supporters-table{width:100%;min-width:0}
+.family-supporters-table th:nth-child(1){width:28%}
+.family-supporters-table th:nth-child(2){width:20%}
+.family-supporters-table th:nth-child(3){width:12%}
+.family-supporters-table th:nth-child(4){width:40%}
+.family-supporters-table th,.family-supporters-table td{padding:6px 8px;vertical-align:middle}
+.family-supporters-table .supporter-family{display:inline-block;margin:0 0 0 8px;padding:0;vertical-align:middle}
+.family-supporters-table .supporter-family>summary{white-space:nowrap}
+.family-supporters-table .supporter-contact-actions{display:inline-block;margin-inline-start:7px;vertical-align:middle}
+.family-supporters-table .supporter-contact-actions>summary{padding:4px 8px;min-height:0;font-size:12px}
+.family-supporters-table .compact-form{grid-template-columns:minmax(68px,.7fr) minmax(82px,.8fr) minmax(115px,1.2fr) auto;gap:5px;align-items:center}
+.family-supporters-table .compact-form input,.family-supporters-table .compact-form select,.family-supporters-table .compact-form button{min-height:32px;padding:4px 7px;margin:0}
+.family-supporters-table .supporter-row-edit{width:22px;height:22px}
+.family-supporters-table .supporter-contact-actions[open]::before{content:"";position:fixed;inset:0;background:#102f5066;z-index:19}
+.family-supporters-table .supporter-contact-panel{position:fixed;z-index:20;inset-block-start:50%;inset-inline-start:50%;transform:translate(-50%,-50%);width:min(380px,calc(100vw - 32px));max-width:none;max-height:80vh;overflow:auto;box-shadow:0 18px 50px #102f5040}
+[dir=rtl] .family-supporters-table .supporter-contact-panel{transform:translate(50%,-50%)}
+@media(max-width:900px){.family-supporters-table .compact-form{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.family-supporters-table{min-width:760px}}

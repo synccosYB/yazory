@@ -146,7 +146,7 @@ def test_family_supporter_list_groups_tools_and_formats_phone_numbers():
     assert "tools.append(count)" in script
     assert "digits?.length===10" in script
     assert "familySupporterTable.classList.add('family-supporters-table')" in script
-    assert "editCell.querySelector('.supporter-contact-actions')" in script
+    assert "editLink.after(contactActions)" in script
     assert "editCell?.querySelector(':scope > .row-actions > a[" in script
     assert '.padded:has(> details[open])>.table-wrap' in css
     assert "editLink.className='supporter-row-edit'" in script
