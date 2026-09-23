@@ -55,6 +55,7 @@
 <label>{{ _('Name *') }}<input name="name" value="{{ c.name }}" required maxlength="160"></label>
 <label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship == c.relationship }}>{{ _(relationship) }}</option>{% endfor %}{% if c.relationship not in relationships %}<option value="{{ c.relationship }}" selected>{{ _(c.relationship) }}</option>{% endif %}</select></label>
 <label>{{ _('Phone') }}<input name="phone" value="{{ c.phone or '' }}" maxlength="80" type="tel"></label>
+<label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ c.cell_phone or '' }}" maxlength="80" type="tel" autocomplete="tel"></label>
 <label>{{ _('Follow-up status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status == c.status }}>{{ _(status) }}</option>{% endfor %}</select></label>
 </div>
 <label class="sr-only" for="pledge-amount-{{ c.id }}">{{ _('Donation amount ($)') }} — {{ c.name }}</label>

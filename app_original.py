@@ -2813,16 +2813,17 @@ def create_app(test_config=None):
         if 'name' in request.form:
             name = field('name', True)
             phone = field('phone', limit=80)
+            cell_phone = field('cell_phone', limit=80) if 'cell_phone' in request.form else contact.cell_phone
             new_key = supporter_key(name, phone, contact.supporter_key)
             identity = app.extensions.get('supporter_identity')
             if identity:
                 try:
-                    identity['update'](contact, dict(name=name, phone=phone,
+                    identity['update'](contact, dict(name=name, phone=phone, cell_phone=cell_phone,
                                                      supporter_key=new_key))
                 except ValueError as exc:
                     abort(409, str(exc))
             else:
-                contact.name, contact.phone, contact.supporter_key = name, phone, new_key
+                contact.name, contact.phone, contact.cell_phone, contact.supporter_key = name, phone, cell_phone, new_key
             relationship = field('relationship', True)
             if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS:
                 abort(400, 'Choose a valid relationship.')
