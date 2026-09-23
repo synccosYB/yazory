@@ -593,6 +593,9 @@ def test_email_button_works_without_saved_email_and_saves_it(monkeypatch):
     assert 'value="new-address@example.test"' not in repaired.text
     with app.app_context():
         assert db.session.get(Contact, contact_id).email == ''
+        db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'supporter_initial_contact')).status = 'sent'
+        db.session.commit()
         app.extensions['repair_page_data']()
     repaired = client.get('/communications')
     assert 'value="new-address@example.test"' in repaired.text
@@ -649,6 +652,16 @@ def test_repair_page_data_cli_syncs_email_for_supporter_shared_across_cases(monk
             contact_id=original.id, family_id=original.family_id,
             email_message_id=message.id, kind='initial_email',
             status='sent'))
+        failed = EmailMessage(
+            kind='supporter_initial', recipient='failed@example.test',
+            subject='Undelivered message', text_body='Hello', status='failed',
+            family_id=original.family_id)
+        db.session.add(failed)
+        db.session.flush()
+        db.session.add(SupporterCommunication(
+            contact_id=original.id, family_id=original.family_id,
+            email_message_id=failed.id, kind='initial_email',
+            status='failed'))
         db.session.commit()
         shared_id = shared.id
 
@@ -660,6 +673,29 @@ def test_repair_page_data_cli_syncs_email_for_supporter_shared_across_cases(monk
         shared = db.session.get(Contact, shared_id)
         assert original.email == shared.email == 'shared@example.test'
         assert original.person_id == shared.person_id
+
+
+def test_repair_page_data_ignores_unsent_email_records(monkeypatch):
+    app, _, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        contact.email = ''
+        queued = EmailMessage(
+            kind='supporter_initial', recipient='queued@example.test',
+            subject='Pending message', text_body='Hello', status='queued',
+            family_id=contact.family_id)
+        db.session.add(queued)
+        db.session.flush()
+        db.session.add(SupporterCommunication(
+            contact_id=contact.id, family_id=contact.family_id,
+            email_message_id=queued.id, kind='initial_email', status='queued'))
+        db.session.commit()
+
+    result = app.test_cli_runner().invoke(args=['repair-page-data'])
+    assert result.exit_code == 0, result.output
+    assert '0 supporter emails restored' in result.output
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).email == ''
 
 
 def test_compose_can_send_to_email_not_connected_to_system(monkeypatch):

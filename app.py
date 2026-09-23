@@ -3759,9 +3759,11 @@ def create_app(test_config=None):
             _app.EmailMessage.id == SupporterCommunication.email_message_id,
         ).where(
             _app.Contact.email == '',
+            _app.EmailMessage.status == 'sent',
             _app.EmailMessage.recipient != '',
         ).order_by(
             _app.Contact.id, SupporterCommunication.created_at.desc(),
+            SupporterCommunication.id.desc(),
         )).all()
         repaired = set()
         for contact, recipient in candidates:
