@@ -1555,6 +1555,15 @@ def create_app(test_config=None):
         return {'collected': collected, 'given_out': given_out,
                 'available': collected - given_out}
 
+    def case_payout_available(family_id, legacy_available=None):
+        """Use the lower available balance until legacy and ledger views reconcile."""
+        available = (case_fund_totals(family_id)['available']
+                     if legacy_available is None else legacy_available)
+        if app.extensions['workflows']['enforced']():
+            available = min(available,
+                            app.extensions['workflows']['financials'](family_id)['available'])
+        return available
+
     def stripe_value(value, key, default=None):
         if value is None:
             return default
@@ -3990,6 +3999,9 @@ def create_app(test_config=None):
         bank_accounts = db.session.scalars(select(CheckBankAccount).where(
             CheckBankAccount.active.is_(True)).order_by(CheckBankAccount.name)).all()
         family_funds = {family.id: case_fund_totals(family.id) for family in families}
+        for family in families:
+            totals = family_funds[family.id]
+            totals['available'] = case_payout_available(family.id, totals['available'])
         download_id = request.args.get('download', type=int)
         newly_created_check = (db.session.get(ApplicantPayout, download_id)
                                if download_id else None)
@@ -4028,12 +4040,13 @@ def create_app(test_config=None):
         audit(f'Added secure check-writing account: {account_name}')
         db.session.commit()
         flash('Check-writing account saved securely.')
-        return redirect(url_for('payouts'))
+        return redirect(url_for('payouts', panel=2))
 
     @app.post('/payouts/checks')
     def create_check_payout():
         require_organization_admin()
-        family = db.session.get(Family, request.form.get('family_id', type=int))
+        family = db.session.scalar(select(Family).where(
+            Family.id == request.form.get('family_id', type=int)).with_for_update())
         if family is None:
             abort(400, 'Choose a valid family.')
         if family.status != 'Active':
@@ -4072,7 +4085,7 @@ def create_app(test_config=None):
         if not re.search(r'[A-Za-z]', payee_name) or re.search(r'[^A-Za-z0-9 .,&\'()-]', payee_name):
             abort(400, 'Enter the check payee name in English.')
         payout_amount = amount('amount')
-        available = case_fund_totals(family.id)['available']
+        available = case_payout_available(family.id)
         if payout_amount > available:
             abort(400, 'This check is greater than the amount available for this case.')
         payout = ApplicantPayout(
@@ -4096,22 +4109,26 @@ def create_app(test_config=None):
         audit(f'Created applicant payout check #{check_number} for ${payout.amount_cents / 100:,.2f}', family.id)
         db.session.commit()
         flash('Check created and added to manual check history.')
-        return redirect(url_for('payouts', panel=3, download=payout.id))
+        return redirect(url_for('payouts', panel=4, download=payout.id))
 
     @app.post('/payouts/stripe')
     def create_stripe_payout():
         require_organization_admin()
         if not app.config['STRIPE_SECRET_KEY']:
             abort(503, 'Stripe payments are not configured.')
-        family = db.session.get(Family, request.form.get('family_id', type=int))
+        family = db.session.scalar(select(Family).where(
+            Family.id == request.form.get('family_id', type=int)).with_for_update())
         recipient = db.session.get(StripeRecipient, request.form.get('recipient_id', type=int))
         if family is None or family.status != 'Active':
             abort(400, 'Choose an active family.')
         if (recipient is None or recipient.kind != 'family' or
                 recipient.family_id != family.id or not recipient.payouts_enabled):
             abort(400, 'Choose the verified Stripe recipient for this family.')
+        payout_amount = amount('amount')
+        if payout_amount > case_payout_available(family.id):
+            abort(400, 'This payout is greater than the amount available for this case.')
         payout = ApplicantPayout(
-            family_id=family.id, method='stripe', amount_cents=amount('amount'),
+            family_id=family.id, method='stripe', amount_cents=payout_amount,
             payee_name=recipient.name, mailing_address='', memo=field('memo', limit=160),
             status='processing', created_by=current_user().id if current_user() else None)
         db.session.add(payout)
@@ -4135,7 +4152,7 @@ def create_app(test_config=None):
         audit(f'Sent applicant payout #{payout.id} through Stripe: {payout.stripe_reference}', family.id)
         db.session.commit()
         flash('Applicant payout sent through Stripe.')
-        return redirect(url_for('payouts'))
+        return redirect(url_for('payouts', panel=6))
 
     @app.get('/payouts/<int:payout_id>/check.pdf')
     def download_payout_check(payout_id):
@@ -4174,7 +4191,7 @@ def create_app(test_config=None):
         db.session.commit()
         flash({'mailed': 'Check marked as mailed.', 'cleared': 'Check marked as cleared.',
                'voided': 'Check voided.'}[next_status])
-        return redirect(url_for('payouts', panel=3))
+        return redirect(url_for('payouts', panel=4))
 
     @app.post('/payouts/<int:payout_id>/delete')
     def delete_voided_payout_check(payout_id):
@@ -4187,7 +4204,7 @@ def create_app(test_config=None):
         audit(f'Deleted voided applicant payout check #{check_number}', family_id)
         db.session.commit()
         flash('Voided check deleted.')
-        return redirect(url_for('payouts', panel=3))
+        return redirect(url_for('payouts', panel=4))
 
     @app.post('/payouts/recipients')
     def create_payout_recipient():

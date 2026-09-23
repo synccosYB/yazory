@@ -182,10 +182,10 @@ def test_only_voided_checks_can_be_deleted(tmp_path):
     voided = client.post(f'/payouts/{payout_id}/status', data={
         'csrf': csrf, 'status': 'voided'})
     assert voided.status_code == 302
-    assert voided.location.endswith('/payouts?panel=3')
+    assert voided.location.endswith('/payouts?panel=4')
     deleted = client.post(f'/payouts/{payout_id}/delete', data={'csrf': csrf})
     assert deleted.status_code == 302
-    assert deleted.location.endswith('/payouts?panel=3')
+    assert deleted.location.endswith('/payouts?panel=4')
     with app.app_context():
         assert db.session.get(ApplicantPayout, payout_id) is None
 
@@ -203,12 +203,22 @@ def test_direct_stripe_payout_is_recorded(monkeypatch, tmp_path):
     with app.app_context():
         family = db.session.scalar(db.select(Family))
         family.status = 'Active'
+        contact = family.contacts[0]
+        db.session.add(core_module.Receipt(
+            contact_id=contact.id, family_id=family.id,
+            amount_cents=25_000, received_on=date.today()))
         recipient = StripeRecipient(kind='family', recipient_key=str(family.id),
             family_id=family.id, name='Test Applicant', email='test@example.com',
             stripe_account_id='acct_ready', payouts_enabled=True, status='ready')
         db.session.add(recipient)
         db.session.commit()
         family_id, recipient_id = family.id, recipient.id
+    insufficient = client.post('/payouts/stripe', data={
+        'csrf': csrf, 'family_id': family_id, 'recipient_id': recipient_id,
+        'amount': '250.01'})
+    assert insufficient.status_code == 400
+    with app.app_context():
+        assert db.session.scalar(db.select(ApplicantPayout)) is None
     response = client.post('/payouts/stripe', data={
         'csrf': csrf, 'family_id': family_id, 'recipient_id': recipient_id,
         'amount': '250.00', 'memo': 'Monthly support'})

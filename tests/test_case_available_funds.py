@@ -4,6 +4,44 @@ from datetime import date
 from app import ApplicantPayout, Expense, Family, Receipt, db
 
 
+def test_payout_gate_uses_lower_workflow_balance(monkeypatch, tmp_path):
+    from app import CheckBankAccount
+    from app_original import encrypt_api_key
+
+    app = create_app({'TESTING': True, 'DEMO': True,
+                      'SQLALCHEMY_DATABASE_URI': f'sqlite:///{tmp_path / "payout-gate.sqlite"}'})
+    with app.app_context():
+        family = db.session.scalar(db.select(Family))
+        family.status, family.address = 'Active', '1 Main Street'
+        db.session.add(Receipt(contact_id=family.contacts[0].id,
+                               family_id=family.id, amount_cents=20_000,
+                               received_on=date.today()))
+        bank = CheckBankAccount(
+            name='Test account', bank_name='Test Bank',
+            routing_number_encrypted=encrypt_api_key('021000021', app.config['SECRET_KEY']),
+            account_number_encrypted=encrypt_api_key('1234567890', app.config['SECRET_KEY']),
+            account_last4='7890', next_check_number='10')
+        db.session.add(bank)
+        db.session.commit()
+        family_id, bank_id = family.id, bank.id
+
+    monkeypatch.setitem(app.extensions['workflows'], 'enforced', lambda: True)
+    monkeypatch.setitem(app.extensions['workflows'], 'financials',
+                        lambda _fid: {'available': 10_000})
+    client = app.test_client()
+    page = client.get('/payouts')
+    assert '$100.00' in page.text
+    with client.session_transaction() as session:
+        csrf = session['csrf']
+    response = client.post('/payouts/checks', data={
+        'csrf': csrf, 'family_id': family_id,
+        'check_bank_account_id': bank_id, 'payee_name': 'Test Applicant',
+        'amount': '150', 'check_date': '2026-09-23'})
+    assert response.status_code == 400
+    with app.app_context():
+        assert db.session.scalar(db.select(ApplicantPayout)) is None
+
+
 def test_case_available_balance_counts_all_non_voided_disbursements(tmp_path):
     app = create_app({'TESTING': True, 'DEMO': True,
                       'SQLALCHEMY_DATABASE_URI': f'sqlite:///{tmp_path / "funds.sqlite"}'})
