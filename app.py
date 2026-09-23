@@ -469,6 +469,21 @@ class GeneralSmsMessage(_app.db.Model):
     family = _app.db.relationship('Family')
 
 
+class SmsPhoneLink(_app.db.Model):
+    """A staff-confirmed link between an SMS number and a directory person."""
+    __tablename__ = 'sms_phone_link'
+    normalized_phone = _app.db.Column(_app.db.String(20), primary_key=True)
+    profile_id = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('supporter_profile.id'),
+        nullable=False, index=True)
+    created_at = _app.db.Column(
+        _app.db.DateTime, nullable=False,
+        default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
+    created_by = _app.db.Column(
+        _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=True)
+    profile = _app.db.relationship('SupporterProfile')
+
+
 from app_original import *  # noqa: F401,F403,E402
 from native_payments import register_native_payments  # noqa: E402
 from supporter_portal import register_supporter_portal  # noqa: E402
@@ -2442,6 +2457,130 @@ def create_app(test_config=None):
             return next(contact for contact in matches if contact.id == latest.contact_id)
         return min(matches, key=lambda contact: contact.id)
 
+    def sms_phone_key(value):
+        try:
+            return normalize_phone((value or '').replace('whatsapp:', '', 1))
+        except ValueError:
+            return ''
+
+    def sms_person_identity(phone):
+        """Resolve one number without guessing when distinct people share it."""
+        normalized = sms_phone_key(phone)
+        unknown = {
+            'known': False, 'name': 'Unknown contact', 'url': '',
+            'normalized_phone': normalized or (phone or ''), 'ambiguous': False}
+        if not normalized:
+            return unknown
+        manual = _app.db.session.get(SmsPhoneLink, normalized)
+        if manual and manual.profile:
+            return {
+                'known': True, 'name': manual.profile.name,
+                'url': _app.url_for('edit_supporter_profile',
+                                    profile_id=manual.profile_id),
+                'normalized_phone': normalized, 'ambiguous': False,
+                'profile_id': manual.profile_id, 'confirmed': True}
+
+        candidates = {}
+
+        def add(key, name, url, profile_id=None):
+            if key not in candidates:
+                candidates[key] = {
+                    'known': True, 'name': name, 'url': url,
+                    'normalized_phone': normalized, 'ambiguous': False,
+                    'profile_id': profile_id, 'confirmed': False}
+
+        profiles = _app.db.session.scalars(select(SupporterProfile)).all()
+        profiles_by_person = {
+            row.person_id: row for row in profiles if row.person_id is not None}
+        for profile in profiles:
+            if sms_phone_key(profile.phone) == normalized:
+                add(('person', profile.person_id) if profile.person_id else
+                    ('profile', profile.id), profile.name,
+                    _app.url_for('edit_supporter_profile', profile_id=profile.id),
+                    profile.id)
+        for person in _app.db.session.scalars(select(_app.SupporterPerson)).all():
+            if any(sms_phone_key(value) == normalized for value in (
+                    person.phone, person.cell_phone, person.home_phone,
+                    person.work_phone)):
+                profile = profiles_by_person.get(person.id)
+                add(('person', person.id), person.name,
+                    (_app.url_for('edit_supporter_profile', profile_id=profile.id)
+                     if profile else _app.url_for('supporter_directory')),
+                    profile.id if profile else None)
+        for contact in _app.db.session.scalars(select(_app.Contact)).all():
+            if any(sms_phone_key(value) == normalized for value in (
+                    contact.phone, contact.cell_phone, contact.home_phone,
+                    contact.work_phone)):
+                add(('person', contact.person_id) if contact.person_id else
+                    ('contact', contact.id), contact.name,
+                    _app.url_for('supporter_detail', contact_id=contact.id))
+        for family in _app.db.session.scalars(select(_app.Family)).all():
+            if sms_phone_key(family.phone) == normalized:
+                add(('family', family.id), family.name,
+                    _app.url_for('family_detail', family_id=family.id))
+        for staff in _app.db.session.scalars(select(_app.StaffUser)).all():
+            if sms_phone_key(staff.phone) == normalized:
+                add(('staff', staff.id), staff.name or staff.email,
+                    _app.url_for('people_access'))
+        for askan in _app.db.session.scalars(select(_app.Askan)).all():
+            if sms_phone_key(askan.phone) == normalized:
+                add(('askan', askan.id), askan.name,
+                    _app.url_for('network_askan_detail', askan_id=askan.id))
+        if len(candidates) == 1:
+            return next(iter(candidates.values()))
+        if len(candidates) > 1:
+            unknown['ambiguous'] = True
+            unknown['matches'] = list(candidates.values())
+        return unknown
+
+    def sms_contact_ids(phone):
+        normalized = sms_phone_key(phone)
+        return [
+            contact.id for contact in _app.db.session.scalars(
+                select(_app.Contact)).all()
+            if any(sms_phone_key(value) == normalized for value in (
+                contact.phone, contact.cell_phone, contact.home_phone,
+                contact.work_phone))
+        ]
+
+    def sms_conversation(phone):
+        """Combine general and supporter SMS records into one dated thread."""
+        normalized = sms_phone_key(phone)
+        rows = []
+        for message in _app.db.session.scalars(select(GeneralSmsMessage)).all():
+            if sms_phone_key(message.phone) == normalized:
+                rows.append({
+                    'direction': message.direction, 'body': message.body,
+                    'created_at': message.created_at, 'status': message.status,
+                    'family': message.family, 'provider_id': message.provider_message_id,
+                    'source_id': f'general-{message.id}'})
+        contact_ids = sms_contact_ids(normalized)
+        if contact_ids:
+            communications = _app.db.session.scalars(select(
+                SupporterCommunication).where(
+                    SupporterCommunication.contact_id.in_(contact_ids),
+                    SupporterCommunication.kind == 'sms')).all()
+            for message in communications:
+                rows.append({
+                    'direction': message.direction, 'body': message.body,
+                    'created_at': message.created_at, 'status': message.status,
+                    'family': message.family, 'provider_id': message.provider_message_id,
+                    'source_id': f'supporter-{message.id}'})
+        deduplicated = {}
+        for row in rows:
+            key = ('provider', row['provider_id']) if row['provider_id'] else (
+                row['direction'], row['body'], row['created_at'])
+            deduplicated.setdefault(key, row)
+        conversation = sorted(deduplicated.values(),
+                              key=lambda row: (row['created_at'], row['source_id']))
+        for row in conversation:
+            row['campaign'] = (_app.db.session.scalar(select(
+                _app.CharityCampaign).where(
+                _app.CharityCampaign.family_id == row['family'].id).order_by(
+                _app.CharityCampaign.id.desc()))
+                               if row['family'] else None)
+        return conversation
+
     def parse_communication_time(value):
         try:
             return _app.datetime.strptime(value, '%Y-%m-%dT%H:%M')
@@ -2598,6 +2737,25 @@ def create_app(test_config=None):
             row for row in (general_sms_history or [])
             if row.direction == 'inbound' and row.status == 'unread'
         ]
+        sms_identities = {}
+        sms_threads = {}
+        sms_context = {}
+        if general_sms_history is not None:
+            for message in general_sms_history:
+                key = sms_phone_key(message.phone) or message.phone
+                sms_identities[key] = sms_person_identity(message.phone)
+                if key not in sms_threads:
+                    sms_threads[key] = sms_conversation(message.phone)
+                if message.direction == 'inbound':
+                    prior = [
+                        row for row in sms_threads[key]
+                        if row['direction'] == 'outbound'
+                        and row['created_at'] <= message.created_at]
+                    sms_context[message.id] = prior[-1] if prior else None
+        sms_link_profiles = (_app.db.session.scalars(select(
+            SupporterProfile).order_by(SupporterProfile.name,
+                                       SupporterProfile.id)).all()
+                             if general_sms_history is not None else [])
         outbound_history = []
         if selected_contact is None:
             outbound_statement = select(_app.EmailMessage).order_by(
@@ -2619,6 +2777,9 @@ def create_app(test_config=None):
             inbox_history=inbox_history, inbox_messages=inbox_messages,
             general_sms_history=general_sms_history,
             general_sms_messages=general_sms_messages,
+            sms_identities=sms_identities, sms_threads=sms_threads,
+            sms_context=sms_context, sms_phone_key=sms_phone_key,
+            sms_link_profiles=sms_link_profiles,
             outbound_history=outbound_history,
             callback_contact_ids=callback_contact_ids,
             overdue_contact_ids=overdue_contact_ids,
@@ -3109,6 +3270,33 @@ def create_app(test_config=None):
         _app.flash('SMS marked as handled.')
         return _app.redirect(_app.url_for('communications', _anchor='mailbox-inbox'))
 
+    @app.post('/communications/general-sms/<int:message_id>/link')
+    def link_general_sms_contact(message_id):
+        user = task_user()
+        if user is None or user.role != 'organization_admin':
+            _app.abort(403)
+        message = _app.db.get_or_404(GeneralSmsMessage, message_id)
+        profile = _app.db.get_or_404(
+            SupporterProfile, _app.request.form.get('profile_id', type=int))
+        normalized = sms_phone_key(message.phone)
+        if not normalized:
+            _app.abort(400, 'This SMS number is not valid.')
+        link = _app.db.session.get(SmsPhoneLink, normalized)
+        if link is None:
+            link = SmsPhoneLink(
+                normalized_phone=normalized, profile_id=profile.id,
+                created_by=user.id)
+            _app.db.session.add(link)
+        else:
+            link.profile_id = profile.id
+            link.created_by = user.id
+            link.created_at = _app.datetime.now(
+                _app.timezone.utc).replace(tzinfo=None)
+        _app.db.session.commit()
+        _app.flash('SMS number linked to existing person.')
+        return _app.redirect(_app.url_for(
+            'communications', _anchor=f'sms-{message.id}'))
+
     @app.post('/communications/general-sms/<int:message_id>/reply')
     def reply_to_general_sms(message_id):
         user = task_user()
@@ -3132,7 +3320,8 @@ def create_app(test_config=None):
         _app.db.session.add(GeneralSmsMessage(
             provider_message_id=provider_id or None, phone=message.phone,
             direction='outbound', body=body, status=status,
-            delivery_error=error or '', staff_user_id=user.id))
+            delivery_error=error or '', staff_user_id=user.id,
+            family_id=message.family_id))
         if status == 'completed':
             message.status = 'handled'
             message.handled_at = _app.datetime.now(
@@ -3144,6 +3333,51 @@ def create_app(test_config=None):
             _app.flash('SMS reply failed. Open Sent & history for the error.', 'error')
         _app.db.session.commit()
         return _app.redirect(_app.url_for('communications', _anchor='mailbox-inbox'))
+
+    def sms_notification_items(user, since):
+        if user.role != 'organization_admin':
+            return []
+        messages = _app.db.session.scalars(select(GeneralSmsMessage).where(
+            GeneralSmsMessage.direction == 'inbound',
+            GeneralSmsMessage.status == 'unread').order_by(
+            GeneralSmsMessage.created_at.desc(),
+            GeneralSmsMessage.id.desc()).limit(100)).all()
+        items = []
+        for message in messages:
+            identity = sms_person_identity(message.phone)
+            display = identity['name'] if identity['known'] else 'Unknown contact'
+            items.append({
+                'id': f'sms-{message.id}', 'kind': 'Message',
+                'action': f'Incoming SMS from {display}',
+                'actor': message.phone, 'at': message.created_at,
+                'url': _app.url_for('communications',
+                                    _anchor=f'sms-{message.id}'),
+                'direct_url': True,
+                'profile_name': identity['name'] if identity['known'] else '',
+                'profile_url': identity['url'] if identity['known'] else ''})
+        supporter_replies = _app.db.session.scalars(select(
+            SupporterCommunication).where(
+            SupporterCommunication.kind == 'sms',
+            SupporterCommunication.direction == 'inbound',
+            SupporterCommunication.created_at > since).order_by(
+            SupporterCommunication.created_at.desc(),
+            SupporterCommunication.id.desc()).limit(100)).all()
+        for message in supporter_replies:
+            items.append({
+                'id': f'supporter-sms-{message.id}', 'kind': 'Message',
+                'action': f'Incoming SMS from {message.contact.name}',
+                'actor': contact_mobile(message.contact) or message.contact.phone,
+                'at': message.created_at,
+                'url': _app.url_for('communications',
+                                    contact_id=message.contact_id,
+                                    _anchor='selected-supporter-history'),
+                'direct_url': True, 'profile_name': message.contact.name,
+                'profile_url': _app.url_for(
+                    'supporter_detail', contact_id=message.contact_id)})
+        return items
+
+    app.extensions.setdefault('notification_item_providers', []).append(
+        sms_notification_items)
 
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):

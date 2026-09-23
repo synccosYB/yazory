@@ -11,7 +11,8 @@ from werkzeug.security import generate_password_hash
 import app_original as core_module
 import app as app_module
 from app import (Askan, CharityCampaign, Contact, EmailMessage, Family, GeneralSmsMessage,
-                 InboundInboxMessage, Receipt, StaffTask, SupporterCommunication, db)
+                 InboundInboxMessage, Receipt, SmsPhoneLink, StaffTask,
+                 SupporterCommunication, SupporterProfile, db)
 
 
 def post(client, path, data):
@@ -688,6 +689,72 @@ def test_general_sms_can_be_sent_and_replied_to(monkeypatch):
         assert [row.direction for row in rows] == ['outbound', 'inbound', 'outbound']
         assert rows[1].status == 'unread'
         assert rows[2].body == 'You are welcome'
+
+
+def test_incoming_sms_resolves_person_and_shows_chronological_thread(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    with app.app_context():
+        family = db.session.scalar(db.select(Family))
+        profile = SupporterProfile(
+            name='יואל ברייער', phone='(347) 385-1693',
+            normalized_phone='3473851693', email='')
+        outbound = GeneralSmsMessage(
+            phone='+13473851693', direction='outbound',
+            body='Please call me back.', status='completed',
+            family_id=family.id, created_at=datetime(2026, 9, 22, 21, 50))
+        inbound = GeneralSmsMessage(
+            phone='347-385-1693', direction='inbound',
+            body='Regarding?', status='unread',
+            created_at=datetime(2026, 9, 22, 22, 9))
+        db.session.add_all([profile, outbound, inbound])
+        db.session.commit()
+        profile_id, inbound_id = profile.id, inbound.id
+
+    page = client.get('/communications')
+
+    assert page.status_code == 200
+    assert 'יואל ברייער' in page.text
+    assert f'/supporter-directory/{profile_id}/edit' in page.text
+    assert 'Most recent outgoing SMS before this reply' in page.text
+    thread = page.text.split('class="sms-thread"', 1)[1]
+    assert thread.index('Please call me back.') < thread.index('Regarding?')
+    assert 'YZ-0001 · Test family' in page.text
+    assert 'Campaign: Test campaign' in page.text
+    assert f'id="sms-{inbound_id}"' in page.text
+
+    notifications = client.get('/notifications')
+    assert 'Incoming SMS from' in notifications.text
+    assert 'יואל ברייער' in notifications.text
+    assert f'href="/supporter-directory/{profile_id}/edit"' in notifications.text
+    assert f'/communications#sms-{inbound_id}' in notifications.text
+
+
+def test_unknown_sms_can_be_linked_to_existing_person(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    with app.app_context():
+        profile = SupporterProfile(
+            name='Known Person', phone='8455558888',
+            normalized_phone='8455558888', email='')
+        inbound = GeneralSmsMessage(
+            phone='+19175550199', direction='inbound',
+            body='Who can help?', status='unread')
+        db.session.add_all([profile, inbound])
+        db.session.commit()
+        profile_id, inbound_id = profile.id, inbound.id
+
+    page = client.get('/communications')
+    assert 'Unknown contact' in page.text
+    assert 'Link this number to an existing person' in page.text
+
+    linked = post(client, f'/communications/general-sms/{inbound_id}/link', {
+        'profile_id': str(profile_id)})
+    assert linked.status_code == 302
+    assert linked.location.endswith(f'/communications#sms-{inbound_id}')
+    with app.app_context():
+        link = db.session.get(SmsPhoneLink, '+19175550199')
+        assert link.profile_id == profile_id
+    page = client.get('/communications')
+    assert 'Known Person' in page.text
 
 
 def test_family_askan_sms_button_prefills_and_links_message_to_case(monkeypatch):

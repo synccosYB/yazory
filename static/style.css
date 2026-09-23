@@ -363,6 +363,13 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 }
 @media(prefers-reduced-motion:reduce){.sidebar{transition:none}}
 
+.sms-context{margin:14px 0;padding:12px 14px;border-inline-start:4px solid var(--gold);background:#f8f7f3;border-radius:6px}
+.sms-context>span{display:block;color:var(--muted);font-size:12px}.sms-context p{margin:7px 0;white-space:pre-wrap}
+.sms-thread{display:grid;gap:9px;margin:16px 0;padding:14px;background:#f4f7fa;border:1px solid var(--line);border-radius:8px}
+.sms-thread h4{margin:0 0 3px}.sms-bubble{max-width:82%;padding:10px 12px;background:#fff;border:1px solid var(--line);border-radius:10px}
+.sms-bubble.outbound{margin-inline-start:auto;background:#eef5fb}.sms-bubble header{display:flex;justify-content:space-between;gap:12px;font-size:12px}
+.sms-bubble time{color:var(--muted)}.sms-bubble p{margin:6px 0 0;white-space:pre-wrap}.sms-link-contact{display:grid;gap:8px;margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:8px}
+
 /* Let every authenticated workspace screen use the full desktop canvas. */
 .workspace main {
   width: 100%;

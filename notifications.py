@@ -77,8 +77,11 @@ def install(app):
         return statement
 
     def unread_count(user, cursor):
-        return core.db.session.scalar(select(func.count()).select_from(
+        count = core.db.session.scalar(select(func.count()).select_from(
             audit_statement(user, cursor.last_seen_at).subquery())) or 0
+        for provider in app.extensions.get('notification_item_providers', ()):
+            count += len(provider(user, cursor.last_seen_at))
+        return count
 
     def activity_kind(action):
         lowered = action.lower()
@@ -144,6 +147,9 @@ def install(app):
             'kind': activity_kind(row.action),
             'url': activity_url(row),
         } for row in rows]
+        for provider in app.extensions.get('notification_item_providers', ()):
+            items.extend(provider(user, cursor.last_seen_at))
+        items.sort(key=lambda item: item['at'], reverse=True)
         return render_template('notifications.html', title='What’s new', items=items,
                                unread_count=len(items), since=cursor.last_seen_at)
 
