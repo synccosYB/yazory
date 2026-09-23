@@ -357,6 +357,7 @@ class StaffTask(_app.db.Model):
         _app.db.Integer, _app.db.ForeignKey('staff_user.id'), nullable=False, index=True)
     title = _app.db.Column(_app.db.String(240), nullable=False)
     description = _app.db.Column(_app.db.Text, nullable=False, default='')
+    outcome = _app.db.Column(_app.db.Text, nullable=False, default='')
     status = _app.db.Column(_app.db.String(20), nullable=False, default='To do', index=True)
     priority = _app.db.Column(_app.db.String(20), nullable=False, default='Normal', index=True)
     due_date = _app.db.Column(_app.db.Date, nullable=True, index=True)
@@ -1485,6 +1486,10 @@ def create_app(test_config=None):
             _app.db.session.execute(text(
                 'ALTER TABLE staff_task ADD COLUMN source_contact_id INTEGER REFERENCES contact(id)'
             ))
+        if 'outcome' not in task_columns:
+            _app.db.session.execute(text(
+                "ALTER TABLE staff_task ADD COLUMN outcome TEXT NOT NULL DEFAULT ''"
+            ))
         communication_columns = {
             column['name'] for column in
             _app.inspect(_app.db.engine).get_columns('supporter_communication')
@@ -2367,6 +2372,9 @@ def create_app(test_config=None):
         app.view_functions[endpoint] = wrapped
 
     TASK_STATUSES = ('To do', 'In progress', 'Waiting', 'Completed', 'Cancelled')
+    TASK_OUTREACH_RESULTS = (
+        'No answer', 'Left a message', 'Contacted', 'Wrong number',
+        'Paused', 'Declined')
     TASK_PRIORITIES = ('Low', 'Normal', 'High', 'Urgent')
 
     def task_user():
@@ -3495,6 +3503,7 @@ def create_app(test_config=None):
             task.due_date = scheduled_for.date()
             task.description = note
             task.completed_at = None
+            task.outcome = ''
         contact.status = 'To contact'
         add_audit(f'Scheduled supporter callback: {contact.name}')
         _app.db.session.commit()
@@ -3505,6 +3514,11 @@ def create_app(test_config=None):
     def complete_supporter_call(contact_id):
         contact = communication_contact(contact_id)
         note = _app.request.form.get('note', '').strip()[:5000]
+        if not note:
+            _app.abort(400, 'Enter the result of the call before completing it.')
+        outreach_status = _app.request.form.get('outreach_status', '').strip()
+        if outreach_status not in TASK_OUTREACH_RESULTS:
+            _app.abort(400, 'Choose the actual supporter outreach result.')
         communication_row(contact, 'phone_call', 'Phone call completed', note)
         now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
         pending_callbacks = _app.db.session.scalars(select(SupporterCommunication).where(
@@ -3518,13 +3532,15 @@ def create_app(test_config=None):
             _app.Contact.supporter_key == contact.supporter_key)).all() \
             if contact.supporter_key else [contact]
         for row in linked:
-            if row.status == 'To contact':
-                row.status = 'Contacted'
+            if row.status in ('To contact', 'No answer', 'Left a message',
+                              'Call back', 'Contacted'):
+                row.status = outreach_status
         task = _app.db.session.scalar(select(StaffTask).where(
             StaffTask.source_contact_id == contact.id))
         if task:
             task.status = 'Completed'
             task.completed_at = now
+            task.outcome = note
         add_audit(f'Completed supporter call: {contact.name}')
         _app.db.session.commit()
         _app.flash('Phone call recorded.')
@@ -3715,14 +3731,18 @@ def create_app(test_config=None):
                 task.status = 'Waiting'
                 task.due_date = callback.scheduled_for.date()
                 task.completed_at = None
+                task.outcome = ''
             elif task.status in ('Completed', 'Cancelled'):
                 task.status = 'To do'
                 task.completed_at = None
+                task.outcome = ''
         elif task and task.status not in ('Completed', 'Cancelled'):
             task.status = ('Cancelled' if contact.status in ('Paused', 'Declined')
                            else 'Completed')
             task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
                                  if task.status == 'Completed' else None)
+            task.outcome = (f'Outreach status updated to {contact.status}.'
+                            if task.status == 'Completed' else '')
 
     def sync_contact_ids(contact_ids):
         for contact_id in contact_ids:
@@ -3936,6 +3956,7 @@ def create_app(test_config=None):
             'task_detail.html', title='Task details', task=task,
             callback=scheduled_callback(task.source_contact_id),
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
+            outreach_results=TASK_OUTREACH_RESULTS,
             staff=staff, may_assign=task_is_admin(task_user()), today=_app.date.today())
 
     @app.post('/tasks/<int:task_id>/status')
@@ -3944,8 +3965,16 @@ def create_app(test_config=None):
         status = _app.request.form.get('status', '')
         if status not in TASK_STATUSES:
             _app.abort(400, 'Choose a valid task status.')
+        outcome = _app.request.form.get('outcome', '').strip()
+        outreach_status = _app.request.form.get('outreach_status', '').strip()
+        if status == 'Completed':
+            if not outcome or len(outcome) > 5000:
+                _app.abort(400, 'Enter a completion verdict (up to 5000 characters).')
+            if task.source_contact and outreach_status not in TASK_OUTREACH_RESULTS:
+                _app.abort(400, 'Choose the actual supporter outreach result.')
         previous_status = task.status
         task.status = status
+        task.outcome = outcome if status == 'Completed' else ''
         task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
                              if status == 'Completed' else None)
         if task.source_contact:
@@ -3960,20 +3989,22 @@ def create_app(test_config=None):
                 if status == 'Completed' and previous_status != 'Completed':
                     communication_row(task.source_contact, 'phone_call',
                                       'Phone call completed',
-                                      _app.request.form.get('note', '').strip()[:5000])
+                                      outcome)
             linked = [task.source_contact]
             if task.source_contact.supporter_key:
                 linked = _app.db.session.scalars(select(_app.Contact).where(
                     _app.Contact.supporter_key == task.source_contact.supporter_key)).all()
             if status == 'Completed':
                 for contact in linked:
-                    if contact.status == 'To contact':
-                        contact.status = 'Contacted'
+                    if contact.status in ('To contact', 'No answer', 'Left a message',
+                                          'Call back', 'Contacted'):
+                        contact.status = outreach_status
             elif status == 'Cancelled':
                 for contact in linked:
                     if contact.status == 'To contact':
                         contact.status = 'Paused'
-        add_audit(f'Changed task #{task.id} status to {status}')
+        add_audit(f'Changed task #{task.id} status to {status}' +
+                  (f'; verdict: {outcome}' if status == 'Completed' else ''))
         _app.db.session.commit()
         _app.flash('Task status updated.')
         return _app.redirect(_app.url_for('task_detail', task_id=task.id))

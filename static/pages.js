@@ -267,3 +267,17 @@ if(mailboxRecipientForm){
     }
   });
 }
+document.querySelectorAll('[data-task-status-form]').forEach(form=>{
+  const status=form.elements.status;
+  const fields=form.querySelector('[data-task-completion-fields]');
+  const outcome=form.elements.outcome;
+  const outreach=form.elements.outreach_status;
+  const update=()=>{
+    const complete=status.value==='Completed';
+    fields.hidden=!complete;
+    outcome.required=complete;
+    if(outreach)outreach.required=complete;
+  };
+  status.addEventListener('change',update);
+  update();
+});

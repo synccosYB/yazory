@@ -91,7 +91,13 @@ def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
     assert '09/26/2026 10:00 AM EDT' in client.get(f'/tasks/{task_id}').text
 
     assert post(client, f'/tasks/{task_id}/status', {
-        'status': 'Completed', 'note': 'Spoke with supporter'}).status_code == 302
+        'status': 'Completed', 'outcome': 'No one answered'}).status_code == 400
+    with app.app_context():
+        assert db.session.get(StaffTask, task_id).status == 'Waiting'
+        assert db.session.get(SupporterCommunication, callbacks[-1].id).status == 'scheduled'
+    assert post(client, f'/tasks/{task_id}/status', {
+        'status': 'Completed', 'outcome': 'Spoke with supporter',
+        'outreach_status': 'Contacted'}).status_code == 302
     with app.app_context():
         callback = db.session.get(SupporterCommunication, callbacks[-1].id)
         task = db.session.get(StaffTask, task_id)
@@ -123,7 +129,9 @@ def test_recorded_call_completes_callback_task(monkeypatch):
     post(client, f'/contacts/{contact_id}/communications/callback', {
         'scheduled_for': '2026-09-25T14:30'})
     assert post(client, f'/contacts/{contact_id}/communications/call', {
-        'note': 'Spoke by phone'}).status_code == 302
+        'note': 'No one picked up'}).status_code == 400
+    assert post(client, f'/contacts/{contact_id}/communications/call', {
+        'note': 'Spoke by phone', 'outreach_status': 'Contacted'}).status_code == 302
     with app.app_context():
         callback = db.session.scalar(db.select(SupporterCommunication).where(
             SupporterCommunication.contact_id == contact_id,
@@ -131,6 +139,21 @@ def test_recorded_call_completes_callback_task(monkeypatch):
         task = db.session.scalar(db.select(StaffTask).where(
             StaffTask.source_contact_id == contact_id))
         assert callback.status == 'completed' and task.status == 'Completed'
+
+
+def test_recorded_unanswered_call_keeps_supporter_result_and_task_verdict(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    assert post(client, f'/contacts/{contact_id}/communications/callback', {
+        'scheduled_for': '2026-09-25T14:30'}).status_code == 302
+    assert post(client, f'/contacts/{contact_id}/communications/call', {
+        'note': 'Rang twice with no response',
+        'outreach_status': 'No answer'}).status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).status == 'No answer'
+        task = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        assert task.status == 'Completed'
+        assert task.outcome == 'Rang twice with no response'
 
 
 def test_family_supporter_contact_actions_open_the_existing_workflow(monkeypatch):
@@ -172,7 +195,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'class="card foldable-communication-section" id="communication-history"' in page.text
     assert 'class="mailbox-list-fold"' in page.text
     assert '<div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260924-navigation-v2' in page.text
+    assert 'pages.js?v=20260924-navigation-v3' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
@@ -190,7 +213,8 @@ def test_full_supporter_communication_workflow(monkeypatch):
         assert task.status == 'Waiting' and task.due_date.isoformat() == '2026-09-12'
 
     assert post(client, f'/contacts/{contact_id}/communications/call', {
-        'note': 'Agreed to support monthly'}).status_code == 302
+        'note': 'Agreed to support monthly',
+        'outreach_status': 'Contacted'}).status_code == 302
     assert post(client, f'/contacts/{contact_id}/communications/pledge', {}).status_code == 302
     with app.app_context():
         contact = db.session.get(Contact, contact_id)
