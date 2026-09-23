@@ -5,7 +5,7 @@ import app_original as app_module
 import app_original as core_module
 from werkzeug.security import generate_password_hash
 
-from app import (AccountToken, EmailMessage, Family, FamilyAssignment, StaffUser,
+from app import (AccountToken, Askan, EmailMessage, Family, FamilyAssignment, StaffUser,
                  db)
 
 
@@ -35,6 +35,30 @@ def app_and_owner(monkeypatch):
 
 def link_from(message):
     return re.search(r'https?://[^\s]+', message.text_body).group(0).replace('http://localhost', '')
+
+
+def test_assign_pending_askan_is_idempotent_and_revocation_is_explicit(monkeypatch):
+    app, owner = app_and_owner(monkeypatch)
+    with app.app_context():
+        askan = Askan(name='Case askan', email='askan@example.test')
+        family = Family(name='Assigned household', designated_askan=askan)
+        db.session.add(family)
+        db.session.commit()
+        family_id = family.id
+    assert post(owner, '/staff', {'name': 'Case askan', 'email': 'askan@example.test',
+        'role': 'askan', 'family_id': family_id}).status_code == 302
+    with app.app_context():
+        user_id = db.session.scalar(db.select(StaffUser.id).where(
+            StaffUser.email == 'askan@example.test'))
+    path = f'/staff/{user_id}/assignments'
+    assert post(owner, path, {'family_id': family_id, 'operation': 'assign'}).status_code == 302
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count()).select_from(FamilyAssignment).where(
+            FamilyAssignment.staff_user_id == user_id, FamilyAssignment.family_id == family_id)) == 1
+    assert post(owner, path, {'family_id': family_id, 'operation': 'revoke'}).status_code == 302
+    with app.app_context():
+        assert db.session.scalar(db.select(FamilyAssignment.id).where(
+            FamilyAssignment.staff_user_id == user_id, FamilyAssignment.family_id == family_id)) is None
 
 
 def test_invitation_acceptance_is_single_use(monkeypatch):

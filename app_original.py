@@ -92,6 +92,15 @@ class Askan(db.Model):
     families = db.relationship('Family', backref='designated_askan', lazy=True,
                                foreign_keys='Family.designated_askan_id')
 
+class FamilyAskan(db.Model):
+    """Additional askanim on a case; the designated askan remains primary."""
+    __table_args__ = (UniqueConstraint('family_id', 'askan_id', name='uq_family_askan'),)
+    id = db.Column(db.Integer, primary_key=True)
+    family_id = db.Column(db.Integer, db.ForeignKey('family.id'), nullable=False, index=True)
+    askan_id = db.Column(db.Integer, db.ForeignKey('askan.id'), nullable=False, index=True)
+    askan = db.relationship('Askan')
+    family = db.relationship('Family', backref=db.backref('additional_askanim', cascade='all, delete-orphan'))
+
 class HouseholdIntake(db.Model):
     family_id = db.Column(db.Integer, db.ForeignKey('family.id'), primary_key=True)
     data = db.Column(db.JSON, nullable=False, default=dict)
@@ -1340,6 +1349,16 @@ def create_app(test_config=None):
         return bool(user and db.session.scalar(select(FamilyAssignment.id).where(
             FamilyAssignment.staff_user_id == user.id, FamilyAssignment.family_id == family_id)))
 
+    def is_case_askan(family, email):
+        email = (email or '').strip().lower()
+        if not email:
+            return False
+        return bool((family.designated_askan and
+                     (family.designated_askan.email or '').lower() == email) or
+                    db.session.scalar(select(FamilyAskan.id).join(Askan).where(
+                        FamilyAskan.family_id == family.id,
+                        func.lower(Askan.email) == email)))
+
     def accessible_family_or_404(family_id):
         # Check assignment before loading household data for non-administrators.
         if not can_access_family(family_id):
@@ -2048,11 +2067,10 @@ def create_app(test_config=None):
         if current_user() is None and not app.config['DEMO']:
             return public_page('home', 'Family assistance with dignity')
         if current_user() and current_user().role == 'askan':
-            family = db.session.scalar(select(Family).join(FamilyAssignment,
-                FamilyAssignment.family_id == Family.id).where(
-                FamilyAssignment.staff_user_id == current_user().id,
-                Family.designated_askan_id.in_(select(Askan.id).where(
-                    func.lower(Askan.email) == current_user().email.lower()))))
+            family = next((row for row in db.session.scalars(select(Family).join(
+                FamilyAssignment, FamilyAssignment.family_id == Family.id).where(
+                FamilyAssignment.staff_user_id == current_user().id)).all()
+                if is_case_askan(row, current_user().email)), None)
             return redirect(url_for('askan_case_view', family_id=family.id)) if family else render_template(
                 'askan_case.html', title='My case', family=None)
         if current_user() and current_user().role == 'fundraiser':
@@ -2258,6 +2276,48 @@ def create_app(test_config=None):
         for sync_people in app.extensions.get('askan_profile_person_sync', ()):
             sync_people(askan)
 
+    @app.post('/families/<int:family_id>/additional-askanim')
+    def add_family_askan(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        name = field('name', True, 160)
+        email = optional_email_field('email')
+        phone = field('phone', limit=80)
+        if email and is_case_askan(family, email):
+            abort(400, 'This askan is already on the family file.')
+        if family.designated_askan and not email and (family.designated_askan.name.casefold() == name.casefold()
+                and family.designated_askan.phone == phone):
+            abort(400, 'This askan is already on the family file.')
+        askan = (db.session.scalar(select(Askan).where(func.lower(Askan.email) == email.lower()))
+                 if email else None)
+        if askan is None and phone:
+            askan = db.session.scalar(select(Askan).where(
+                func.lower(Askan.name) == name.lower(), Askan.phone == phone))
+        if askan is None:
+            askan = Askan(name=name, email=email, phone=phone)
+            db.session.add(askan)
+            db.session.flush()
+        if db.session.scalar(select(FamilyAskan.id).where(
+                FamilyAskan.family_id == family.id, FamilyAskan.askan_id == askan.id)):
+            abort(400, 'This askan is already on the family file.')
+        db.session.add(FamilyAskan(family_id=family.id, askan_id=askan.id))
+        audit(f'Added askan: {askan.name}', family.id)
+        db.session.commit()
+        return redirect(url_for('family_detail', family_id=family.id))
+
+    @app.post('/families/<int:family_id>/additional-askanim/<int:askan_id>/remove')
+    def remove_family_askan(family_id, askan_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        link = db.session.scalar(select(FamilyAskan).where(
+            FamilyAskan.family_id == family.id, FamilyAskan.askan_id == askan_id))
+        if link is None:
+            abort(404)
+        db.session.delete(link)
+        audit(f'Removed additional askan: {link.askan.name}', family.id)
+        db.session.commit()
+        return redirect(url_for('family_detail', family_id=family.id))
+
     @app.route('/families/new', methods=['GET', 'POST'])
     def new_family():
         require_capability(('organization_admin', 'office_employee'))
@@ -2354,7 +2414,7 @@ def create_app(test_config=None):
     def askan_case_view(family_id):
         require_capability(('askan',))
         family = accessible_family_or_404(family_id)
-        if not family.designated_askan or (family.designated_askan.email or '').lower() != current_user().email.lower():
+        if not is_case_askan(family, current_user().email):
             abort(403)
         return render_template('askan_case.html', title=family.name, family=family)
 
@@ -4285,8 +4345,7 @@ def create_app(test_config=None):
                 if not family_id:
                     abort(400, 'Choose the designated askan’s family.')
                 designated_family = db.session.get(Family, family_id)
-                if not designated_family or not designated_family.designated_askan or (
-                        designated_family.designated_askan.email or '').lower() != email.lower():
+                if not designated_family or not is_case_askan(designated_family, email):
                     abort(400, 'The invitation email must match the designated askan on this family file.')
             if family_id and role != 'organization_admin':
                 family = db.session.get(Family, family_id)
@@ -4431,8 +4490,7 @@ def create_app(test_config=None):
             abort(400)
         if role == 'askan' and (len(user.assignments) != 1 or
                 not (family := db.session.get(Family, user.assignments[0].family_id)) or
-                not family.designated_askan or
-                (family.designated_askan.email or '').lower() != user.email.lower()):
+                not is_case_askan(family, user.email)):
             abort(400, 'Assign exactly one matching designated askan family first.')
         if user.email == app.config['ADMIN_EMAIL'].strip().lower() and role != 'organization_admin':
             abort(400, 'The owner organization administrator cannot be demoted.')
@@ -4456,25 +4514,30 @@ def create_app(test_config=None):
         require_organization_admin()
         user = db.get_or_404(StaffUser, user_id)
         family = db.get_or_404(Family, request.form.get('family_id', type=int))
+        operation = request.form.get('operation', 'assign')
+        if operation not in ('assign', 'revoke'):
+            abort(400, 'Choose a valid assignment action.')
         if user.role == 'organization_admin':
             abort(400, 'Organization administrators do not use family assignments.')
-        if user.role == 'askan' and (not family.designated_askan or
-                (family.designated_askan.email or '').lower() != user.email.lower() or
+        if user.role == 'askan' and operation == 'assign' and (not is_case_askan(family, user.email) or
                 (user.assignments and user.assignments[0].family_id != family.id)):
-            abort(400, 'An askan can only be assigned to their one designated family.')
+            abort(400, 'An askan can only be assigned to their one family file with a matching email.')
         assignment = db.session.scalar(select(FamilyAssignment).where(FamilyAssignment.staff_user_id == user.id, FamilyAssignment.family_id == family.id))
-        if assignment:
+        if operation == 'revoke' and assignment:
             db.session.delete(assignment)
             action = ('Revoked family administrator: ' if user.role == 'family_admin'
                       else 'Revoked staff assignment: ')
-        else:
+        elif operation == 'assign' and not assignment:
             db.session.add(FamilyAssignment(staff_user_id=user.id, family_id=family.id))
             action = ('Assigned family administrator: ' if user.role == 'family_admin'
                       else 'Assigned staff member: ')
+        else:
+            return redirect(url_for('staff'))
         audit(f'{action}{user.email}', family.id)
         if user.status == 'active':
-            change = 'removed from' if assignment else 'assigned to'
-            send_email('family_assignment', user.email, f'Yazory family access {"removed" if assignment else "assigned"}',
+            removed = operation == 'revoke'
+            change = 'removed from' if removed else 'assigned to'
+            send_email('family_assignment', user.email, f'Yazory family access {"removed" if removed else "assigned"}',
                 f'You were {change} case YZ-{family.id:04d}. Sign in to Yazory to review your current assignments.',
                 staff_user_id=user.id, family_id=family.id)
         db.session.commit()
