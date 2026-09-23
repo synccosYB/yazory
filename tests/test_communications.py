@@ -728,6 +728,15 @@ def test_incoming_sms_resolves_person_and_shows_chronological_thread(monkeypatch
     assert f'href="/supporter-directory/{profile_id}/edit"' in notifications.text
     assert f'/communications#sms-{inbound_id}' in notifications.text
 
+    for language, label in (
+            ('he', 'שיחת SMS'), ('yi', 'SMS שמועס')):
+        with client.session_transaction() as session:
+            session['language'] = language
+        localized = client.get('/communications')
+        assert localized.status_code == 200
+        assert label in localized.text
+        assert 'יואל ברייער' in localized.text
+
 
 def test_unknown_sms_can_be_linked_to_existing_person(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)

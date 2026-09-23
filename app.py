@@ -2466,6 +2466,11 @@ def create_app(test_config=None):
     def sms_person_identity(phone):
         """Resolve one number without guessing when distinct people share it."""
         normalized = sms_phone_key(phone)
+        cache = getattr(_app.g, 'sms_identity_cache', None)
+        if cache is None:
+            cache = _app.g.sms_identity_cache = {}
+        if normalized in cache:
+            return cache[normalized]
         unknown = {
             'known': False, 'name': 'Unknown contact', 'url': '',
             'normalized_phone': normalized or (phone or ''), 'ambiguous': False}
@@ -2473,12 +2478,13 @@ def create_app(test_config=None):
             return unknown
         manual = _app.db.session.get(SmsPhoneLink, normalized)
         if manual and manual.profile:
-            return {
+            cache[normalized] = {
                 'known': True, 'name': manual.profile.name,
                 'url': _app.url_for('edit_supporter_profile',
                                     profile_id=manual.profile_id),
                 'normalized_phone': normalized, 'ambiguous': False,
                 'profile_id': manual.profile_id, 'confirmed': True}
+            return cache[normalized]
 
         candidates = {}
 
@@ -2489,55 +2495,77 @@ def create_app(test_config=None):
                     'normalized_phone': normalized, 'ambiguous': False,
                     'profile_id': profile_id, 'confirmed': False}
 
-        profiles = _app.db.session.scalars(select(SupporterProfile)).all()
+        directory = getattr(_app.g, 'sms_directory_cache', None)
+        if directory is None:
+            directory = _app.g.sms_directory_cache = {
+                'profiles': _app.db.session.scalars(select(SupporterProfile)).all(),
+                'people': _app.db.session.scalars(select(_app.SupporterPerson)).all(),
+                'contacts': _app.db.session.scalars(select(_app.Contact)).all(),
+                'families': _app.db.session.scalars(select(_app.Family)).all(),
+                'staff': _app.db.session.scalars(select(_app.StaffUser)).all(),
+                'askanim': _app.db.session.scalars(select(_app.Askan)).all()}
+            phone_index = directory['phone_index'] = {
+                kind: {} for kind in ('profiles', 'people', 'contacts',
+                                     'families', 'staff', 'askanim')}
+            fields = {
+                'profiles': ('phone',),
+                'people': ('phone', 'cell_phone', 'home_phone', 'work_phone'),
+                'contacts': ('phone', 'cell_phone', 'home_phone', 'work_phone'),
+                'families': ('phone',), 'staff': ('phone',),
+                'askanim': ('phone',)}
+            for kind, rows in directory.items():
+                if kind == 'phone_index':
+                    continue
+                for row in rows:
+                    for field in fields[kind]:
+                        key = sms_phone_key(getattr(row, field))
+                        if key:
+                            phone_index[kind].setdefault(key, {})[row.id] = row
+        matches = directory['phone_index']
+        profiles = directory['profiles']
         profiles_by_person = {
             row.person_id: row for row in profiles if row.person_id is not None}
-        for profile in profiles:
-            if sms_phone_key(profile.phone) == normalized:
-                add(('person', profile.person_id) if profile.person_id else
-                    ('profile', profile.id), profile.name,
-                    _app.url_for('edit_supporter_profile', profile_id=profile.id),
-                    profile.id)
-        for person in _app.db.session.scalars(select(_app.SupporterPerson)).all():
-            if any(sms_phone_key(value) == normalized for value in (
-                    person.phone, person.cell_phone, person.home_phone,
-                    person.work_phone)):
-                profile = profiles_by_person.get(person.id)
-                add(('person', person.id), person.name,
-                    (_app.url_for('edit_supporter_profile', profile_id=profile.id)
-                     if profile else _app.url_for('supporter_directory')),
-                    profile.id if profile else None)
-        for contact in _app.db.session.scalars(select(_app.Contact)).all():
-            if any(sms_phone_key(value) == normalized for value in (
-                    contact.phone, contact.cell_phone, contact.home_phone,
-                    contact.work_phone)):
-                add(('person', contact.person_id) if contact.person_id else
-                    ('contact', contact.id), contact.name,
-                    _app.url_for('supporter_detail', contact_id=contact.id))
-        for family in _app.db.session.scalars(select(_app.Family)).all():
-            if sms_phone_key(family.phone) == normalized:
-                add(('family', family.id), family.name,
-                    _app.url_for('family_detail', family_id=family.id))
-        for staff in _app.db.session.scalars(select(_app.StaffUser)).all():
-            if sms_phone_key(staff.phone) == normalized:
-                add(('staff', staff.id), staff.name or staff.email,
-                    _app.url_for('people_access'))
-        for askan in _app.db.session.scalars(select(_app.Askan)).all():
-            if sms_phone_key(askan.phone) == normalized:
-                add(('askan', askan.id), askan.name,
-                    _app.url_for('network_askan_detail', askan_id=askan.id))
+        for profile in matches['profiles'].get(normalized, {}).values():
+            add(('person', profile.person_id) if profile.person_id else
+                ('profile', profile.id), profile.name,
+                _app.url_for('edit_supporter_profile', profile_id=profile.id),
+                profile.id)
+        for person in matches['people'].get(normalized, {}).values():
+            profile = profiles_by_person.get(person.id)
+            add(('person', person.id), person.name,
+                (_app.url_for('edit_supporter_profile', profile_id=profile.id)
+                 if profile else _app.url_for('supporter_directory')),
+                profile.id if profile else None)
+        for contact in matches['contacts'].get(normalized, {}).values():
+            add(('person', contact.person_id) if contact.person_id else
+                ('contact', contact.id), contact.name,
+                _app.url_for('supporter_detail', contact_id=contact.id))
+        for family in matches['families'].get(normalized, {}).values():
+            add(('family', family.id), family.name,
+                _app.url_for('family_detail', family_id=family.id))
+        for staff in matches['staff'].get(normalized, {}).values():
+            add(('staff', staff.id), staff.name or staff.email,
+                _app.url_for('people_access'))
+        for askan in matches['askanim'].get(normalized, {}).values():
+            add(('askan', askan.id), askan.name,
+                _app.url_for('network_askan_detail', askan_id=askan.id))
         if len(candidates) == 1:
-            return next(iter(candidates.values()))
+            cache[normalized] = next(iter(candidates.values()))
+            return cache[normalized]
         if len(candidates) > 1:
             unknown['ambiguous'] = True
             unknown['matches'] = list(candidates.values())
+        cache[normalized] = unknown
         return unknown
 
     def sms_contact_ids(phone):
         normalized = sms_phone_key(phone)
+        directory = getattr(_app.g, 'sms_directory_cache', None)
+        if directory:
+            return list(directory['phone_index']['contacts'].get(normalized, {}))
         return [
-            contact.id for contact in _app.db.session.scalars(
-                select(_app.Contact)).all()
+            contact.id for contact in (directory['contacts'] if directory else
+                _app.db.session.scalars(select(_app.Contact)).all())
             if any(sms_phone_key(value) == normalized for value in (
                 contact.phone, contact.cell_phone, contact.home_phone,
                 contact.work_phone))
@@ -2547,9 +2575,13 @@ def create_app(test_config=None):
         """Combine general and supporter SMS records into one dated thread."""
         normalized = sms_phone_key(phone)
         rows = []
-        for message in _app.db.session.scalars(select(GeneralSmsMessage)).all():
-            if sms_phone_key(message.phone) == normalized:
-                rows.append({
+        general_index = getattr(_app.g, 'sms_general_index', None)
+        if general_index is None:
+            general_index = _app.g.sms_general_index = {}
+            for message in _app.db.session.scalars(select(GeneralSmsMessage)):
+                general_index.setdefault(sms_phone_key(message.phone), []).append(message)
+        for message in general_index.get(normalized, ()):
+            rows.append({
                     'direction': message.direction, 'body': message.body,
                     'created_at': message.created_at, 'status': message.status,
                     'family': message.family, 'provider_id': message.provider_message_id,
@@ -2573,11 +2605,16 @@ def create_app(test_config=None):
             deduplicated.setdefault(key, row)
         conversation = sorted(deduplicated.values(),
                               key=lambda row: (row['created_at'], row['source_id']))
+        campaign_cache = getattr(_app.g, 'sms_campaign_cache', None)
+        if campaign_cache is None:
+            campaign_cache = _app.g.sms_campaign_cache = {}
         for row in conversation:
-            row['campaign'] = (_app.db.session.scalar(select(
-                _app.CharityCampaign).where(
-                _app.CharityCampaign.family_id == row['family'].id).order_by(
-                _app.CharityCampaign.id.desc()))
+            if row['family'] and row['family'].id not in campaign_cache:
+                campaign_cache[row['family'].id] = _app.db.session.scalar(select(
+                    _app.CharityCampaign).where(
+                    _app.CharityCampaign.family_id == row['family'].id).order_by(
+                    _app.CharityCampaign.id.desc()))
+            row['campaign'] = (campaign_cache.get(row['family'].id)
                                if row['family'] else None)
         return conversation
 

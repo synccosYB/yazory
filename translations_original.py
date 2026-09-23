@@ -339,6 +339,14 @@ Delete|מחיקה|אויסמעקן
 Choose a PDF, PNG, or JPEG document.|בחרו מסמך PDF, PNG או JPEG.|קלויבט א PDF, PNG, אדער JPEG דאקומענט.
 Document must be between 1 byte and 8 MB.|המסמך חייב להיות בגודל שבין בית אחד ל־8 MB.|דער דאקומענט מוז זיין צווישן 1 בייט און 8 MB.
 The document filename extension does not match its contents.|סיומת שם המסמך אינה תואמת לתוכנו.|דער דאקומענט נאמען־ענדונג שטימט נישט מיט זיין אינהאלט.
+Unknown contact|איש קשר לא ידוע|אומבאקאנטער קאנטאקט
+Most recent outgoing SMS before this reply|הודעת ה־SMS האחרונה שנשלחה לפני התשובה הזאת|די לעצטע ארויסגעשיקטע SMS פאר דעם ענטפער
+SMS conversation|שיחת SMS|SMS שמועס
+Link this number to an existing person|קישור המספר לאדם קיים|פארבינדן דעם נומער מיט אן עקזיסטירנדן מענטש
+Choose person|בחירת אדם|קלויבט א מענטש
+Link contact|קישור איש קשר|פארבינדן דעם קאנטאקט
+Multiple people use this number. Choose the correct person rather than assuming.|כמה אנשים משתמשים במספר הזה. בחרו את האדם הנכון.|עטליכע מענטשן ניצן דעם נומער. קלויבט דעם ריכטיגן מענטש.
+Incoming SMS from|הודעת SMS נכנסת מאת|אריינקומענדע SMS פון
 '''
 CATALOG = {row.split('|')[0]:dict(zip(('he','yi'),row.split('|')[1:])) for row in _ROWS.strip().splitlines()}
 
