@@ -61,7 +61,7 @@ footer{padding:6px 24px 10px}.brand-caption{margin-bottom:14px}.sidebar nav a{pa
 .page-panels button.selected{background:var(--green);color:white}
 .table-pager{display:flex;align-items:center;justify-content:flex-start;gap:10px;padding:8px 12px}.table-pager button{padding:5px 9px}.table-pager span{direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
 .dashboard-metrics{grid-template-columns:repeat(12,minmax(0,1fr))}.dashboard-metrics>a{grid-column:span 3}.dashboard-metrics.metric-count-7>a:nth-last-child(-n+3){grid-column:span 4}.dashboard-metrics.metric-count-5{grid-template-columns:repeat(5,minmax(0,1fr))}.dashboard-metrics.metric-count-5>a{grid-column:auto}.dashboard-overview table{font-size:13px}.dashboard-overview th{font-size:11px}@media(max-width:1250px){.dashboard-metrics,.dashboard-metrics.metric-count-5{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-metrics>a,.dashboard-metrics.metric-count-7>a:nth-last-child(-n+3),.dashboard-metrics.metric-count-5>a{grid-column:auto}}@media(max-width:480px){.dashboard-metrics,.dashboard-metrics.metric-count-5{grid-template-columns:1fr 1fr}}
-body[data-page-tabs] .padded:has(details[open])>table,body[data-page-tabs] .padded:has(details[open])>.table-wrap,body[data-page-tabs] .padded:has(details[open])>.table-pager{display:none}
+body[data-page-tabs] .padded:has(> details[open])>table,body[data-page-tabs] .padded:has(> details[open])>.table-wrap,body[data-page-tabs] .padded:has(> details[open])>.table-pager{display:none}
 body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 @media(min-width:1101px){.mission{padding:12px 20px}.mission h2{font-size:19px;margin:5px 0}.mission p{font-size:12px}.attention-item{padding:9px 0}}
 @media(max-width:750px){main{padding:12px}.intake-actions{flex-wrap:wrap}.intake-actions>a{margin-inline-end:0}.intake-steps button{padding:6px}.intake-wizard .form-grid{grid-template-columns:1fr}#intake-review{grid-template-columns:1fr}}
@@ -719,3 +719,11 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 .supporter-contact-panel details>summary{cursor:pointer}
 .supporter-contact-panel form{display:grid;gap:8px;margin-top:8px}
 .supporter-contact-panel textarea,.supporter-contact-panel input{width:100%;box-sizing:border-box}
+
+/* Contact actions occupy the fifth column when present. */
+.family-supporters-table:has(.supporter-contact-actions){min-width:1000px}
+.family-supporters-table:has(.supporter-contact-actions) th:nth-child(1){width:23%}
+.family-supporters-table:has(.supporter-contact-actions) th:nth-child(2){width:16%}
+.family-supporters-table:has(.supporter-contact-actions) th:nth-child(3){width:11%}
+.family-supporters-table:has(.supporter-contact-actions) th:nth-child(4){width:34%}
+.family-supporters-table:has(.supporter-contact-actions) th:nth-child(5){width:16%}
