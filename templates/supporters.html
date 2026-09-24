@@ -104,7 +104,7 @@
 </tr>{% else %}<tr><td colspan="7">{{ _('No supporters found.') }}</td></tr>{% endfor %}</tbody>
 </table>
 </section>
-<details class="card padded add-supporter-panel no-print" {% if selected_family_id %}open{% endif %}>
+<details id="add-supporter" class="card padded add-supporter-panel no-print" {% if request.args.get("add") %}open{% endif %}>
 <summary>{{ _('+ Add a new person') }}</summary>
 <form method="post" action="{{ url_for('add_contact') if families else '#' }}">
 <input type="hidden" name="relationship_group" value="{{ relationship_group }}">
