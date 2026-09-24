@@ -478,5 +478,52 @@ def test_supporter_task_shows_only_its_five_latest_communications():
     assert 'task-detail-grid-single' not in page
     assert re.search(
         r'<div class="task-detail-grid[^"]*">.*?</section>\s*'
-        r'<section class="card padded"><h2>Recent communications</h2>',
+        r'<section class="card padded" id="task-communications"><h2>Recent communications</h2>',
         page, re.S)
+
+
+def test_task_communication_forms_save_on_task_and_reject_other_contact():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        login(client, 'admin@example.test')
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        family = Family(name='Outreach family')
+        db.session.add(family)
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Task supporter',
+                          relationship='Friend', status='To contact')
+        other = Contact(family_id=family.id, name='Other supporter',
+                        relationship='Friend', status='To contact')
+        db.session.add_all([contact, other])
+        db.session.flush()
+        task = StaffTask(title='Call', source_contact_id=contact.id,
+                         family_id=family.id, assigned_to=admin.id,
+                         created_by=admin.id)
+        db.session.add(task)
+        db.session.commit()
+        task_id, contact_id, other_id = task.id, contact.id, other.id
+    page = client.get(f'/tasks/{task_id}')
+    assert page.status_code == 200
+    assert 'id="task-communications"' in page.text
+    assert f'action="/contacts/{contact_id}/communications/call"' in page.text
+    assert f'action="/contacts/{contact_id}/communications/message/sms"' in page.text
+    assert f'action="/contacts/{contact_id}/communications/initial-email"' in page.text
+    assert f'action="/contacts/{contact_id}/communications/pledge-details"' in page.text
+    response = client.post(f'/contacts/{contact_id}/communications/call', data={
+        'csrf': 'test-csrf', 'task_id': task_id, 'note': 'Spoke by phone',
+        'outreach_status': 'Contacted'})
+    assert response.status_code == 302
+    assert response.location.endswith(f'/tasks/{task_id}#task-communications')
+    with app.app_context():
+        assert db.session.get(StaffTask, task_id).outcome == 'Spoke by phone'
+        assert db.session.get(Contact, contact_id).status == 'Contacted'
+    rejected = client.post(f'/contacts/{other_id}/communications/call', data={
+        'csrf': 'test-csrf', 'task_id': task_id, 'note': 'Wrong supporter',
+        'outreach_status': 'Contacted'})
+    assert rejected.status_code == 400
+    with app.app_context():
+        assert db.session.get(Contact, other_id).status == 'To contact'
+        assert db.session.scalar(db.select(db.func.count(SupporterCommunication.id)).where(
+            SupporterCommunication.contact_id == other_id)) == 0

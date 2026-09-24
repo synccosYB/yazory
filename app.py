@@ -3440,9 +3440,26 @@ def create_app(test_config=None):
     app.extensions.setdefault('notification_item_providers', []).append(
         sms_notification_items)
 
+    def validate_communication_task(contact_id):
+        """Keep task form actions scoped to the task's own supporter."""
+        task_id = _app.request.form.get('task_id', type=int)
+        if task_id is not None:
+            task = visible_task_or_403(task_id)
+            if task.source_contact_id != contact_id:
+                _app.abort(400, 'This task belongs to another supporter.')
+            return task
+
+    def communication_return(contact_id):
+        task = validate_communication_task(contact_id)
+        if task:
+            return _app.redirect(_app.url_for('task_detail', task_id=task.id,
+                                              _anchor='task-communications'))
+        return _app.redirect(_app.url_for('communications', contact_id=contact_id))
+
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):
         contact = communication_contact(contact_id)
+        validate_communication_task(contact.id)
         recipient_email = _app.request.form.get('recipient_email', '').strip().lower()[:254]
         if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', recipient_email):
             _app.abort(400, 'Enter a valid email address.')
@@ -3473,11 +3490,12 @@ def create_app(test_config=None):
                        'error')
         else:
             _app.flash('Initial email delivery failed. Check Communications.', 'error')
-        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+        return communication_return(contact.id)
 
     @app.post('/contacts/<int:contact_id>/communications/callback')
     def schedule_supporter_callback(contact_id):
         contact = communication_contact(contact_id)
+        validate_communication_task(contact.id)
         scheduled_for = parse_communication_time(
             _app.request.form.get('scheduled_for', ''))
         note = _app.request.form.get('note', '').strip()[:5000]
@@ -3509,11 +3527,12 @@ def create_app(test_config=None):
         add_audit(f'Scheduled supporter callback: {contact.name}')
         _app.db.session.commit()
         _app.flash('Callback saved.')
-        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+        return communication_return(contact.id)
 
     @app.post('/contacts/<int:contact_id>/communications/call')
     def complete_supporter_call(contact_id):
         contact = communication_contact(contact_id)
+        validate_communication_task(contact.id)
         note = _app.request.form.get('note', '').strip()[:5000]
         if not note:
             _app.abort(400, 'Enter the result of the call before completing it.')
@@ -3545,13 +3564,14 @@ def create_app(test_config=None):
         add_audit(f'Completed supporter call: {contact.name}')
         _app.db.session.commit()
         _app.flash('Phone call recorded.')
-        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+        return communication_return(contact.id)
 
     @app.post('/contacts/<int:contact_id>/communications/message/<channel>')
     def send_supporter_message(contact_id, channel):
         if channel not in ('sms', 'whatsapp'):
             _app.abort(404)
         contact = communication_contact(contact_id)
+        validate_communication_task(contact.id)
         recipient = (_app.request.form.get('recipient_phone') or
                      contact.cell_phone or contact.phone or
                      contact.home_phone or '').strip()[:80]
@@ -3591,11 +3611,12 @@ def create_app(test_config=None):
             _app.flash('Message was prepared but not sent because delivery is in preview mode.', 'error')
         else:
             _app.flash('Message delivery failed. Open Communication history for the error.', 'error')
-        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+        return communication_return(contact.id)
 
     @app.post('/contacts/<int:contact_id>/communications/pledge')
     def send_supporter_pledge(contact_id):
         contact = communication_contact(contact_id)
+        validate_communication_task(contact.id)
         if not contact.email:
             _app.abort(400, 'Enter the supporter email address before sending the pledge.')
         if contact.monthly_cents <= 0:
@@ -3640,11 +3661,12 @@ def create_app(test_config=None):
                        'error')
         else:
             _app.flash('Pledge email delivery failed. Check Communications.', 'error')
-        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+        return communication_return(contact.id)
 
     @app.post('/contacts/<int:contact_id>/communications/pledge-details')
     def save_supporter_pledge_details(contact_id):
         contact = communication_contact(contact_id)
+        validate_communication_task(contact.id)
         email = (_app.request.form.get('email') or '').strip()
         if email and (len(email) > 254 or not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email)):
             _app.abort(400, 'Enter a valid supporter email address.')
@@ -3670,7 +3692,7 @@ def create_app(test_config=None):
         add_audit(f'Updated pledge details from communications: {contact.name}')
         _app.db.session.commit()
         _app.flash('Pledge details saved.')
-        return _app.redirect(_app.url_for('communications', contact_id=contact.id))
+        return communication_return(contact.id)
 
     def visible_task_or_403(task_id):
         task = _app.db.get_or_404(StaffTask, task_id)
@@ -3973,6 +3995,7 @@ def create_app(test_config=None):
             callback=scheduled_callback(task.source_contact_id),
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
             outreach_results=TASK_OUTREACH_RESULTS,
+            pledge_frequencies=_app.PLEDGE_FREQUENCIES,
             staff=staff, may_assign=task_is_admin(task_user()), today=_app.date.today())
 
     @app.post('/tasks/<int:task_id>/status')

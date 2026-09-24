@@ -64,7 +64,7 @@ def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
     detail = client.get(f'/tasks/{task_id}').text
     assert '09/25/2026 02:30 PM EDT' in detail
     assert 'After work' in detail
-    assert f'/communications?contact_id={contact_id}#outreach-workflow' in detail
+    assert 'href="#task-communications"' in detail
     assert '09/25/2026 02:30 PM EDT' in client.get('/tasks').text
     assert '09/25/2026 02:30 PM EDT' in client.get('/work-queue').text
 
