@@ -10,7 +10,7 @@ from sqlalchemy import func, select, text, inspect
 
 import app_original as core
 from stripe_gateway import create_billing_portal_session
-from receipt_pdf import build_donor_receipt_pdf
+from receipt_pdf import build_donor_receipt_pdf, build_pledge_acknowledgment_pdf
 from twilio_service import deliver_message, normalize_phone
 
 
@@ -243,6 +243,17 @@ def register_supporter_portal(app):
         contact.monthly_cents = cents
         contact.pledge_frequency = frequency
         contact.status = 'Pledged' if cents else 'Paused'
+        if cents and contact.email:
+            base = app.config.get('APP_BASE_URL', '').rstrip('/')
+            link = (base + url_for('supporter_portal_pledge', contact_id=contact.id)
+                    if base else url_for('supporter_portal_pledge', contact_id=contact.id, _external=True))
+            app.extensions['send_email']('pledge_confirmation', contact.email,
+                'Your Yazory pledge acknowledgment',
+                f'Thank you for pledging ${cents / 100:,.2f} ({frequency}) '
+                f'for {contact.family.name}.\n\n'
+                f'Your pledge acknowledgment is available in your donor account: {link}\n\n'
+                'A pledge is not a payment. A donation receipt is issued only after a donation is received.',
+                family_id=contact.family_id)
         core.db.session.add(core.Audit(actor=f'Donor: {contact.email}',
             action='Donor updated pledge', family_id=contact.family_id))
         core.db.session.commit()
@@ -283,6 +294,14 @@ def register_supporter_portal(app):
         _portal_contact(receipt.contact_id)
         return send_file(build_donor_receipt_pdf(receipt), mimetype='application/pdf',
                          as_attachment=True, download_name=f'Yazory-receipt-{receipt.id:06d}.pdf')
+
+    @app.get('/donor/pledges/<int:contact_id>.pdf')
+    def supporter_portal_pledge(contact_id):
+        contact = _portal_contact(contact_id)
+        if contact.status != 'Pledged' or contact.monthly_cents <= 0:
+            abort(404)
+        return send_file(build_pledge_acknowledgment_pdf(contact), mimetype='application/pdf',
+                         as_attachment=True, download_name=f'Yazory-pledge-{contact.id:06d}.pdf')
 
     @app.post('/donor/logout')
     def supporter_logout():

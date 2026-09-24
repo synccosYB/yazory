@@ -114,6 +114,27 @@ def test_supporter_can_download_only_own_receipt(app, client):
     assert client.get(f'/donor/receipts/{other_id}.pdf').status_code == 403
 
 
+def test_pledge_acknowledgment_is_private_and_explicitly_unpaid(app, client):
+    with app.app_context():
+        own = db.session.scalar(db.select(Contact).order_by(Contact.id))
+        own.supporter_key = 'phone:8455550100'
+        other = Contact(family_id=own.family_id, name='Other donor', relationship='Friend',
+                        supporter_key='phone:8455550199', status='Pledged', monthly_cents=2000)
+        db.session.add(other)
+        db.session.commit()
+        own_id, other_id = own.id, other.id
+    with client.session_transaction() as portal_session:
+        portal_session['csrf'] = 'portal-csrf'
+        portal_session['supporter_key'] = 'phone:8455550100'
+    assert client.post(f'/donor/pledges/{own_id}', data={
+        'csrf': 'portal-csrf', 'amount': '42.50', 'frequency': 'Weekly'}).status_code == 302
+    response = client.get(f'/donor/pledges/{own_id}.pdf')
+    assert response.status_code == 200
+    assert b'No payment has been received' in response.data
+    assert b'not a donation receipt' in response.data
+    assert client.get(f'/donor/pledges/{other_id}.pdf').status_code == 403
+
+
 def test_requests_are_case_scoped_and_visible_only_to_owner(app, client):
     with app.app_context():
         own = db.session.scalar(db.select(Contact).order_by(Contact.id))

@@ -1617,7 +1617,9 @@ def create_app(test_config=None):
         if receipt_email:
             send_email('donation_receipt', receipt_email, 'Your Yazory donation receipt',
                        f'Thank you for your donation of ${amount_cents / 100:,.2f}.\n\n'
-                       f'Receipt reference: {reference}\n\n'
+                       f'Receipt reference: {reference}\n'
+                       f'Download your receipt after donor sign-in: '
+                       f'{absolute_url("supporter_portal_receipt", receipt_id=receipt.id)}\n\n'
                        'Yazory is developed and operated by Synccos Inc.',
                        family_id=contact.family_id)
         return receipt, True

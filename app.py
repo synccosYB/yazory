@@ -3640,6 +3640,9 @@ def create_app(test_config=None):
                 f'Please use this {destination} to make your donation:\n'
                 f'{delivery["url"]}\n\n'
                 'A separate receipt will be emailed every time a payment is successfully received.\n\n'
+                f'Your current pledge acknowledgment is available in your donor account after sign-in: '
+                f'{_app.url_for("supporter_portal_pledge", contact_id=contact.id, _external=True)}\n'
+                'A pledge is not a donation receipt.\n\n'
                 'If any detail is incorrect, please reply to this email before the next payment.')
         message = app.extensions['send_email'](
             'pledge_confirmation', contact.email, subject, body,
@@ -4096,7 +4099,9 @@ def create_app(test_config=None):
                     body = (f'Thank you for your donation of '
                             f'${receipt.amount_cents / 100:,.2f}.\n\n'
                             f'Date received: {receipt.received_on.strftime("%m/%d/%Y")}\n'
-                            f'Receipt reference: {receipt.reference or f"YZ-{receipt.id:06d}"}\n\n'
+                            f'Receipt reference: {receipt.reference or f"YZ-{receipt.id:06d}"}\n'
+                            f'Download your receipt after donor sign-in: '
+                            f'{_app.url_for("supporter_portal_receipt", receipt_id=receipt.id, _external=True)}\n\n'
                             'Yazory is developed and operated by Synccos Inc.')
                     message = app.extensions['send_email'](
                         'donation_receipt', receipt.contact.email, subject, body,
@@ -4117,6 +4122,74 @@ def create_app(test_config=None):
 
     wrap_receipt_source('record_receipt', send_manual_email=True)
     wrap_receipt_source('stripe_webhook')
+
+    @app.get('/supporters/<int:contact_id>/pledge-preview.pdf')
+    def staff_pledge_preview(contact_id):
+        from flask import send_file
+        from receipt_pdf import build_pledge_acknowledgment_pdf
+        contact = communication_contact(contact_id)
+        if contact.status != 'Pledged' or contact.monthly_cents <= 0:
+            _app.abort(404)
+        return send_file(build_pledge_acknowledgment_pdf(contact), mimetype='application/pdf',
+                         as_attachment=False)
+
+    @app.get('/supporters/receipts/<int:receipt_id>/preview.pdf')
+    def staff_receipt_preview(receipt_id):
+        from flask import send_file
+        from receipt_pdf import build_donor_receipt_pdf
+        receipt = _app.db.get_or_404(_app.Receipt, receipt_id)
+        communication_contact(receipt.contact_id)
+        return send_file(build_donor_receipt_pdf(receipt), mimetype='application/pdf',
+                         as_attachment=False)
+
+    @app.post('/supporters/receipts/<int:receipt_id>/send')
+    def staff_send_receipt(receipt_id):
+        receipt = _app.db.get_or_404(_app.Receipt, receipt_id)
+        contact = communication_contact(receipt.contact_id)
+        if not contact.email:
+            _app.abort(400, 'Add the donor email address before sending a receipt.')
+        url = _app.url_for('supporter_portal_receipt', receipt_id=receipt.id, _external=True)
+        subject = 'Your Yazory donation receipt'
+        body = (f'Dear {contact.name},\n\nHere is your receipt for the '
+                f'${receipt.amount_cents / 100:,.2f} donation received on '
+                f'{receipt.received_on.strftime("%m/%d/%Y")}.\n\n'
+                f'Open it after signing in to your donor account: {url}')
+        message = app.extensions['send_email']('donation_receipt', contact.email, subject,
+                                                body, family_id=receipt.family_id)
+        row = communication_row(contact, 'receipt_email', subject, body,
+                                status='completed' if message.status == 'sent' else message.status,
+                                email_message=message)
+        row.receipt_id = receipt.id
+        _app.db.session.commit()
+        _app.flash('Receipt sent.' if message.status == 'sent' else
+                   'Receipt delivery was not completed. Check Communications.',
+                   'success' if message.status == 'sent' else 'error')
+        return _app.redirect(_app.url_for('supporter_detail', contact_id=contact.id))
+
+    @app.post('/supporters/<int:contact_id>/pledge-send')
+    def staff_send_pledge_acknowledgment(contact_id):
+        contact = communication_contact(contact_id)
+        if contact.status != 'Pledged' or contact.monthly_cents <= 0:
+            _app.abort(400, 'Record a pledge before sending its acknowledgment.')
+        if not contact.email:
+            _app.abort(400, 'Add the donor email address before sending a pledge acknowledgment.')
+        url = _app.url_for('supporter_portal_pledge', contact_id=contact.id, _external=True)
+        subject = 'Your Yazory pledge acknowledgment'
+        body = (f'Dear {contact.name},\n\nYour pledge of '
+                f'${contact.monthly_cents / 100:,.2f} ({contact.pledge_frequency}) '
+                f'for {contact.family.name} is recorded.\n\n'
+                f'Open your acknowledgment after signing in: {url}\n\n'
+                'A pledge is not a payment or a donation receipt.')
+        message = app.extensions['send_email']('pledge_confirmation', contact.email,
+                                                subject, body, family_id=contact.family_id)
+        communication_row(contact, 'pledge_email', subject, body,
+                          status='completed' if message.status == 'sent' else message.status,
+                          email_message=message)
+        _app.db.session.commit()
+        _app.flash('Pledge acknowledgment sent.' if message.status == 'sent' else
+                   'Pledge delivery was not completed. Check Communications.',
+                   'success' if message.status == 'sent' else 'error')
+        return _app.redirect(_app.url_for('supporter_detail', contact_id=contact.id))
 
     register_supporter_portal(app)
     register_applicant_portal(app)

@@ -36,6 +36,7 @@
         <label>{{ _('Frequency') }}<select name="frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency==contact.pledge_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
         <button>{{ _('Update pledge') }}</button>
       </form>
+      {% if contact.status == 'Pledged' and contact.monthly_cents > 0 %}<p><a href="{{ url_for('supporter_portal_pledge',contact_id=contact.id) }}">{{ _('Download pledge acknowledgment (unpaid)') }}</a></p>{% endif %}
       <a class="button secondary" href="{{ url_for('supporter_portal_donate',contact_id=contact.id) }}">{{ _('Add a one-time donation') }}</a>
     </article>{% endfor %}</div>
   </section>
