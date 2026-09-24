@@ -2,6 +2,8 @@ from app_entry import create_app
 import hashlib
 import pytest
 from datetime import datetime
+from io import BytesIO
+from pypdf import PdfReader
 
 from app import (CharityCampaign, CharityDonation, CharityDonor, Contact,
                  Family, Receipt, StaffUser, db)
@@ -61,6 +63,9 @@ def test_supporter_can_update_only_own_pledge(app, client):
     with app.app_context():
         own = db.session.scalar(db.select(Contact).order_by(Contact.id))
         own.supporter_key = 'phone:8455550100'
+        own.status = 'Pledged'
+        own.monthly_cents = 10000
+        own.pledge_frequency = 'Monthly'
         other = Contact(family_id=own.family_id, name='Other person', relationship='Friend',
                         supporter_key='phone:8455550199')
         db.session.add(other)
@@ -132,8 +137,9 @@ def test_pledge_acknowledgment_is_private_and_explicitly_unpaid(app, client):
         'csrf': 'portal-csrf', 'amount': '42.50', 'frequency': 'Weekly'}).status_code == 302
     response = client.get(f'/donor/pledges/{own_id}.pdf')
     assert response.status_code == 200
-    assert b'No payment has been received' in response.data
-    assert b'not a donation receipt' in response.data
+    extracted = PdfReader(BytesIO(response.data)).pages[0].extract_text()
+    assert 'Received to date' in extracted
+    assert 'not a receipt for unpaid' in extracted
     assert client.get(f'/donor/pledges/{other_id}.pdf').status_code == 403
 
 
@@ -155,7 +161,8 @@ def test_abcharity_payment_appears_in_same_portal_history_and_is_private(app, cl
         db.session.add(donor)
         db.session.flush()
         donation = CharityDonation(campaign_id=campaign.id, external_id='481872',
-                                   donor_id=donor.id, amount_cents=10000, net_cents=9409,
+                                   donor_id=donor.id, amount_cents=10000,
+                                   pledge_total_cents=120000, net_cents=9409,
                                    donation_time=datetime(2026, 9, 22), anonymous=False,
                                    subscription=True, team='', notes='')
         db.session.add(donation)
@@ -170,7 +177,15 @@ def test_abcharity_payment_appears_in_same_portal_history_and_is_private(app, cl
     assert 'ABCharity #481872' in page.text
     response = client.get(f'/donor/abcharity/{donation_id}.pdf')
     assert response.status_code == 200
-    assert b'Payment processed by ABCharity' in response.data
+    assert 'Payment processed by ABCharity' in PdfReader(BytesIO(response.data)).pages[0].extract_text()
+    with app.app_context():
+        contact_id = db.session.scalar(db.select(CharityDonor.contact_id).where(
+            CharityDonor.id == db.session.get(CharityDonation, donation_id).donor_id))
+    pledge = client.get(f'/donor/pledges/{contact_id}.pdf')
+    pledge_text = PdfReader(BytesIO(pledge.data)).pages[0].extract_text()
+    assert '$1,200.00' in pledge_text
+    assert '$100.00' in pledge_text
+    assert '$1,100.00' in pledge_text
 
 
 def test_requests_are_case_scoped_and_visible_only_to_owner(app, client):

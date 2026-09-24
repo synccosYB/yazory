@@ -110,6 +110,7 @@ def normalize(row, campaign_id):
     subscription = flag('is_subscription')
     amount_cents = cents('amount')
     net_cents = cents('net')
+    pledge_total_cents = 0
     # For installment-plan subscription rows ABCharity returns the full
     # 12-month commitment in ``amount`` but only the current settlement in
     # ``net``. Some older subscription rows already contain one charge in
@@ -118,8 +119,10 @@ def normalize(row, campaign_id):
             and amount_cents // SUBSCRIPTION_INSTALLMENTS >= net_cents):
         if amount_cents % SUBSCRIPTION_INSTALLMENTS:
             raise ValueError(ERROR)
+        pledge_total_cents = amount_cents
         amount_cents //= SUBSCRIPTION_INSTALLMENTS
-    return dict(external_id=external_id, amount_cents=amount_cents, net_cents=net_cents,
+    return dict(external_id=external_id, amount_cents=amount_cents,
+                pledge_total_cents=pledge_total_cents, net_cents=net_cents,
                 donation_time=stamp, anonymous=flag('anonymous_donation'),
                 subscription=subscription, team=text('team', 300), notes=text('notes', 20000)), dict(
                 identity=identity, name=text('name', 300), email=email, phone=phone, address=text('address', 5000))

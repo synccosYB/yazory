@@ -155,6 +155,7 @@ def test_subscription_counts_only_the_paid_installment():
     receipt, _ = normalize({**ROW, 'amount': '1200.00', 'net': '94.09'}, '55')
     assert receipt['subscription'] is True
     assert receipt['amount_cents'] == 10_000
+    assert receipt['pledge_total_cents'] == 120_000
     assert receipt['net_cents'] == 9_409
 
 def test_linking_subscription_updates_pledge_and_supporter_payment_history(setup, monkeypatch):

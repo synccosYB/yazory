@@ -463,6 +463,7 @@ class CharityDonation(db.Model):
     donor_id = db.Column(db.Integer, db.ForeignKey('charity_donor.id'), nullable=False)
     donor = db.relationship('CharityDonor')
     amount_cents = db.Column(db.BigInteger, nullable=False)
+    pledge_total_cents = db.Column(db.BigInteger, nullable=False, default=0)
     net_cents = db.Column(db.BigInteger, nullable=False)
     donation_time = db.Column(db.DateTime, nullable=False)
     anonymous = db.Column(db.Boolean, nullable=False)
@@ -959,6 +960,10 @@ def create_app(test_config=None):
         if 'local_name' not in donor_columns:
             db.session.execute(text(
                 "ALTER TABLE charity_donor ADD COLUMN local_name VARCHAR(300) NOT NULL DEFAULT ''"))
+        donation_columns = {column['name'] for column in inspect(db.engine).get_columns('charity_donation')}
+        if 'pledge_total_cents' not in donation_columns:
+            db.session.execute(text(
+                'ALTER TABLE charity_donation ADD COLUMN pledge_total_cents BIGINT NOT NULL DEFAULT 0'))
         # PostgreSQL's full SQLAlchemy reflection query calls
         # pg_get_serial_sequence() for every column and can wait indefinitely
         # behind an otherwise harmless lock held by a live deployment.  This
