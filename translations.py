@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Close': {'he': 'סגירה', 'yi': 'פארמאכן'},
     'Expense': {'he': 'הוצאה', 'yi': 'הוצאה'},
     'Monthly amount': {'he': 'סכום חודשי', 'yi': 'חודש׳ליכע סכום'},
     'Balance': {'he': 'יתרה', 'yi': 'באלאנס'},

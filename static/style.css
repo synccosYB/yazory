@@ -791,3 +791,6 @@ body[data-endpoint="dashboard"] .monthly-sponsor{margin-top:10px;padding:7px 12p
 @media(max-width:1350px){.dashboard-metrics,.dashboard-metrics.metric-count-5{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:850px){.dashboard-top{grid-template-columns:1fr}.dashboard-metrics,.dashboard-metrics.metric-count-5{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.dashboard-task-list{grid-template-columns:1fr}.dashboard-task-counts{flex-wrap:wrap}.dashboard-metrics strong{font-size:18px}}
+
+.family-supporters-table .supporter-contact-close{display:block;margin:0 0 10px auto;min-width:75px}
+[dir=rtl] .family-supporters-table .supporter-contact-close{margin:0 auto 10px 0}
