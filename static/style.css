@@ -807,3 +807,17 @@ details.quick-action-popup>form label{min-width:0}
 
 details.quick-action-popup>form>label:has(textarea),details.quick-action-popup>form>p,details.quick-action-popup>form>button,details.quick-action-popup>form>.form-grid{grid-column:1/-1}
 @media(max-width:600px){details.quick-action-popup>form{grid-template-columns:1fr}}
+/* Five columns: the former inline pledge form no longer owns the final 40%. */
+#circle-of-support .family-supporters-table{table-layout:fixed;width:100%;min-width:0}
+#circle-of-support .family-supporters-table th:nth-child(1){width:29%}
+#circle-of-support .family-supporters-table th:nth-child(2){width:25%}
+#circle-of-support .family-supporters-table th:nth-child(3){width:15%}
+#circle-of-support .family-supporters-table th:nth-child(4){width:20%}
+#circle-of-support .family-supporters-table th:nth-child(5){width:11%}
+#circle-of-support .family-supporters-table td{overflow-wrap:anywhere}
+#circle-of-support .family-supporters-table td:nth-child(3){overflow-wrap:normal;white-space:nowrap}
+#circle-of-support .family-supporters-table .supporter-name{display:block}
+#circle-of-support .family-supporters-table .inline-children{margin:3px 0 0;font-size:11px}
+#circle-of-support .family-supporters-table .inline-children small{font-size:10px}
+#circle-of-support .family-supporters-table td:last-child .button{white-space:normal;line-height:1.2}
+@media(max-width:850px){#circle-of-support .family-supporters-table{min-width:760px}}
