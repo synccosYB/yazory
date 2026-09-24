@@ -26,8 +26,10 @@ def _font():
 
 def _value(page, x, y, value):
     value = str(value)
-    direction = 'RTL' if any('\u0590' <= ch <= '\u05ff' for ch in value) else 'LTR'
-    page.drawString(x, y, value, direction=direction)
+    if any('\u0590' <= ch <= '\u05ff' for ch in value):
+        page.drawRightString(537, y, value, direction='RTL')
+    else:
+        page.drawString(x, y, value, direction='LTR')
 
 
 def _document(title, rows, notes, *, pledge=False):
