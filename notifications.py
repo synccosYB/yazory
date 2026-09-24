@@ -158,13 +158,18 @@ def install(app):
         user, cursor = user_and_cursor()
         if not user:
             abort(403)
-        row = core.db.session.scalar(
-            audit_statement(user, cursor.last_seen_at).where(core.Audit.id == audit_id))
+        statement = select(core.Audit).where(core.Audit.id == audit_id)
+        family_ids = visible_family_ids(user)
+        if family_ids is not None:
+            statement = statement.where(core.Audit.family_id.in_(family_ids))
+        row = core.db.session.scalar(statement)
         if row is None:
             abort(404)
-        core.db.session.add(StaffActivityRead(
-            staff_user_id=user.id, audit_id=row.id, read_at=_now()))
-        core.db.session.commit()
+        if row.at > cursor.last_seen_at and core.db.session.get(
+                StaffActivityRead, (user.id, row.id)) is None:
+            core.db.session.add(StaffActivityRead(
+                staff_user_id=user.id, audit_id=row.id, read_at=_now()))
+            core.db.session.commit()
         return redirect(activity_url(row))
 
     @app.post('/notifications/mark-read')
