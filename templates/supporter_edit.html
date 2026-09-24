@@ -21,6 +21,7 @@
 <label>{{ _('Donation amount ($)') }}<input name="monthly" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(contact.monthly_cents/100) }}" required></label>
 <label>{{ _('Donation frequency') }}<select name="pledge_frequency">{% for frequency in pledge_frequencies %}<option value="{{ frequency }}"{% if frequency==contact.pledge_frequency %} selected{% endif %}>{{ _(frequency) }}</option>{% endfor %}</select></label>
 <label>{{ _('Outreach status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status==contact.status }}>{{ _(status) }}</option>{% endfor %}</select></label>
+<label>{{ _('Reason for declining') }}<textarea name="decline_reason" maxlength="5000" rows="3" placeholder="{{ _('What did he say?') }}">{{ contact.decline_reason }}</textarea></label>
 </div>
 <label>{{ _('Identification notes') }}<textarea name="notes" maxlength="5000" rows="4">{{ contact.notes }}</textarea><small>{{ _('Add any detail that helps distinguish this supporter from another person with a similar name.') }}</small></label>
 <div class="form-actions"><a href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a><button>{{ _('Save') }}</button></div>

@@ -273,6 +273,7 @@ class Contact(db.Model):
     monthly_cents = db.Column(db.Integer, default=0, nullable=False)
     pledge_frequency = db.Column(db.String(20), nullable=False, default='Monthly')
     status = db.Column(db.String(30), default='To contact', nullable=False)
+    decline_reason = db.Column(db.Text, nullable=False, default='')
     receipts = db.relationship('Receipt', backref='contact', lazy=True)
     children = db.relationship('ContactChild', backref='contact', lazy=True,
                                cascade='all, delete-orphan', order_by='ContactChild.id')
@@ -912,6 +913,7 @@ def create_app(test_config=None):
             'workplace': "VARCHAR(160) NOT NULL DEFAULT ''",
             'work_phone': "VARCHAR(80) NOT NULL DEFAULT ''",
             'notes': "TEXT NOT NULL DEFAULT ''",
+            'decline_reason': "TEXT NOT NULL DEFAULT ''",
         }.items():
             if column not in contact_columns:
                 db.session.execute(text(f'ALTER TABLE contact ADD COLUMN {column} {definition}'))
@@ -2962,6 +2964,7 @@ def create_app(test_config=None):
             contact.relationship = relationship
             connect_shul_friend(contact)
         contact.status = status
+        contact.decline_reason = field('decline_reason', limit=5000) if status == 'Declined' else ''
         contact.monthly_cents = monthly_cents
         contact.pledge_frequency = pledge_frequency
         sync_followup = app.extensions.get('sync_supporter_followup_task')
@@ -3068,6 +3071,7 @@ def create_app(test_config=None):
                     for key, value in personal.items():
                         setattr(linked_contact, key, value)
             contact.status = status
+            contact.decline_reason = field('decline_reason', limit=5000) if status == 'Declined' else ''
             contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
             contact.pledge_frequency = pledge_frequency
             contact.relationship = relationship

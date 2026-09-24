@@ -4,6 +4,8 @@ from flask import session
 LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 # English | Hebrew | Heimish Yiddish
 _ROWS = '''
+Reason for declining|סיבת הסירוב|פארוואס ער האט אפגעזאגט
+What did he say?|מה הוא אמר?|וואס האט ער געזאגט?
 Part of|חלק מ|א טייל פון
 Supporter callback|שיחת חזרה לתומך|צוריקרופן דעם העלפער
 Scheduled for|נקבע ל|באשטימט אויף

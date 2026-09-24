@@ -45,6 +45,7 @@
 <div><small>{{ _('Phone') }}</small><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></div>
 <div><small>{{ _('Received to date') }}</small><strong>{{ received[c.id]|money }}</strong></div>
 <div><small>{{ _('Follow-up status') }}</small><strong>{{ _(c.status) }}</strong></div>
+{% if c.status == 'Declined' and c.decline_reason %}<div><small>{{ _('Reason for declining') }}</small><span class="preserve">{{ c.decline_reason }}</span></div>{% endif %}
 </div>
 <div class="supporter-record-tools">
 <div class="pledge-cell">
@@ -57,6 +58,7 @@
 <label>{{ _('Phone') }}<input name="phone" value="{{ c.phone or '' }}" maxlength="80" type="tel"></label>
 <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ c.cell_phone or '' }}" maxlength="80" type="tel" autocomplete="tel"></label>
 <label>{{ _('Follow-up status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}" {{ 'selected' if status == c.status }}>{{ _(status) }}</option>{% endfor %}</select></label>
+<label>{{ _('Reason for declining') }}<textarea name="decline_reason" maxlength="5000" rows="2" placeholder="{{ _('What did he say?') }}">{{ c.decline_reason }}</textarea></label>
 </div>
 <label class="sr-only" for="pledge-amount-{{ c.id }}">{{ _('Donation amount ($)') }} — {{ c.name }}</label>
 <div class="pledge-amount-input"><span aria-hidden="true">$</span><input id="pledge-amount-{{ c.id }}" name="monthly" type="number" min="0" max="1000000" step="0.01" value="{{ '%.2f'|format(c.monthly_cents/100) }}" required></div>
