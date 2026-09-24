@@ -375,6 +375,12 @@ body[data-page-tabs] details[open]{margin-top:5px;padding-top:5px}
 .sms-bubble time{color:var(--muted)}.sms-bubble p{margin:6px 0 0;white-space:pre-wrap}.sms-link-contact{display:grid;gap:8px;margin:14px 0;padding:12px;border:1px solid var(--line);border-radius:8px}
 
 /* Let every authenticated workspace screen use the full desktop canvas. */
+/* Keep the navigation in the page's scroll flow: one vertical scrollbar. */
+@media (min-width:751px) {
+  body:has(> .sidebar) { display:grid; grid-template-columns:235px minmax(0,1fr); align-items:start; }
+  body > .sidebar { position:sticky; inset:auto; top:0; width:235px; height:auto; min-height:100vh; overflow:visible; align-self:start; }
+  body > .workspace { margin-inline-start:0; width:100%; }
+}
 .workspace main {
   width: 100%;
   max-width: none;
