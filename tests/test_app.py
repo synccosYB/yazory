@@ -1407,3 +1407,47 @@ def test_office_and_fundraiser_permissions_and_isolation(monkeypatch):
         assert page.status_code == 200
         assert f'lang="{language}" dir="{direction}"' in page.text
         assert label in page.text
+
+
+def test_married_child_and_spouse_join_support_circle_without_duplicate(app, client):
+    path = '/families/1/children'
+    data = {'name': 'Married child', 'age': '23', 'school': '',
+            'married': 'yes', 'spouse_name': 'Child spouse',
+            'cell_phone': '8455551212'}
+    assert post(client, path, data).status_code == 302
+    with app.app_context():
+        child = db.session.scalar(db.select(Child).where(Child.name == 'Married child'))
+        child_id = child.id
+        contact_id, spouse_id = child.supporter_contact_id, child.spouse_contact_id
+        assert contact_id and spouse_id and contact_id != spouse_id
+        assert db.session.get(Contact, contact_id).cell_phone == '8455551212'
+        assert db.session.get(Contact, contact_id).relationship == 'Child'
+        assert db.session.get(Contact, spouse_id).relationship == 'Child’s spouse'
+        db.session.get(Contact, contact_id).status = 'Contacted'
+        db.session.commit()
+    data['name'] = 'Married child updated'
+    data['cell_phone'] = '8455553434'
+    assert post(client, f'/children/{child_id}', data).status_code == 302
+    with app.app_context():
+        child = db.session.get(Child, child_id)
+        assert (child.supporter_contact_id, child.spouse_contact_id) == (contact_id, spouse_id)
+        contact = db.session.get(Contact, contact_id)
+        assert (contact.name, contact.cell_phone, contact.status) == (
+            'Married child updated', '8455553434', 'Contacted')
+        assert db.session.scalar(db.select(db.func.count(Contact.id)).where(
+            Contact.family_id == 1, Contact.relationship.in_(
+                ('Child', 'Child’s spouse')))) == 2
+
+
+def test_existing_married_child_backfills_once(app):
+    with app.app_context():
+        child = Child(family_id=1, name='Existing married child', age=30,
+                      school='', married=True, spouse_name='Existing spouse')
+        db.session.add(child)
+        db.session.commit()
+        for _ in range(2):
+            app.extensions['sync_married_child_supporters'](child)
+            db.session.commit()
+        assert child.supporter_contact_id and child.spouse_contact_id
+        assert db.session.scalar(db.select(db.func.count(Contact.id)).where(
+            Contact.id.in_((child.supporter_contact_id, child.spouse_contact_id)))) == 2
