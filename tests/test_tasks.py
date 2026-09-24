@@ -1,3 +1,4 @@
+import re
 from app_entry import create_app
 from datetime import date
 from werkzeug.security import generate_password_hash
@@ -475,3 +476,7 @@ def test_supporter_task_shows_only_its_five_latest_communications():
     assert 'Conversation 1' not in page
     assert 'Private other supporter' not in page
     assert 'task-detail-grid-single' not in page
+    assert re.search(
+        r'<div class="task-detail-grid[^"]*">.*?</section>\s*'
+        r'<section class="card padded"><h2>Recent communications</h2>',
+        page, re.S)
