@@ -77,7 +77,7 @@ Deployment intentionally refuses to start without all of these Replit Secrets:
 | `ADMIN_EMAIL` | Bootstrap owner organization-administrator identity |
 | `ADMIN_PASSWORD_HASH` | Bootstrap owner Werkzeug password hash, never the plaintext password |
 | `SESSION_SECRET` | Stable random secret, at least 32 characters |
-| `APP_BASE_URL` | Public origin used in secure email links, for example `https://yazory.replit.app` |
+| `APP_BASE_URL` | Public origin used outside production; production donor links use `https://yaazory.org` |
 | `RESEND_API_KEY` | Resend API key for transactional email |
 | `EMAIL_FROM` | Verified sender, for example `Yazory <notifications@example.org>` |
 | `EMAIL_REPLY_DOMAIN` | Resend inbound domain used for secure per-message reply addresses, for example `reply.example.org` |
@@ -125,7 +125,7 @@ The configured bootstrap identity is created idempotently as the owner organizat
 
 Staff invitations, account activation, password recovery, role/assignment notifications, case/expense notifications, and an administrator delivery log are implemented through Resend. Without email secrets, messages are retained as failed delivery records. Stripe Checkout supports one-time, weekly, and monthly donations; verified webhooks create idempotent Yazory receipt records and the application sends its own email receipts. Stripe Connect Express onboarding keeps recipient bank and debit-card details at Stripe. Organization administrators can transfer an approved expense to a verified family or vendor connected account. Stripe Tax and Stripe invoices are not used. Still not implemented: donor PDF receipts, bank reconciliation, email replies/shared inbox, SMS delivery, full bookkeeping, recurring expense generation, or automated backups.
 
-Create a Stripe webhook destination for `https://yazory.replit.app/stripe/webhook` and subscribe it to `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, and `account.updated`. Connect must be enabled on the Yazory Stripe account before recipient onboarding can create Express connected accounts. Use Stripe test mode and test connected accounts before replacing the test key with the live key.
+Create a Stripe webhook destination for `https://yaazory.org/stripe/webhook` and subscribe it to `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`, and `account.updated`. Connect must be enabled on the Yazory Stripe account before recipient onboarding can create Express connected accounts. Use Stripe test mode and test connected accounts before replacing the test key with the live key.
 External automatic charges, generated tax receipts, invitations, email/SMS delivery, full double-entry bookkeeping, recurring expense generation and automated backups are not provided. Document uploads, staff-operated bank reconciliation and read-only ABCharity imports are implemented; see the current workflow documentation. No production publishing or external financial actions are performed by this repository setup.
 
 ## Tests

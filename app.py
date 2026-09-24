@@ -9,6 +9,7 @@ from email.utils import getaddresses
 from io import BytesIO, StringIO
 
 import app_original as _app
+
 from flask import Response, current_app, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +20,12 @@ from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
                             message_status, normalize_phone,
                             validate_webhook_signature)
+
+
+def _public_url(endpoint, **values):
+    base = current_app.config.get('APP_BASE_URL', '').rstrip('/')
+    return (base + _app.url_for(endpoint, **values) if base else
+            _app.url_for(endpoint, _external=True, **values))
 
 
 class SupporterProfile(_app.db.Model):
@@ -2663,8 +2670,7 @@ def create_app(test_config=None):
         if len(pledges) > 1:
             return {
                 'kind': 'Yazory',
-                'url': _app.url_for('supporter_donation', contact_id=contact.id,
-                                    _external=True),
+                'url': _public_url('supporter_donation', contact_id=contact.id),
                 'pledges': pledges,
                 'reason': f'{len(pledges)} connected family pledges · one charge',
             }
@@ -2686,8 +2692,7 @@ def create_app(test_config=None):
             }
         return {
             'kind': 'Yazory',
-            'url': _app.url_for('supporter_donation', contact_id=contact.id,
-                                _external=True),
+            'url': _public_url('supporter_donation', contact_id=contact.id),
             'pledges': pledges,
             'reason': 'ABCharity campaign is unavailable · secure Yazory payment',
         }
@@ -3641,7 +3646,7 @@ def create_app(test_config=None):
                 f'{delivery["url"]}\n\n'
                 'A separate receipt will be emailed every time a payment is successfully received.\n\n'
                 f'Your current pledge acknowledgment is available in your donor account after sign-in: '
-                f'{_app.url_for("supporter_portal_pledge", contact_id=contact.id, _external=True)}\n'
+                f'{_public_url("supporter_portal_pledge", contact_id=contact.id)}\n'
                 'A pledge is not a donation receipt.\n\n'
                 'If any detail is incorrect, please reply to this email before the next payment.')
         message = app.extensions['send_email'](
@@ -4101,7 +4106,7 @@ def create_app(test_config=None):
                             f'Date received: {receipt.received_on.strftime("%m/%d/%Y")}\n'
                             f'Receipt reference: {receipt.reference or f"YZ-{receipt.id:06d}"}\n'
                             f'Download your receipt after donor sign-in: '
-                            f'{_app.url_for("supporter_portal_receipt", receipt_id=receipt.id, _external=True)}\n\n'
+                            f'{_public_url("supporter_portal_receipt", receipt_id=receipt.id)}\n\n'
                             'Yazory is developed and operated by Synccos Inc.')
                     message = app.extensions['send_email'](
                         'donation_receipt', receipt.contact.email, subject, body,
@@ -4201,7 +4206,7 @@ def create_app(test_config=None):
         contact = communication_contact(receipt.contact_id)
         if not contact.email:
             _app.abort(400, 'Add the donor email address before sending a receipt.')
-        url = _app.url_for('supporter_portal_receipt', receipt_id=receipt.id, _external=True)
+        url = _public_url('supporter_portal_receipt', receipt_id=receipt.id)
         subject = 'Your Yazory donation receipt'
         body = (f'Dear {contact.name},\n\nHere is your receipt for the '
                 f'${receipt.amount_cents / 100:,.2f} donation received on '
@@ -4226,7 +4231,7 @@ def create_app(test_config=None):
             _app.abort(400, 'Record a pledge before sending its acknowledgment.')
         if not contact.email:
             _app.abort(400, 'Add the donor email address before sending a pledge acknowledgment.')
-        url = _app.url_for('supporter_portal_pledge', contact_id=contact.id, _external=True)
+        url = _public_url('supporter_portal_pledge', contact_id=contact.id)
         subject = 'Your Yazory pledge acknowledgment'
         body = (f'Dear {contact.name},\n\nYour pledge of '
                 f'${contact.monthly_cents / 100:,.2f} ({contact.pledge_frequency}) '

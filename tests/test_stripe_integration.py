@@ -45,6 +45,10 @@ def test_test_app_ignores_production_base_url_by_default(monkeypatch):
     assert app.config['APP_BASE_URL'] == 'http://localhost'
 
 
+def test_production_links_use_public_domain_even_with_old_host_setting():
+    assert app_module.public_base_url(True, 'https://yazory.replit.app') == 'https://yaazory.org'
+
+
 def test_native_one_time_payment_and_fee_settlement(monkeypatch):
     app = make_app()
     client = app.test_client()

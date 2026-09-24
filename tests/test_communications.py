@@ -112,6 +112,7 @@ def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
 
 def test_staff_can_text_abcharity_record_access_without_donor_email(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
+    app.config['APP_BASE_URL'] = 'https://yaazory.org'
     with app.app_context():
         contact = db.session.get(Contact, contact_id)
         contact.email = ''
@@ -136,6 +137,7 @@ def test_staff_can_text_abcharity_record_access_without_donor_email(monkeypatch)
         assert row.status == 'preview'
         assert 'ABCharity #481872' in row.body
         assert '/donor/login/' in row.body
+        assert 'https://yaazory.org/donor/login/' in row.body
     assert client.get(f'/supporters/abcharity/{donation_id}/preview.pdf').status_code == 200
     assert 'ABCharity #481872' in client.get('/collections?month=2026-09').text
 

@@ -509,6 +509,12 @@ def valid_werkzeug_password_hash(value):
         or re.fullmatch(r'pbkdf2:[^:$]+:\d+\$[^$]+\$[^$]+', value)
     )
 
+def public_base_url(production, configured):
+    configured = configured.rstrip('/')
+    return ('https://yaazory.org' if production or
+            configured.lower().endswith('.replit.app') else configured)
+
+
 def create_app(test_config=None):
     app = Flask(__name__)
     production = os.getenv('APP_ENV') == 'production'
@@ -540,7 +546,9 @@ def create_app(test_config=None):
                       PUBLIC_INBOX_EMAIL=os.getenv(
                           'PUBLIC_INBOX_EMAIL', 'info@yaazory.org').strip().lower(),
                       RESEND_WEBHOOK_SECRET=os.getenv('RESEND_WEBHOOK_SECRET', ''),
-                      APP_BASE_URL=os.getenv('APP_BASE_URL', '').rstrip('/'),
+                      # Outbound donor links must always use the public domain,
+                      # even when an old deployment setting names its host.
+                      APP_BASE_URL=public_base_url(production, os.getenv('APP_BASE_URL', '')),
                       STRIPE_SECRET_KEY=os.getenv('STRIPE_SECRET_KEY', ''),
                       STRIPE_PUBLISHABLE_KEY=os.getenv('STRIPE_PUBLISHABLE_KEY', ''),
                       STRIPE_WEBHOOK_SECRET=os.getenv('STRIPE_WEBHOOK_SECRET', ''),
