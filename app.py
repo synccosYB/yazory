@@ -1626,6 +1626,11 @@ def create_app(test_config=None):
         _app.db.session.commit()
         _migrate_canonical_rabbis()
         _migrate_canonical_helpers()
+        # Existing married children become case supporters on the release migration.
+        sync_child = app.extensions['sync_married_child_supporters']
+        for child in _app.db.session.scalars(select(_app.Child).where(
+                _app.Child.married.is_(True))).all():
+            sync_child(child)
         _migrate_family_gabbaim_to_shared_shuls()
         sync_shul_gabbai_supporters()
         _app.db.session.commit()
