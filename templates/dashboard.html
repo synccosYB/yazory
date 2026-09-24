@@ -1,15 +1,17 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import family_table with context %}
 {% block content %}
 <div class="page-heading dashboard-heading">
-  <div><div class="eyebrow">{{ _("THE BIG PICTURE") }}</div><h1>{{ _("Every family. A little more supported.") }}</h1><p>{{ _("Keep care, community, and everyday expenses connected.") }}</p></div>
+  <div><h1>{{ _("Overview") }}</h1></div>
   {% if is_org_admin %}<a class="button" href="/families/new">{{ _("+ New family") }}</a>{% endif %}
 </div>
+<div class="dashboard-top">
 <section class="card dashboard-task-summary">
-  <div class="section-heading"><div><h2>{{ _('My tasks') }}</h2><p>{{ _('Work assigned to you') }}</p></div><div class="row-actions">{% if current_staff %}<a href="{{ url_for('work_queue') }}">{{ _('Work queue') }}</a>{% endif %}<a href="{{ url_for('tasks', assigned_to=current_staff.id) if current_staff and is_org_admin else url_for('tasks') }}">{{ _('View all tasks') }}</a></div></div>
+  <div class="section-heading"><h2>{{ _('My tasks') }}</h2><div class="row-actions">{% if current_staff %}<a href="{{ url_for('work_queue') }}">{{ _('Work queue') }}</a>{% endif %}<a href="{{ url_for('tasks', assigned_to=current_staff.id) if current_staff and is_org_admin else url_for('tasks') }}">{{ _('View all tasks') }}</a></div></div>
   <div class="dashboard-task-counts"><a href="{{ url_for('tasks', assigned_to=current_staff.id, due='open') if current_staff and is_org_admin else url_for('tasks', due='open') }}"><strong>{{ my_task_count }}</strong><span>{{ _('Open tasks') }}</span></a><a href="{{ url_for('tasks', assigned_to=current_staff.id, due='today') if current_staff and is_org_admin else url_for('tasks', due='today') }}"><strong>{{ my_tasks_due }}</strong><span>{{ _('Due today') }}</span></a><a href="{{ url_for('tasks', assigned_to=current_staff.id, due='overdue') if current_staff and is_org_admin else url_for('tasks', due='overdue') }}"><strong>{{ my_tasks_overdue }}</strong><span>{{ _('Overdue tasks') }}</span></a></div>
-  <div class="dashboard-task-list">{% for task in my_tasks %}<a href="{{ url_for('task_detail', task_id=task.id) }}"><strong>{{ task.title }}{% if task.parent %}<small>{{ _('Part of') }}: {{ task.parent.title }}</small>{% endif %}</strong><span>{{ task.due_date|american_date if task.due_date else _('No due date') }}</span></a>{% else %}<p class="empty">{{ _('No open tasks assigned to you.') }}</p>{% endfor %}</div>
+  <div class="dashboard-task-list">{% for task in my_tasks[:2] %}<a href="{{ url_for('task_detail', task_id=task.id) }}"><strong>{{ task.title }}</strong><span>{{ task.due_date|american_date if task.due_date else _('No due date') }}</span></a>{% else %}<p class="empty">{{ _('No open tasks assigned to you.') }}</p>{% endfor %}</div>
 </section>
+<section class="card attention dashboard-attention"><div class="section-heading"><h2>{{ _("Needs attention") }}</h2><a href="/expenses?status=Requested"><span class="count">{{ requested|length }}</span> {{ _("Review expense requests →") }}</a></div>{% for e in requested[:2] %}<a class="attention-item" href="/expenses?status=Requested"><strong>{{ e.family.name }}</strong><small>{{ _(e.category) }} · {{ e.amount_cents|money }}</small></a>{% else %}<p class="empty">{{ _("You’re all caught up.") }}</p>{% endfor %}</section>
+</div>
 <div class="metrics dashboard-metrics {{ 'metric-count-7' if network_visible else 'metric-count-5' }} clickable-metrics">
   <a href="{{ url_for('families', status='Active') }}"><article><span>{{ _("Active families") }}</span><strong>{{ active }}</strong><small>{{ _("Cases receiving support") }}</small></article></a>
   <a href="{{ url_for('families') }}"><article><span>{{ _("All cases") }}</span><strong>{{ families|length }}</strong><small>{{ _("Every family in the system") }}</small></article></a>
@@ -18,9 +20,4 @@
   <a href="{{ url_for('expenses', status='Approved') }}"><article><span>{{ _("Approved this month") }}</span><strong>{{ approved|money }}</strong><small>{{ _("Includes paid expenses") }}</small></article></a>
   <a href="{{ url_for('expenses', status='Paid') }}"><article><span>{{ _("Paid this month") }}</span><strong>{{ paid|money }}</strong><small>{{ _("Recorded against") }} {{ current_month }}</small></article></a>
 </div>
-<div class="overview-grid dashboard-overview">
-  <section class="card"><div class="section-heading"><div><h2>{{ _("Family directory") }}</h2><p>{{ _("The people at the heart of the work.") }}</p></div><a href="/families">{{ _("View all →") }}</a></div>{{ family_table(families[:6]) }}</section>
-  <section class="card attention"><div class="section-heading"><h2>{{ _("Needs attention") }}</h2><span class="count">{{ requested|length }}</span></div>{% for e in requested[:4] %}<a class="attention-item" href="/expenses?status=Requested"><span class="attention-icon">↗</span><div><strong>{{ e.family.name }}</strong><small>{{ _(e.category) }} · {{ e.amount_cents|money }}</small></div></a>{% else %}<p class="empty">{{ _("You’re all caught up.") }}<br>{{ _("No expense requests waiting.") }}</p>{% endfor %}<a class="button secondary full" href="/expenses?status=Requested">{{ _("Review expense requests →") }}</a></section>
-</div>
-<section class="mission"><div class="eyebrow">{{ _("SMALL COMMITMENTS. MEANINGFUL SUPPORT.") }}</div><h2>{{ _("A family should be able to focus on healing.") }}</h2><p>{{ _("Bring relatives and friends together to help cover tuition, groceries, and the daily costs that don’t stop during illness.") }}</p></section>
 {% endblock %}

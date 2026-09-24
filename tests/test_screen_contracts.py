@@ -109,14 +109,15 @@ def test_network_applicants_and_people_use_matching_accordion_cards():
     assert template.count('<summary class="network-panel-header">') == 2
 
 
-def test_dashboard_uses_translated_labels_and_keeps_preview_rows_visible():
+def test_dashboard_uses_translated_labels_and_links_to_full_lists():
     root = Path(__file__).resolve().parents[1]
     template = (root / 'templates/dashboard.html').read_text()
-    script = (root / 'static/pages.js').read_text()
     assert 'אלע cases' not in template
     assert '_("All cases")' in template
-    assert 'class="overview-grid dashboard-overview"' in template
-    assert "dashboard-overview table" in script
+    assert 'class="dashboard-top"' in template
+    assert 'my_tasks[:2]' in template
+    assert "url_for('families')" in template
+    assert 'family_table(' not in template
 
 
 def test_family_name_is_the_only_profile_link_in_family_table():

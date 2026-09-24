@@ -765,3 +765,29 @@ html[dir="rtl"] .public-page-home .landing-hero p,html[dir="rtl"] .public-page-a
 .task-communication-list{display:grid;gap:12px;margin:12px 0}.task-communication-list article{border-bottom:1px solid var(--line);padding-bottom:10px}.task-communication-list strong,.task-communication-list small{display:block}.task-communication-list p{margin:6px 0 0;overflow-wrap:anywhere}
 
 .task-subtask-wide{grid-column:1 / -1}
+/* Compact overview; full lists remain available through their links. */
+body[data-endpoint="dashboard"] main{padding-top:16px;padding-bottom:0}
+body[data-endpoint="dashboard"] .dashboard-heading{margin-bottom:12px}
+body[data-endpoint="dashboard"] .dashboard-heading h1{margin:0;font-size:24px}
+.dashboard-top{display:grid;grid-template-columns:minmax(0,2fr) minmax(250px,1fr);gap:12px}
+.dashboard-top .card{margin-bottom:12px}
+.dashboard-top .section-heading{padding:10px 14px 6px;gap:10px}
+.dashboard-top .section-heading h2{margin:0}
+.dashboard-task-counts{padding:0 14px 8px;gap:6px}
+.dashboard-task-counts a{padding:4px 8px}
+.dashboard-task-list{padding:0 14px 12px;gap:6px}
+.dashboard-task-list>a{padding:5px 8px;min-width:0;align-items:center}
+.dashboard-task-list strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dashboard-task-list span{font-size:11px}
+.dashboard-attention .attention-item{padding:6px 0;display:block}
+.dashboard-attention .empty{margin:0;padding:12px}
+.dashboard-metrics{margin-bottom:0;grid-template-columns:repeat(7,minmax(0,1fr))}
+.dashboard-metrics>a,.dashboard-metrics.metric-count-7>a:nth-last-child(-n+3),.dashboard-metrics.metric-count-5>a{grid-column:auto}
+.dashboard-metrics.metric-count-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.dashboard-metrics article{padding:10px;min-height:82px}
+.dashboard-metrics strong{font-size:20px;margin:3px 0;white-space:nowrap}
+.dashboard-metrics small{display:none}
+body[data-endpoint="dashboard"] .monthly-sponsor{margin-top:10px;padding:7px 12px}
+@media(max-width:1350px){.dashboard-metrics,.dashboard-metrics.metric-count-5{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:850px){.dashboard-top{grid-template-columns:1fr}.dashboard-metrics,.dashboard-metrics.metric-count-5{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.dashboard-task-list{grid-template-columns:1fr}.dashboard-task-counts{flex-wrap:wrap}.dashboard-metrics strong{font-size:18px}}
