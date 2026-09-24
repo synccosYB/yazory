@@ -313,3 +313,18 @@ After pulling a release that includes the Organizations & Askonim Data Center,
 run `flask --app app_entry:create_app migrate-db` once before restarting the
 application. The migration is additive and does not rewrite existing family,
 supporter, or financial records.
+
+### Task reminders
+
+Staff can set an Eastern time reminder when creating a task or on its detail page.
+The assignee sees an in-app popup while Yazory is open; it checks every minute and
+can be dismissed. To send email reminders while nobody is browsing, schedule this
+command every minute in the production environment (after `init-db`):
+
+```sh
+APP_ENV=production python -m flask --app 'app:create_app()' send-task-reminders
+```
+
+The command skips completed and cancelled tasks and records successful sends to
+avoid resending on later runs. Configure one scheduler instance for this command.
+The popup needs the app to be open; email reaches the assignee when it is closed.

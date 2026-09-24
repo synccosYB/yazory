@@ -5,6 +5,13 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Task reminder': {'he': 'תזכורת למשימה', 'yi': 'דערמאנונג פאר אן אויפגאבע'},
+    'Open task': {'he': 'פתיחת המשימה', 'yi': 'עפן די אויפגאבע'},
+    'Dismiss reminder': {'he': 'סגירת התזכורת', 'yi': 'פארמאך די דערמאנונג'},
+    'Remind me at (Eastern time)': {'he': 'הזכירו לי בתאריך ושעה (שעון ניו יורק)', 'yi': 'דערמאן מיך ווען (ניו יארקער צייט)'},
+    'Save reminder': {'he': 'שמירת תזכורת', 'yi': 'היט די דערמאנונג'},
+    'Reminder saved.': {'he': 'התזכורת נשמרה.', 'yi': 'די דערמאנונג איז אפגעהיטן.'},
+    'Enter a valid reminder time.': {'he': 'הזינו זמן תזכורת תקין.', 'yi': 'לייגט אריין א ריכטיגע צייט.'},
     'Close': {'he': 'סגירה', 'yi': 'פארמאכן'},
     'Expense': {'he': 'הוצאה', 'yi': 'הוצאה'},
     'Monthly amount': {'he': 'סכום חודשי', 'yi': 'חודש׳ליכע סכום'},

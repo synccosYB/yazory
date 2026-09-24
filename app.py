@@ -7,6 +7,7 @@ import hmac
 from decimal import Decimal, InvalidOperation
 from email.utils import getaddresses
 from io import BytesIO, StringIO
+from zoneinfo import ZoneInfo
 
 import app_original as _app
 
@@ -369,6 +370,8 @@ class StaffTask(_app.db.Model):
     status = _app.db.Column(_app.db.String(20), nullable=False, default='To do', index=True)
     priority = _app.db.Column(_app.db.String(20), nullable=False, default='Normal', index=True)
     due_date = _app.db.Column(_app.db.Date, nullable=True, index=True)
+    remind_at = _app.db.Column(_app.db.DateTime, nullable=True, index=True)
+    reminder_sent_at = _app.db.Column(_app.db.DateTime, nullable=True)
     created_at = _app.db.Column(
         _app.db.DateTime, nullable=False,
         default=lambda: _app.datetime.now(_app.timezone.utc).replace(tzinfo=None))
@@ -382,6 +385,13 @@ class StaffTask(_app.db.Model):
         single_parent=True))
     assignee = _app.db.relationship('StaffUser', foreign_keys=[assigned_to])
     creator = _app.db.relationship('StaffUser', foreign_keys=[created_by])
+
+
+class TaskReminderDismissal(_app.db.Model):
+    __tablename__ = 'task_reminder_dismissal'
+    task_id = _app.db.Column(_app.db.Integer, _app.db.ForeignKey('staff_task.id'), primary_key=True)
+    staff_user_id = _app.db.Column(_app.db.Integer, _app.db.ForeignKey('staff_user.id'), primary_key=True)
+    remind_at = _app.db.Column(_app.db.DateTime, nullable=False)
 
 
 class SupporterCommunication(_app.db.Model):
@@ -1551,6 +1561,10 @@ def create_app(test_config=None):
             _app.db.session.execute(text(
                 "ALTER TABLE staff_task ADD COLUMN outcome TEXT NOT NULL DEFAULT ''"
             ))
+        if 'remind_at' not in task_columns:
+            _app.db.session.execute(text('ALTER TABLE staff_task ADD COLUMN remind_at TIMESTAMP'))
+        if 'reminder_sent_at' not in task_columns:
+            _app.db.session.execute(text('ALTER TABLE staff_task ADD COLUMN reminder_sent_at TIMESTAMP'))
         communication_columns = {
             column['name'] for column in
             _app.inspect(_app.db.engine).get_columns('supporter_communication')
@@ -4065,6 +4079,81 @@ def create_app(test_config=None):
         except ValueError:
             _app.abort(400, 'Enter a valid due date.')
 
+    def parsed_reminder():
+        raw = _app.request.form.get('remind_at', '').strip()
+        if not raw:
+            return None
+        try:
+            local = _app.datetime.fromisoformat(raw)
+            if local.tzinfo is not None:
+                raise ValueError
+            return local.replace(tzinfo=ZoneInfo('America/New_York')).astimezone(
+                _app.timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            _app.abort(400, 'Enter a valid reminder time.')
+
+    @app.cli.command('send-task-reminders')
+    def send_task_reminders():
+        """Run each minute from a scheduler; send each due reminder once."""
+        now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+        due = _app.db.session.scalars(select(StaffTask).where(
+            StaffTask.remind_at.is_not(None), StaffTask.remind_at <= now,
+            StaffTask.reminder_sent_at.is_(None),
+            StaffTask.status.notin_(('Completed', 'Cancelled'))).order_by(
+                StaffTask.remind_at, StaffTask.id).limit(100)).all()
+        for task in due:
+            user = task.assignee
+            if user.status != 'active' or not user.email:
+                continue
+            subject = f'Yazory task reminder: {task.title}'
+            body = (f'{task.title}\n\n{task.description}\n\n'
+                    f'Open task: {_public_url("task_detail", task_id=task.id)}')
+            message = app.extensions['send_email'](
+                'task_reminder', user.email, subject, body,
+                staff_user_id=user.id, family_id=task.family_id)
+            if message.status != 'failed':
+                task.reminder_sent_at = now
+            _app.db.session.commit()
+
+    @app.get('/tasks/reminders/pending')
+    def pending_task_reminders():
+        user = task_user()
+        if user is None:
+            _app.abort(403)
+        now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
+        rows = _app.db.session.scalars(select(StaffTask).where(
+            StaffTask.assigned_to == user.id, StaffTask.remind_at.is_not(None),
+            StaffTask.remind_at <= now, StaffTask.status.notin_(('Completed', 'Cancelled')),
+            ~select(TaskReminderDismissal.task_id).where(
+                TaskReminderDismissal.task_id == StaffTask.id,
+                TaskReminderDismissal.staff_user_id == user.id,
+                TaskReminderDismissal.remind_at == StaffTask.remind_at).exists()
+        ).order_by(StaffTask.remind_at.desc()).limit(5)).all()
+        return jsonify([{'id': row.id, 'title': row.title,
+                         'url': _app.url_for('task_detail', task_id=row.id)} for row in rows])
+
+    @app.post('/tasks/<int:task_id>/reminder/dismiss')
+    def dismiss_task_reminder(task_id):
+        task = visible_task_or_403(task_id)
+        if task.assigned_to != task_user().id:
+            _app.abort(403)
+        if task.remind_at:
+            _app.db.session.merge(TaskReminderDismissal(
+                task_id=task.id, staff_user_id=task.assigned_to,
+                remind_at=task.remind_at))
+            _app.db.session.commit()
+        return jsonify({'ok': True})
+
+    @app.post('/tasks/<int:task_id>/reminder')
+    def update_task_reminder(task_id):
+        task = visible_task_or_403(task_id)
+        task.remind_at = parsed_reminder()
+        task.reminder_sent_at = None
+        _app.db.session.query(TaskReminderDismissal).filter_by(task_id=task.id).delete()
+        _app.db.session.commit()
+        _app.flash('Reminder saved.')
+        return _app.redirect(_app.url_for('task_detail', task_id=task.id))
+
     def active_assignee():
         assignee = _app.db.session.get(
             _app.StaffUser, _app.request.form.get('assigned_to', type=int))
@@ -4098,6 +4187,7 @@ def create_app(test_config=None):
                 family_id=family_id,
                 priority=priority,
                 due_date=parsed_due_date())
+            task.remind_at = parsed_reminder()
             _app.db.session.add(task)
             add_audit(f'Created task: {title} / assigned to {assignee.email}')
             _app.db.session.commit()
@@ -4198,7 +4288,8 @@ def create_app(test_config=None):
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
             outreach_results=TASK_OUTREACH_RESULTS,
             pledge_frequencies=_app.PLEDGE_FREQUENCIES,
-            staff=staff, may_assign=task_is_admin(task_user()), today=_app.date.today())
+            staff=staff, may_assign=task_is_admin(task_user()), today=_app.date.today(),
+            utc_zone=_app.timezone.utc, eastern_zone=ZoneInfo('America/New_York'))
 
     @app.post('/tasks/<int:task_id>/status')
     def update_task_status(task_id):

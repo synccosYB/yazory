@@ -821,3 +821,6 @@ details.quick-action-popup>form>label:has(textarea),details.quick-action-popup>f
 #circle-of-support .family-supporters-table .inline-children small{font-size:10px}
 #circle-of-support .family-supporters-table td:last-child .button{white-space:normal;line-height:1.2}
 @media(max-width:850px){#circle-of-support .family-supporters-table{min-width:760px}}
+#task-reminder-popup:not([hidden]) { position:fixed; z-index:10000; inset:auto 1.5rem 1.5rem auto; width:min(360px,calc(100vw - 3rem)); padding:1.4rem; border:2px solid #b49a52; border-radius:16px; color:#172f4c; background:#fff; box-shadow:0 12px 40px #102b4b55; display:flex; flex-direction:column; gap:.8rem }
+#task-reminder-popup p { margin:0; overflow-wrap:anywhere }
+#task-reminder-popup button { align-self:start }
