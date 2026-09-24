@@ -843,6 +843,17 @@ _EXTRA.update({
 # translator so CI can enforce complete locale coverage from one source.
 CATALOG.update(_EXTRA)
 
+_EXTRA.update({
+    'Case broadcast': {'he': 'הודעה לקבוצת תומכים בתיק', 'yi': 'מעסעדזש פאר א גרופע העלפער אין א תיק'},
+    'Choose a case and category, review the recipients, then send.': {'he': 'בחרו תיק וקטגוריה, בדקו את הנמענים ושלחו.', 'yi': 'וועלט אויס א תיק און א קאטעגאריע, קוקט איבער די מקבלים, און שיקט.'},
+    'All relationships': {'he': 'כל הקשרים', 'yi': 'אלע קרובים'},
+    'All statuses': {'he': 'כל המצבים', 'yi': 'אלע מצבים'},
+    'Preview recipients': {'he': 'הצגת הנמענים', 'yi': 'ווייז די מקבלים'},
+    'eligible recipients': {'he': 'נמענים מתאימים', 'yi': 'פאסיגע מקבלים'},
+    'No eligible recipients for this channel and category.': {'he': 'אין נמענים מתאימים לערוץ ולקטגוריה שנבחרו.', 'yi': 'עס זענען נישט דא קיין פאסיגע מקבלים פאר דעם וועג און קאטעגאריע.'},
+    'Send to these recipients': {'he': 'שליחה לנמענים אלה', 'yi': 'שיק צו די מקבלים'},
+})
+
 # Generated only by the explicit translation Sheet pull command. Google is not
 # contacted while serving requests, so an outage cannot affect the application.
 _sheet_path = Path(__file__).with_name('translation_sheet_overrides.json')

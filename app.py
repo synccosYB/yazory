@@ -2859,6 +2859,97 @@ def create_app(test_config=None):
     def contact_mobile(contact):
         return contact.cell_phone or contact.phone or contact.home_phone or ''
 
+    @app.route('/communications/case-broadcast', methods=['GET', 'POST'])
+    def case_broadcast():
+        user = task_user()
+        if not user or user.role not in ('organization_admin', 'family_admin'):
+            _app.abort(403)
+        assigned_ids = select(_app.FamilyAssignment.family_id).where(
+            _app.FamilyAssignment.staff_user_id == user.id)
+        family_statement = select(_app.Family).order_by(_app.Family.name)
+        if not task_is_admin(user):
+            family_statement = family_statement.where(_app.Family.id.in_(assigned_ids))
+        families = _app.db.session.scalars(family_statement).all()
+        source = _app.request.form if _app.request.method == 'POST' else _app.request.args
+        family_id = source.get('family_id', type=int)
+        relationship = source.get('relationship', '')
+        status_filter = source.get('status', '')
+        channel = source.get('channel', 'email')
+        if relationship and relationship not in set(_app.RELATIONSHIPS) | _app.LEGACY_RELATIONSHIPS:
+            _app.abort(400)
+        if status_filter and status_filter not in _app.CONTACT_STATUSES:
+            _app.abort(400)
+        if channel not in ('email', 'sms', 'whatsapp'):
+            _app.abort(400)
+        family = None
+        recipients = []
+        if family_id is not None:
+            family = _app.db.get_or_404(_app.Family, family_id)
+            if not task_is_admin(user) and family_id not in {row.id for row in families}:
+                _app.abort(403)
+            statement = select(_app.Contact).where(_app.Contact.family_id == family_id)
+            if relationship:
+                statement = statement.where(_app.Contact.relationship == relationship)
+            if status_filter:
+                statement = statement.where(_app.Contact.status == status_filter)
+            contacts = _app.db.session.scalars(statement.order_by(_app.Contact.id)).all()
+            seen = set()
+            for contact in contacts:
+                address = (contact.email or '').strip().lower() if channel == 'email' else contact_mobile(contact)
+                if channel == 'email':
+                    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', address):
+                        continue
+                else:
+                    try:
+                        address = normalize_phone(address)
+                    except ValueError:
+                        continue
+                if address not in seen:
+                    seen.add(address)
+                    recipients.append((contact, address))
+        subject = source.get('subject', '').strip()[:300]
+        body = source.get('body', '').strip()[:5000]
+        if _app.request.method == 'POST' and source.get('confirm') == 'send':
+            if not family or not recipients or not body or (channel == 'email' and not subject):
+                _app.abort(400, 'Choose a case with eligible recipients and enter a message.')
+            if channel != 'email' and len(body) > 1600:
+                _app.abort(400, 'Message is too long.')
+            if len(recipients) > 200:
+                _app.abort(400, 'Narrow the category to 200 recipients or fewer.')
+            sent = failed = 0
+            for contact, address in recipients:
+                if channel == 'email':
+                    message = app.extensions['send_email'](
+                        'case_broadcast', address, subject, body, family_id=family_id)
+                    result = 'completed' if message.status == 'sent' else message.status
+                    communication_row(contact, 'email', subject, body,
+                                      status=result, email_message=message)
+                else:
+                    if app.config['TESTING'] or app.config['DEMO']:
+                        provider_id, error, result = None, '', 'preview'
+                    else:
+                        provider_id, error = deliver_message(
+                            app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                            address, body, channel=channel,
+                            sms_from=app.config['TWILIO_SMS_FROM'],
+                            whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'],
+                            messaging_service_sid=twilio_service_sid())
+                        result = 'failed' if error else 'completed'
+                    communication_row(contact, channel, subject or channel.title(), body,
+                                      status=result, provider_message_id=provider_id,
+                                      delivery_error=error)
+                sent += result == 'completed'
+                failed += result == 'failed'
+            add_audit(f'Case broadcast: {channel} to {family_id}; {sent} sent, {failed} failed')
+            _app.db.session.commit()
+            _app.flash(f'{sent} sent; {failed} failed; {len(recipients)-sent-failed} prepared.')
+            return _app.redirect(_app.url_for('case_broadcast', family_id=family_id))
+        return _app.render_template('case_broadcast.html', title='Case broadcast',
+                                    families=families, family=family, recipients=recipients,
+                                    relationships=_app.RELATIONSHIPS + sorted(_app.LEGACY_RELATIONSHIPS),
+                                    relationship=relationship, status_filter=status_filter,
+                                    channel=channel, subject=subject, body=body)
+
     def twilio_setting(key):
         row = _app.db.session.get(_app.OrganizationSetting, key)
         return row.value if row and isinstance(row.value, str) else ''

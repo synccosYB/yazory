@@ -15,6 +15,34 @@ from app import (Askan, CharityCampaign, CharityDonation, CharityDonor, Contact,
                  SupporterCommunication, SupporterProfile, db)
 
 
+def test_case_broadcast_previews_and_sends_once_per_address(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        family_id = contact.family_id
+        db.session.add(Contact(family_id=family_id, name='Duplicate address',
+                               relationship='Friend', phone='8455552222',
+                               email=contact.email, status='To contact'))
+        db.session.add(Contact(family_id=family_id, name='Other category',
+                               relationship='Sibling', phone='8455553333',
+                               email='other@example.test', status='To contact'))
+        db.session.commit()
+    payload = {'family_id': str(family_id), 'relationship': 'Friend',
+               'channel': 'email', 'subject': 'Case update', 'body': 'Hello'}
+    preview = post(client, '/communications/case-broadcast',
+                   {**payload, 'confirm': 'preview'})
+    assert preview.status_code == 200
+    assert b'1 eligible recipients' in preview.data
+    response = post(client, '/communications/case-broadcast',
+                    {**payload, 'confirm': 'send'})
+    assert response.status_code == 302
+    with app.app_context():
+        rows = db.session.scalars(db.select(SupporterCommunication).where(
+            SupporterCommunication.family_id == family_id,
+            SupporterCommunication.subject == 'Case update')).all()
+        assert len(rows) == 1
+
+
 def post(client, path, data):
     client.get('/')
     with client.session_transaction() as session:

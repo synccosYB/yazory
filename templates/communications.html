@@ -2,7 +2,7 @@
 {% block content %}
 <div class="page-heading"><div><div class="eyebrow">{{ _('SUPPORTER OUTREACH') }}</div><h1>{% if selected_contact %}{{ _('Communication with') }} {{ selected_contact.name }}{% else %}{{ _('Communications') }}{% endif %}</h1><p>{% if selected_contact %}{{ selected_contact.family.name }} · <bdi dir="ltr">{{ selected_contact.cell_phone or selected_contact.phone or selected_contact.home_phone or selected_contact.email or '—' }}</bdi>{% else %}{{ _('Run every supporter from the first phone call through pledge confirmation and every payment receipt.') }}{% endif %}</p></div>{% if selected_contact %}<a class="button secondary" href="{{ url_for('communications') }}">{{ _('Show all supporters') }}</a>{% endif %}</div>
 
-{% if not selected_contact %}<section class="mailbox" aria-label="{{ _('Communications') }}">
+{% if not selected_contact %}<p><a class="button secondary" href="{{ url_for('case_broadcast') }}">{{ _('Case broadcast') }}</a></p><section class="mailbox" aria-label="{{ _('Communications') }}">
   <aside class="mailbox-folders">
     <button class="mailbox-compose" type="button" data-mailbox-compose>{{ _('Compose') }}</button>
     <nav aria-label="{{ _('Mail folders') }}">

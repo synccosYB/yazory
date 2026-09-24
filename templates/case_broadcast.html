@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">{{ _('Communications') }}</div><h1>{{ _('Case broadcast') }}</h1><p>{{ _('Choose a case and category, review the recipients, then send.') }}</p></div><a class="button secondary" href="{{ url_for('communications') }}">{{ _('Communications') }}</a></div>
+<section class="card padded">
+  <form method="post" action="{{ url_for('case_broadcast') }}">
+    {{ token(csrf) }}
+    <label>{{ _('Case') }}<select name="family_id" required><option value="">{{ _('Choose case') }}</option>{% for row in families %}<option value="{{ row.id }}" {% if family and row.id == family.id %}selected{% endif %}>YZ-{{ '%04d'|format(row.id) }} · {{ row.name }}</option>{% endfor %}</select></label>
+    <label>{{ _('Relationship') }}<select name="relationship"><option value="">{{ _('All relationships') }}</option>{% for item in relationships %}<option value="{{ item }}" {% if relationship == item %}selected{% endif %}>{{ _(item) }}</option>{% endfor %}</select></label>
+    <label>{{ _('Status') }}<select name="status"><option value="">{{ _('All statuses') }}</option>{% for item in contact_statuses %}<option value="{{ item }}" {% if status_filter == item %}selected{% endif %}>{{ _(item) }}</option>{% endfor %}</select></label>
+    <label>{{ _('Channel') }}<select name="channel"><option value="email" {% if channel == 'email' %}selected{% endif %}>{{ _('Email') }}</option><option value="sms" {% if channel == 'sms' %}selected{% endif %}>{{ _('SMS') }}</option><option value="whatsapp" {% if channel == 'whatsapp' %}selected{% endif %}>{{ _('WhatsApp') }}</option></select></label>
+    <label>{{ _('Subject') }}<input name="subject" maxlength="300" value="{{ subject }}"></label>
+    <label>{{ _('Message') }}<textarea name="body" rows="6" maxlength="5000">{{ body }}</textarea></label>
+    <button class="secondary" name="confirm" value="preview">{{ _('Preview recipients') }}</button>
+    {% if family %}<p><strong>{{ recipients|length }} {{ _('eligible recipients') }}</strong></p>
+    <div class="table-wrap"><table><thead><tr><th>{{ _('Name') }}</th><th>{{ _('To') }}</th></tr></thead><tbody>{% for contact, address in recipients %}<tr><td>{{ contact.name }}</td><td><bdi dir="ltr">{{ address }}</bdi></td></tr>{% else %}<tr><td colspan="2">{{ _('No eligible recipients for this channel and category.') }}</td></tr>{% endfor %}</tbody></table></div>
+    {% if recipients and recipients|length <= 200 %}<button name="confirm" value="send">{{ _('Send to these recipients') }}</button>{% endif %}
+    {% endif %}
+  </form>
+</section>
+{% endblock %}
