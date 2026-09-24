@@ -3647,11 +3647,9 @@ def create_app(test_config=None):
         communication_row(contact, 'pledge_email', subject, body,
                           status='completed' if message.status == 'sent' else message.status,
                           email_message=message)
-        linked = _app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.supporter_key == contact.supporter_key)).all() \
-            if contact.supporter_key else [contact]
-        for row in linked:
-            row.status = 'Pledged'
+        # Sending a pledge for one case must not change another case's
+        # outreach status, even when the person supports both families.
+        contact.status = 'Pledged'
         add_audit(f'{"Sent" if message.status == "sent" else "Prepared"} supporter pledge via {delivery["kind"]}: {contact.name}')
         _app.db.session.commit()
         if message.status == 'sent':
@@ -3682,13 +3680,11 @@ def create_app(test_config=None):
         frequency = (_app.request.form.get('pledge_frequency') or 'Monthly').strip()
         if frequency not in _app.PLEDGE_FREQUENCIES:
             _app.abort(400, 'Choose a valid donation frequency.')
-        linked = _app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.supporter_key == contact.supporter_key)).all() \
-            if contact.supporter_key else [contact]
-        for row in linked:
-            row.email = email
-            row.monthly_cents = pledge_cents
-            row.pledge_frequency = frequency
+        # Email belongs to the person; pledge amount and cadence belong to
+        # this case's Contact relationship. Keep those values independent.
+        update_supporter_person(contact, {'email': email})
+        contact.monthly_cents = pledge_cents
+        contact.pledge_frequency = frequency
         add_audit(f'Updated pledge details from communications: {contact.name}')
         _app.db.session.commit()
         _app.flash('Pledge details saved.')
