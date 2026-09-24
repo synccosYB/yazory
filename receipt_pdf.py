@@ -89,3 +89,45 @@ def build_pledge_acknowledgment_pdf(contact):
     pdf.extend((f'trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n'
                 f'startxref\n{xref}\n%%EOF\n').encode())
     return BytesIO(bytes(pdf))
+
+
+def build_abcharity_payment_pdf(donation, contact):
+    """Record an imported payment without claiming Yazory processed it."""
+    rows = (
+        ('Payment reference', f'ABCharity #{donation.external_id}'),
+        ('Date received', donation.donation_time.strftime('%m/%d/%Y')),
+        ('Donor', contact.name),
+        ('Supported family', contact.family.name),
+        ('Amount paid', f'${donation.amount_cents / 100:,.2f}'),
+        ('Net received by case', f'${donation.net_cents / 100:,.2f}'),
+    )
+    commands = ['BT', '/F1 19 Tf', '54 720 Td',
+                '(YAZORY DONATION PAYMENT RECORD) Tj', '/F1 11 Tf', '0 -48 Td']
+    for label, value in rows:
+        commands.extend((f'({_pdf_text(label)}:  {_pdf_text(value)}) Tj', '0 -28 Td'))
+    commands.extend(('0 -24 Td',
+                     '(Payment processed by ABCharity; imported into Yazory.) Tj',
+                     '0 -24 Td',
+                     '(For the original processor receipt, contact ABCharity.) Tj', 'ET'))
+    stream = '\n'.join(commands).encode('latin-1')
+    objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
+               b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+               b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] '
+               b'/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+               b'<< /Length %d >>\nstream\n%s\nendstream' % (len(stream), stream),
+               b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>']
+    pdf = bytearray(b'%PDF-1.4\n')
+    offsets = [0]
+    for number, obj in enumerate(objects, 1):
+        offsets.append(len(pdf))
+        pdf.extend(f'{number} 0 obj\n'.encode())
+        pdf.extend(obj)
+        pdf.extend(b'\nendobj\n')
+    xref = len(pdf)
+    pdf.extend(f'xref\n0 {len(objects) + 1}\n'.encode())
+    pdf.extend(b'0000000000 65535 f \n')
+    for offset in offsets[1:]:
+        pdf.extend(f'{offset:010d} 00000 n \n'.encode())
+    pdf.extend((f'trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n'
+                f'startxref\n{xref}\n%%EOF\n').encode())
+    return BytesIO(bytes(pdf))

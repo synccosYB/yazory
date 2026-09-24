@@ -10,7 +10,7 @@ from werkzeug.security import generate_password_hash
 
 import app_original as core_module
 import app as app_module
-from app import (Askan, CharityCampaign, Contact, EmailMessage, Family, GeneralSmsMessage,
+from app import (Askan, CharityCampaign, CharityDonation, CharityDonor, Contact, EmailMessage, Family, GeneralSmsMessage,
                  InboundInboxMessage, Receipt, SmsPhoneLink, StaffTask,
                  SupporterCommunication, SupporterProfile, db)
 
@@ -68,6 +68,7 @@ def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
     assert '09/25/2026 02:30 PM EDT' in client.get('/tasks').text
     assert '09/25/2026 02:30 PM EDT' in client.get('/work-queue').text
 
+
     # Saving the case-specific pledge does not undo a scheduled call.
     assert post(client, f'/contacts/{contact_id}', {
         'status': 'To contact', 'monthly': '36',
@@ -108,6 +109,35 @@ def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
         assert task.status == 'Completed'
         assert len(calls) == 1 and calls[0].body == 'Spoke with supporter'
 
+
+def test_staff_can_text_abcharity_record_access_without_donor_email(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        contact.email = ''
+        campaign = db.session.scalar(db.select(CharityCampaign).where(
+            CharityCampaign.family_id == contact.family_id))
+        donor = CharityDonor(campaign_id=campaign.id, identity='receipt:481872',
+                             name=contact.name, email='', phone=contact.phone,
+                             address='', contact_id=contact.id)
+        db.session.add(donor)
+        db.session.flush()
+        donation = CharityDonation(campaign_id=campaign.id, external_id='481872',
+                                   donor_id=donor.id, amount_cents=10000, net_cents=9409,
+                                   donation_time=datetime(2026, 9, 22), anonymous=False,
+                                   subscription=True, team='', notes='')
+        db.session.add(donation)
+        db.session.commit()
+        donation_id = donation.id
+    assert post(client, f'/supporters/donations/abcharity/{donation_id}/text', {}).status_code == 302
+    with app.app_context():
+        row = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.subject == 'Donation payment record'))
+        assert row.status == 'preview'
+        assert 'ABCharity #481872' in row.body
+        assert '/donor/login/' in row.body
+    assert client.get(f'/supporters/abcharity/{donation_id}/preview.pdf').status_code == 200
+    assert 'ABCharity #481872' in client.get('/collections?month=2026-09').text
 
 def test_cancelling_callback_task_cancels_pending_communication(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)

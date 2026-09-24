@@ -3266,13 +3266,39 @@ def create_app(test_config=None):
             Receipt.contact_id.in_([c.id for c in contacts]),
             Receipt.received_on >= month_start, Receipt.received_on < month_end
         ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if family_ids else []
+        charity_donations = db.session.scalars(select(CharityDonation).join(
+            CharityDonor, CharityDonor.id == CharityDonation.donor_id).where(
+            CharityDonor.contact_id.in_([c.id for c in contacts]),
+            CharityDonation.donation_time >= datetime.combine(month_start, datetime.min.time()),
+            CharityDonation.donation_time < datetime.combine(month_end, datetime.min.time())
+        )).all() if family_ids else []
+        contacts_by_id = {c.id: c for c in contacts}
+        donation_rows = ([{'date': r.received_on, 'contact': r.contact,
+                           'amount_cents': r.amount_cents, 'reference': r.reference,
+                           'note': r.note, 'source': 'Yazory', 'receipt': r,
+                           'donation_id': None} for r in receipts] +
+                         [{'date': d.donation_time.date(), 'contact': contacts_by_id[d.donor.contact_id],
+                           'amount_cents': d.amount_cents,
+                           'reference': f'ABCharity #{d.external_id}',
+                           'note': '', 'source': 'ABCharity', 'receipt': None,
+                           'donation_id': d.id} for d in charity_donations])
+        donation_rows.sort(key=lambda row: row['date'], reverse=True)
         received_by_contact = {}
         for receipt in receipts:
             received_by_contact[receipt.contact_id] = received_by_contact.get(receipt.contact_id, 0) + receipt.amount_cents
+        for donation in charity_donations:
+            contact_id = donation.donor.contact_id
+            received_by_contact[contact_id] = received_by_contact.get(contact_id, 0) + donation.amount_cents
         contact_ids = [contact.id for contact in contacts]
         lifetime_by_contact = {contact_id: total for contact_id, total in db.session.execute(select(
             Receipt.contact_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
         ).where(Receipt.contact_id.in_(contact_ids)).group_by(Receipt.contact_id)).all()} if contact_ids else {}
+        if contact_ids:
+            for contact_id, total in db.session.execute(select(
+                    CharityDonor.contact_id, func.coalesce(func.sum(CharityDonation.amount_cents), 0)
+            ).join(CharityDonation, CharityDonation.donor_id == CharityDonor.id).where(
+                    CharityDonor.contact_id.in_(contact_ids)).group_by(CharityDonor.contact_id)).all():
+                lifetime_by_contact[contact_id] = lifetime_by_contact.get(contact_id, 0) + total
         family_statement = select(Family).order_by(Family.name)
         if not organization_admin():
             family_statement = family_statement.where(Family.id.in_(
@@ -3280,7 +3306,8 @@ def create_app(test_config=None):
                     FamilyAssignment.staff_user_id == current_user().id)))
         families = db.session.scalars(family_statement).all()
         return render_template('collections.html', title='Collections', contacts=contacts,
-                               receipts=receipts, received_by_contact=received_by_contact,
+                               receipts=receipts, donation_rows=donation_rows,
+                               received_by_contact=received_by_contact,
                                lifetime_by_contact=lifetime_by_contact, month=month,
                                families=families)
 
@@ -3481,6 +3508,20 @@ def create_app(test_config=None):
         ).where(CharityDonor.contact_id.in_(contact_ids)).order_by(
             CharityDonation.donation_time.desc(), CharityDonation.id.desc()
         )).all() if contact_ids else []
+        donations = ([{'kind': 'Yazory', 'date': r.received_on,
+                       'family': r.family, 'amount_cents': r.amount_cents,
+                       'net_cents': None,
+                       'reference': r.reference or f'YZ-{r.id:06d}',
+                       'receipt_id': r.id, 'donation_id': None}
+                      for r in receipts] +
+                     [{'kind': 'ABCharity', 'date': d.donation_time.date(),
+                       'family': next(c.family for c in linked_contacts if c.id == d.donor.contact_id),
+                       'amount_cents': d.amount_cents,
+                       'net_cents': d.net_cents,
+                       'reference': f'ABCharity #{d.external_id}',
+                       'receipt_id': None, 'donation_id': d.id}
+                      for d in abcharity_donations])
+        donations.sort(key=lambda row: row['date'], reverse=True)
         payments = db.session.scalars(select(StripePayment).where(
             StripePayment.contact_id.in_(contact_ids)
         ).order_by(StripePayment.created_at.desc())).all() if contact_ids else []
@@ -3523,6 +3564,7 @@ def create_app(test_config=None):
                                supporter=contact, linked_contacts=linked_contacts,
                                hierarchy_groups=hierarchy_groups,
                                receipts=receipts, abcharity_donations=abcharity_donations,
+                               donations=donations,
                                payments=payments,
                                possible_parents=possible_parents,
                                available_families=available_families,

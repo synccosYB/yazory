@@ -1,8 +1,10 @@
 from app_entry import create_app
 import hashlib
 import pytest
+from datetime import datetime
 
-from app import Contact, Family, Receipt, StaffUser, db
+from app import (CharityCampaign, CharityDonation, CharityDonor, Contact,
+                 Family, Receipt, StaffUser, db)
 from supporter_portal import SupporterLoginToken, SupporterTicket
 
 
@@ -133,6 +135,42 @@ def test_pledge_acknowledgment_is_private_and_explicitly_unpaid(app, client):
     assert b'No payment has been received' in response.data
     assert b'not a donation receipt' in response.data
     assert client.get(f'/donor/pledges/{other_id}.pdf').status_code == 403
+
+
+def test_abcharity_payment_appears_in_same_portal_history_and_is_private(app, client):
+    with app.app_context():
+        own = db.session.scalar(db.select(Contact).order_by(Contact.id))
+        own.supporter_key = 'phone:8455550100'
+        other = Contact(family_id=own.family_id, name='Other donor', relationship='Friend',
+                        supporter_key='phone:8455550199')
+        db.session.add(other)
+        db.session.flush()
+        campaign = CharityCampaign(family_id=own.family_id, external_id='55',
+                                   key_env='portal-test-key', label='Test', currency='USD')
+        db.session.add(campaign)
+        db.session.flush()
+        donor = CharityDonor(campaign_id=campaign.id, identity='receipt:481872',
+                             name=own.name, email='', phone=own.phone or '', address='',
+                             contact_id=own.id)
+        db.session.add(donor)
+        db.session.flush()
+        donation = CharityDonation(campaign_id=campaign.id, external_id='481872',
+                                   donor_id=donor.id, amount_cents=10000, net_cents=9409,
+                                   donation_time=datetime(2026, 9, 22), anonymous=False,
+                                   subscription=True, team='', notes='')
+        db.session.add(donation)
+        db.session.commit()
+        donation_id = donation.id
+    with client.session_transaction() as portal_session:
+        portal_session['supporter_key'] = 'phone:8455550199'
+    assert client.get(f'/donor/abcharity/{donation_id}.pdf').status_code == 403
+    with client.session_transaction() as portal_session:
+        portal_session['supporter_key'] = 'phone:8455550100'
+    page = client.get('/donor')
+    assert 'ABCharity #481872' in page.text
+    response = client.get(f'/donor/abcharity/{donation_id}.pdf')
+    assert response.status_code == 200
+    assert b'Payment processed by ABCharity' in response.data
 
 
 def test_requests_are_case_scoped_and_visible_only_to_owner(app, client):

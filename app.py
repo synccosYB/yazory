@@ -4142,6 +4142,59 @@ def create_app(test_config=None):
         return send_file(build_donor_receipt_pdf(receipt), mimetype='application/pdf',
                          as_attachment=False)
 
+    @app.get('/supporters/abcharity/<int:donation_id>/preview.pdf')
+    def staff_abcharity_preview(donation_id):
+        from flask import send_file
+        from receipt_pdf import build_abcharity_payment_pdf
+        donation = _app.db.get_or_404(_app.CharityDonation, donation_id)
+        if not donation.donor.contact_id:
+            _app.abort(404)
+        contact = communication_contact(donation.donor.contact_id)
+        return send_file(build_abcharity_payment_pdf(donation, contact),
+                         mimetype='application/pdf', as_attachment=False)
+
+    @app.post('/supporters/donations/<source>/<int:payment_id>/text')
+    def staff_text_donation_record(source, payment_id):
+        from supporter_portal import create_supporter_sms_signin_link
+        if source == 'receipt':
+            payment = _app.db.get_or_404(_app.Receipt, payment_id)
+            contact = communication_contact(payment.contact_id)
+            reference = payment.reference or f'YZ-{payment.id:06d}'
+            amount_cents = payment.amount_cents
+        elif source == 'abcharity':
+            payment = _app.db.get_or_404(_app.CharityDonation, payment_id)
+            if not payment.donor.contact_id:
+                _app.abort(404)
+            contact = communication_contact(payment.donor.contact_id)
+            reference = f'ABCharity #{payment.external_id}'
+            amount_cents = payment.amount_cents
+        else:
+            _app.abort(404)
+        try:
+            phone, link = create_supporter_sms_signin_link(app, contact)
+        except ValueError as exc:
+            _app.abort(400, str(exc))
+        body = (f'Yazory: Your ${amount_cents / 100:,.2f} donation ({reference}) '
+                f'is in your donor portal. Open your payment record here: {link} '
+                'This one-time link expires in 30 minutes. Reply STOP to opt out.')
+        if app.config['TESTING'] or app.config['DEMO']:
+            provider_id, error, status = None, '', 'preview'
+        else:
+            provider_id, error = deliver_message(
+                app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                phone, body, channel='sms', sms_from=app.config['TWILIO_SMS_FROM'],
+                messaging_service_sid=twilio_service_sid())
+            status = 'failed' if error else 'completed'
+        communication_row(contact, 'sms', 'Donation payment record', body,
+                          status=status, provider_message_id=provider_id,
+                          delivery_error=error)
+        _app.db.session.commit()
+        _app.flash('Text sent.' if status == 'completed' else
+                   'Text prepared in preview mode.' if status == 'preview' else
+                   'Text delivery failed. Check Communications.',
+                   'success' if status == 'completed' else 'error')
+        return _app.redirect(_app.url_for('supporter_detail', contact_id=contact.id))
+
     @app.post('/supporters/receipts/<int:receipt_id>/send')
     def staff_send_receipt(receipt_id):
         receipt = _app.db.get_or_404(_app.Receipt, receipt_id)

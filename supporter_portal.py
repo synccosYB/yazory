@@ -10,7 +10,8 @@ from sqlalchemy import func, select, text, inspect
 
 import app_original as core
 from stripe_gateway import create_billing_portal_session
-from receipt_pdf import build_donor_receipt_pdf, build_pledge_acknowledgment_pdf
+from receipt_pdf import (build_abcharity_payment_pdf, build_donor_receipt_pdf,
+                         build_pledge_acknowledgment_pdf)
 from twilio_service import deliver_message, normalize_phone
 
 
@@ -51,6 +52,31 @@ def _portal_contact(contact_id):
     if not contact or not key or not contact.supporter_key or not hmac.compare_digest(contact.supporter_key, key):
         abort(403, 'This supporter record is not part of your account.')
     return contact
+
+
+def create_supporter_sms_signin_link(app, contact):
+    """Issue a one-time portal link to a mobile number tied to one identity."""
+    phone = normalize_phone(contact.cell_phone or contact.phone)
+    if not contact.supporter_key:
+        raise ValueError('This donor has no portal identity.')
+    for row in core.db.session.scalars(select(core.Contact).where(
+            core.Contact.supporter_key != '')).all():
+        if row.supporter_key == contact.supporter_key:
+            continue
+        try:
+            other_phone = normalize_phone(row.cell_phone or row.phone)
+        except ValueError:
+            continue
+        if other_phone == phone:
+            raise ValueError('This mobile number belongs to more than one donor account.')
+    raw = secrets.token_urlsafe(32)
+    core.db.session.add(SupporterLoginToken(
+        supporter_key=contact.supporter_key, email='',
+        token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+        expires_at=_utcnow() + timedelta(minutes=30)))
+    base = app.config.get('APP_BASE_URL', '').rstrip('/')
+    return phone, (base + url_for('supporter_login_link', token=raw) if base else
+                   url_for('supporter_login_link', token=raw, _external=True))
 
 
 def register_supporter_portal(app):
@@ -143,6 +169,22 @@ def register_supporter_portal(app):
         receipts = core.db.session.scalars(select(core.Receipt).where(
             core.Receipt.contact_id.in_(contact_ids)).order_by(
                 core.Receipt.received_on.desc(), core.Receipt.id.desc())).all()
+        charity_donations = core.db.session.scalars(select(core.CharityDonation).join(
+            core.CharityDonor, core.CharityDonor.id == core.CharityDonation.donor_id
+        ).where(core.CharityDonor.contact_id.in_(contact_ids)).order_by(
+            core.CharityDonation.donation_time.desc())).all()
+        donations = ([{'kind': 'Yazory', 'date': row.received_on, 'family': row.family,
+                       'amount_cents': row.amount_cents,
+                       'reference': row.reference or f'YZ-{row.id:06d}',
+                       'url': url_for('supporter_portal_receipt', receipt_id=row.id)}
+                      for row in receipts] +
+                     [{'kind': 'ABCharity', 'date': row.donation_time.date(),
+                       'family': next(c.family for c in contacts if c.id == row.donor.contact_id),
+                       'amount_cents': row.amount_cents,
+                       'reference': f'ABCharity #{row.external_id}',
+                       'url': url_for('supporter_portal_abcharity_payment', donation_id=row.id)}
+                      for row in charity_donations])
+        donations.sort(key=lambda row: row['date'], reverse=True)
         payments = core.db.session.scalars(select(core.StripePayment).where(
             core.StripePayment.contact_id.in_(contact_ids)).order_by(
                 core.StripePayment.created_at.desc())).all()
@@ -150,7 +192,8 @@ def register_supporter_portal(app):
             SupporterTicket.supporter_key == key).order_by(SupporterTicket.id.desc())).all()
         return render_template('supporter_portal.html', title='My donor account',
                                supporter=contacts[0], contacts=contacts,
-                               receipts=receipts, payments=payments, tickets=tickets)
+                               receipts=receipts, donations=donations,
+                               payments=payments, tickets=tickets)
 
     @app.post('/donor/requests')
     def supporter_create_request():
@@ -294,6 +337,16 @@ def register_supporter_portal(app):
         _portal_contact(receipt.contact_id)
         return send_file(build_donor_receipt_pdf(receipt), mimetype='application/pdf',
                          as_attachment=True, download_name=f'Yazory-receipt-{receipt.id:06d}.pdf')
+
+    @app.get('/donor/abcharity/<int:donation_id>.pdf')
+    def supporter_portal_abcharity_payment(donation_id):
+        donation = core.db.get_or_404(core.CharityDonation, donation_id)
+        if not donation.donor.contact_id:
+            abort(403)
+        contact = _portal_contact(donation.donor.contact_id)
+        return send_file(build_abcharity_payment_pdf(donation, contact),
+                         mimetype='application/pdf', as_attachment=True,
+                         download_name=f'Yazory-ABCharity-{donation.external_id}.pdf')
 
     @app.get('/donor/pledges/<int:contact_id>.pdf')
     def supporter_portal_pledge(contact_id):
