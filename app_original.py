@@ -1648,6 +1648,13 @@ def create_app(test_config=None):
         except (InvalidOperation, ValueError):
             abort(400, 'Enter a valid amount with up to two decimal places, no greater than $1,000,000.')
 
+    def supporter_amount(contact, status):
+        # Outreach status can be recorded before a donation has been discussed.
+        # An omitted amount on an existing supporter leaves their pledge intact.
+        if not request.form.get('monthly', '').strip() and status != 'Pledged':
+            return contact.monthly_cents
+        return amount('monthly', allow_zero=status != 'Pledged')
+
     def case_fund_totals(family_id):
         """Cash received, committed/disbursed, and the remaining case balance."""
         # Fetch all four independent totals in one database round trip. On the
@@ -2941,7 +2948,7 @@ def create_app(test_config=None):
             return redirect(url_for('operations', family_id=contact.family_id, kind='pledge'))
         status = field('status', True)
         if status not in CONTACT_STATUSES: abort(400)
-        monthly_cents = amount('monthly', allow_zero=status!='Pledged')
+        monthly_cents = supporter_amount(contact, status)
         pledge_frequency = field('pledge_frequency') or 'Monthly'
         if pledge_frequency not in PLEDGE_FREQUENCIES: abort(400, 'Choose a valid donation frequency.')
         if 'name' in request.form:
@@ -3072,7 +3079,7 @@ def create_app(test_config=None):
                         setattr(linked_contact, key, value)
             contact.status = status
             contact.decline_reason = field('decline_reason', limit=5000) if status == 'Declined' else ''
-            contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
+            contact.monthly_cents = supporter_amount(contact, status)
             contact.pledge_frequency = pledge_frequency
             contact.relationship = relationship
             connect_shul_friend(contact)

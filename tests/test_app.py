@@ -72,6 +72,27 @@ def test_case_and_expense_workflow(app, client):
         assert expense.payment_reference=='CHECK-123'
         assert len(db.session.scalars(db.select(Audit).where(Audit.family_id==family_id)).all())==8
 
+def test_supporter_status_can_change_without_donation_amount(app, client):
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact).where(Contact.family_id == 1))
+        if contact is None:
+            contact = Contact(family_id=1, name='Status only supporter',
+                              relationship='Friend', status='To contact', monthly_cents=0)
+            db.session.add(contact)
+            db.session.commit()
+        contact_id = contact.id
+        original_amount = contact.monthly_cents
+    assert post(client, f'/contacts/{contact_id}', {
+        'status': 'Contacted', 'monthly': '', 'pledge_frequency': 'Monthly',
+    }).status_code == 302
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        assert contact.status == 'Contacted'
+        assert contact.monthly_cents == original_amount
+    assert post(client, f'/contacts/{contact_id}', {
+        'status': 'Pledged', 'monthly': '', 'pledge_frequency': 'Monthly',
+    }).status_code == 400
+
 def test_declined_case_requires_and_displays_reason(app, client):
     assert post(client, '/families/new', {'name':'Declined family'}).status_code == 302
     with app.app_context():
