@@ -11,6 +11,23 @@ from sqlalchemy import func, select, text, inspect
 import app_original as core
 from stripe_gateway import create_billing_portal_session
 from receipt_pdf import build_donor_receipt_pdf
+from twilio_service import deliver_message, normalize_phone
+
+
+class SupporterTicket(core.db.Model):
+    __tablename__ = 'supporter_ticket'
+    id = core.db.Column(core.db.Integer, primary_key=True)
+    supporter_key = core.db.Column(core.db.String(200), nullable=False, index=True)
+    contact_id = core.db.Column(core.db.Integer, core.db.ForeignKey('contact.id'), nullable=False)
+    title = core.db.Column(core.db.String(160), nullable=False)
+    request_text = core.db.Column(core.db.Text, nullable=False)
+    preferred_method = core.db.Column(core.db.String(20), nullable=False)
+    status = core.db.Column(core.db.String(20), nullable=False, default='Open')
+    public_update = core.db.Column(core.db.Text, nullable=False, default='')
+    delivery_status = core.db.Column(core.db.String(20), nullable=False, default='pending')
+    created_at = core.db.Column(core.db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = core.db.Column(core.db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    contact = core.db.relationship('Contact')
 
 
 class SupporterLoginToken(core.db.Model):
@@ -39,6 +56,7 @@ def _portal_contact(contact_id):
 def register_supporter_portal(app):
     def ensure_schema():
         SupporterLoginToken.__table__.create(core.db.engine, checkfirst=True)
+        SupporterTicket.__table__.create(core.db.engine, checkfirst=True)
 
     app.extensions.setdefault('init_db_hooks', []).append(ensure_schema)
     if app.config.get('DEMO') or app.config.get('TESTING'):
@@ -128,9 +146,86 @@ def register_supporter_portal(app):
         payments = core.db.session.scalars(select(core.StripePayment).where(
             core.StripePayment.contact_id.in_(contact_ids)).order_by(
                 core.StripePayment.created_at.desc())).all()
+        tickets = core.db.session.scalars(select(SupporterTicket).where(
+            SupporterTicket.supporter_key == key).order_by(SupporterTicket.id.desc())).all()
         return render_template('supporter_portal.html', title='My donor account',
                                supporter=contacts[0], contacts=contacts,
-                               receipts=receipts, payments=payments)
+                               receipts=receipts, payments=payments, tickets=tickets)
+
+    @app.post('/donor/requests')
+    def supporter_create_request():
+        contact = _portal_contact(request.form.get('contact_id', type=int))
+        title = (request.form.get('title') or '').strip()[:160]
+        body = (request.form.get('request_text') or '').strip()[:5000]
+        method = request.form.get('preferred_method')
+        if not title or not body or method not in ('SMS', 'Email', 'Portal'):
+            abort(400, 'Enter a request and choose how to receive updates.')
+        if method == 'SMS' and not (contact.cell_phone or contact.phone):
+            abort(400, 'A mobile number is needed for text updates.')
+        if method == 'Email' and not contact.email:
+            abort(400, 'An email address is needed for email updates.')
+        ticket = SupporterTicket(supporter_key=contact.supporter_key,
+            contact_id=contact.id, title=title, request_text=body,
+            preferred_method=method)
+        core.db.session.add(ticket)
+        core.db.session.flush()
+        core.db.session.add(core.Audit(actor=f'Donor: {contact.email or contact.name}',
+            action=f'Created supporter request #{ticket.id}', family_id=contact.family_id))
+        core.db.session.commit()
+        flash('Your request was received.', 'success')
+        return redirect(url_for('supporter_portal', _anchor='requests'))
+
+    @app.get('/supporter-requests')
+    def supporter_requests():
+        user = core.db.session.get(core.StaffUser, session.get('user_id')) if session.get('user_id') else None
+        if not user or user.role != 'organization_admin':
+            abort(403)
+        tickets = core.db.session.scalars(select(SupporterTicket).order_by(
+            SupporterTicket.id.desc()).limit(200)).all()
+        return render_template('supporter_requests.html', title='Supporter requests', tickets=tickets)
+
+    @app.post('/supporter-requests/<int:ticket_id>')
+    def supporter_request_update(ticket_id):
+        user = core.db.session.get(core.StaffUser, session.get('user_id')) if session.get('user_id') else None
+        if not user or user.role != 'organization_admin':
+            abort(403)
+        ticket = core.db.get_or_404(SupporterTicket, ticket_id)
+        status = request.form.get('status')
+        update = (request.form.get('public_update') or '').strip()[:1600]
+        if status not in ('Open', 'In progress', 'Waiting', 'Resolved') or not update:
+            abort(400, 'Choose a status and enter an update.')
+        contact = ticket.contact
+        notice = f'Yazory request #{ticket.id}: {status}. {update}'
+        delivery = 'portal'
+        if ticket.preferred_method == 'SMS':
+            try:
+                phone = normalize_phone(contact.cell_phone or contact.phone)
+                if app.config.get('TESTING') or app.config.get('DEMO'):
+                    delivery = 'preview'
+                else:
+                    _, error = deliver_message(app.config['TWILIO_ACCOUNT_SID'],
+                        app.config['TWILIO_AUTH_TOKEN'], phone, notice, channel='sms',
+                        sms_from=app.config['TWILIO_SMS_FROM'],
+                        messaging_service_sid=app.config['TWILIO_MESSAGING_SERVICE_SID'])
+                    delivery = 'failed' if error else 'sent'
+            except ValueError:
+                delivery = 'failed'
+        elif ticket.preferred_method == 'Email':
+            message = app.extensions['send_email']('supporter_request_update',
+                contact.email, f'Yazory request #{ticket.id} update', notice,
+                staff_user_id=user.id, family_id=contact.family_id)
+            delivery = message.status
+        ticket.status = status
+        ticket.public_update = update
+        ticket.delivery_status = delivery
+        ticket.updated_at = _utcnow()
+        core.db.session.add(core.Audit(actor=user.email,
+            action=f'Updated supporter request #{ticket.id} ({delivery})', family_id=contact.family_id))
+        core.db.session.commit()
+        flash('Request updated.' if delivery not in ('failed', 'preview') else
+              'Request updated in the portal; external delivery was not completed.',
+              'success' if delivery not in ('failed', 'preview') else 'error')
+        return redirect(url_for('supporter_requests'))
 
     @app.post('/donor/pledges/<int:contact_id>')
     def supporter_portal_update_pledge(contact_id):

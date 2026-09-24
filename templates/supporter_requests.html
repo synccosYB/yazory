@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<section class="card padded"><h1>{{ _('Supporter requests') }}</h1>
+{% for ticket in tickets %}<article class="card padded"><h2>#{{ ticket.id }} · {{ ticket.title }}</h2>
+<p>{{ ticket.contact.name }} · {{ ticket.contact.family.name }} · {{ ticket.created_at.strftime('%m/%d/%Y') }} · {{ _(ticket.preferred_method) }}</p>
+<p>{{ ticket.request_text }}</p><p>{{ _('Status') }}: {{ _(ticket.status) }}{% if ticket.public_update %} · {{ ticket.public_update }}{% endif %}</p>
+<form method="post" action="{{ url_for('supporter_request_update',ticket_id=ticket.id) }}">{{ token(csrf) }}
+<label>{{ _('Status') }}<select name="status">{% for state in ['Open','In progress','Waiting','Resolved'] %}<option value="{{ state }}" {% if ticket.status==state %}selected{% endif %}>{{ _(state) }}</option>{% endfor %}</select></label>
+<label>{{ _('Update for supporter') }}<textarea name="public_update" maxlength="1600" required></textarea></label>
+<button>{{ _('Send update') }}</button></form></article>
+{% else %}<p>{{ _('No requests yet.') }}</p>{% endfor %}</section>
+{% endblock %}

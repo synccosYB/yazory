@@ -14,6 +14,18 @@
     <form method="post" action="{{ url_for('supporter_logout') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet">{{ _('Sign out') }}</button></form>
   </header>
   {% for category,message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}">{{ _(message) }}</div>{% endfor %}
+  <section class="card padded" id="requests">
+    <h2>{{ _('My requests') }}</h2>
+    <form method="post" action="{{ url_for('supporter_create_request') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>{{ _('Regarding family') }}<select name="contact_id">{% for contact in contacts %}<option value="{{ contact.id }}">{{ contact.family.name }}</option>{% endfor %}</select></label>
+      <label>{{ _('Subject') }}<input name="title" maxlength="160" required></label>
+      <label>{{ _('How can we help?') }}<textarea name="request_text" maxlength="5000" required></textarea></label>
+      <label>{{ _('How should we update you?') }}<select name="preferred_method"><option value="Portal">{{ _('In this portal') }}</option><option value="SMS">{{ _('Text message') }}</option><option value="Email">{{ _('Email') }}</option></select></label>
+      <button>{{ _('Send request') }}</button>
+    </form>
+    {% for ticket in tickets %}<article class="portal-pledge"><h3>#{{ ticket.id }} · {{ ticket.title }}</h3><p>{{ ticket.created_at.strftime('%m/%d/%Y') }} · {{ _(ticket.status) }} · {{ _(ticket.preferred_method) }}</p><p>{{ ticket.request_text }}</p>{% if ticket.public_update %}<p><strong>{{ _('Latest update') }}:</strong> {{ ticket.public_update }}</p>{% endif %}</article>{% else %}<p class="muted">{{ _('No requests yet.') }}</p>{% endfor %}
+  </section>
   <section class="card padded">
     <div class="eyebrow">{{ _('MY PLEDGES') }}</div><h2>{{ _('Families I support') }}</h2>
     <div class="portal-grid">{% for contact in contacts %}<article class="portal-pledge">

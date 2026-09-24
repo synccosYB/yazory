@@ -2,8 +2,8 @@ from app_entry import create_app
 import hashlib
 import pytest
 
-from app import Contact, Family, Receipt, db
-from supporter_portal import SupporterLoginToken
+from app import Contact, Family, Receipt, StaffUser, db
+from supporter_portal import SupporterLoginToken, SupporterTicket
 
 
 @pytest.fixture
@@ -112,3 +112,59 @@ def test_supporter_can_download_only_own_receipt(app, client):
     assert response.mimetype == 'application/pdf'
     assert response.data.startswith(b'%PDF-')
     assert client.get(f'/donor/receipts/{other_id}.pdf').status_code == 403
+
+
+def test_requests_are_case_scoped_and_visible_only_to_owner(app, client):
+    with app.app_context():
+        own = db.session.scalar(db.select(Contact).order_by(Contact.id))
+        own.supporter_key = 'phone:8455550100'
+        other = Contact(family_id=own.family_id, name='Other donor', relationship='Friend',
+                        supporter_key='phone:8455550199')
+        db.session.add(other)
+        db.session.commit()
+        own_id, other_id = own.id, other.id
+    with client.session_transaction() as portal_session:
+        portal_session['csrf'] = 'portal-csrf'
+        portal_session['supporter_key'] = 'phone:8455550100'
+    assert client.post('/donor/requests', data={'csrf': 'portal-csrf', 'contact_id': other_id,
+        'title': 'Wrong', 'request_text': 'Private', 'preferred_method': 'Portal'}).status_code == 403
+    response = client.post('/donor/requests', data={'csrf': 'portal-csrf', 'contact_id': own_id,
+        'title': 'Receipt question', 'request_text': 'Please check my receipt',
+        'preferred_method': 'Portal'}, follow_redirects=True)
+    assert response.status_code == 200
+    assert 'Receipt question' in response.text
+    with app.app_context():
+        ticket = db.session.scalar(db.select(SupporterTicket))
+        assert ticket.contact_id == own_id
+    with client.session_transaction() as portal_session:
+        portal_session['supporter_key'] = 'phone:8455550199'
+    assert 'Receipt question' not in client.get('/donor').text
+
+
+def test_staff_update_uses_requested_channel_and_portal_shows_status(app, client):
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact).order_by(Contact.id))
+        contact.supporter_key = 'phone:8455550100'
+        contact.cell_phone = '8455550100'
+        staff = StaffUser(email='ticket-admin@example.test', name='Admin',
+                          role='organization_admin', status='active', password_hash='unused')
+        db.session.add(staff)
+        db.session.commit()
+        contact_id, staff_id = contact.id, staff.id
+    with client.session_transaction() as portal_session:
+        portal_session['csrf'] = 'portal-csrf'
+        portal_session['supporter_key'] = 'phone:8455550100'
+    client.post('/donor/requests', data={'csrf': 'portal-csrf', 'contact_id': contact_id,
+        'title': 'Question', 'request_text': 'Please respond', 'preferred_method': 'SMS'})
+    with app.app_context():
+        ticket_id = db.session.scalar(db.select(SupporterTicket.id))
+    assert client.post(f'/supporter-requests/{ticket_id}', data={
+        'csrf': 'portal-csrf', 'status': 'Resolved', 'public_update': 'Done'}).status_code == 403
+    with client.session_transaction() as portal_session:
+        portal_session['user_id'] = staff_id
+    assert client.post(f'/supporter-requests/{ticket_id}', data={
+        'csrf': 'portal-csrf', 'status': 'Resolved', 'public_update': 'Done'}).status_code == 302
+    with app.app_context():
+        ticket = db.session.get(SupporterTicket, ticket_id)
+        assert (ticket.status, ticket.public_update, ticket.delivery_status) == ('Resolved', 'Done', 'preview')
+    assert 'Done' in client.get('/donor').text
