@@ -218,6 +218,8 @@ class Child(db.Model):
     spouse_name = db.Column(db.String(160), default='')
     home_phone = db.Column(db.String(80), default='')
     cell_phone = db.Column(db.String(80), default='')
+    supporter_contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=True)
+    spouse_contact_id = db.Column(db.Integer, db.ForeignKey('contact.id'), nullable=True)
 
 class SupporterPerson(db.Model):
     """One authoritative personal record shared by every case connection."""
@@ -485,7 +487,7 @@ DEFAULT_CHILD_BANDS = [{'min_age': 0, 'max_age': 5, 'amount_cents': 0},
                        {'min_age': 6, 'max_age': 12, 'amount_cents': 0},
                        {'min_age': 13, 'max_age': 30, 'amount_cents': 0}]
 CATEGORIES = DEFAULT_CATEGORIES
-RELATIONSHIPS = ['Sibling', 'Nephew', 'Spouse’s sibling', 'Child’s in-law family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
+RELATIONSHIPS = ['Child', 'Child’s spouse', 'Sibling', 'Nephew', 'Spouse’s sibling', 'Child’s in-law family', 'First cousin', 'Second cousin', 'Yeshivah / school friend', 'Friend', 'Other']
 LEGACY_RELATIONSHIPS = {'In-law’s maiden family'}
 CONTACT_STATUSES = [
     'To contact',
@@ -858,6 +860,8 @@ def create_app(test_config=None):
             'spouse_name': "VARCHAR(160) DEFAULT ''",
             'home_phone': "VARCHAR(80) DEFAULT ''",
             'cell_phone': "VARCHAR(80) DEFAULT ''",
+            'supporter_contact_id': 'INTEGER REFERENCES contact(id)',
+            'spouse_contact_id': 'INTEGER REFERENCES contact(id)',
         }.items():
             if column not in child_columns:
                 db.session.execute(text(f'ALTER TABLE child ADD COLUMN {column} {definition}'))
@@ -1321,6 +1325,78 @@ def create_app(test_config=None):
         ensure_profile_affiliation(
             institution, 'child', child.id, grade=child.grade,
             note='Child profile')
+
+    def sync_married_child_supporters(child):
+        """Link married children and their spouses to case-specific supporter rows."""
+        if not child.married:
+            return
+        identity = app.extensions.get('supporter_identity')
+        for column, name, relationship, phone, cell_phone, home_phone in (
+            ('supporter_contact_id', child.name, 'Child',
+             child.cell_phone or child.home_phone, child.cell_phone, child.home_phone),
+            ('spouse_contact_id', child.spouse_name, 'Child’s spouse', '', '', ''),
+        ):
+            name = (name or '').strip()
+            if not name:
+                continue
+            contact_id = getattr(child, column)
+            contact = db.session.get(Contact, contact_id) if contact_id else None
+            if contact is not None and contact.family_id != child.family_id:
+                contact = None
+            if contact is None:
+                # Adopt a single existing case connection only when the name
+                # and available phone agree. Never merge two relatives on a
+                # shared household number alone.
+                candidates = db.session.scalars(select(Contact).where(
+                    Contact.family_id == child.family_id, Contact.name == name,
+                    Contact.phone == phone)).all()
+                claimed = set(db.session.scalars(select(Child.supporter_contact_id).where(
+                    Child.family_id == child.family_id,
+                    Child.supporter_contact_id.is_not(None))).all())
+                claimed.update(db.session.scalars(select(Child.spouse_contact_id).where(
+                    Child.family_id == child.family_id,
+                    Child.spouse_contact_id.is_not(None))).all())
+                candidates = [row for row in candidates if row.id not in claimed]
+                if len(candidates) == 1:
+                    contact = candidates[0]
+                else:
+                    contact = Contact(
+                        family_id=child.family_id, name=name,
+                        relationship=relationship, phone=phone,
+                        cell_phone=cell_phone, home_phone=home_phone,
+                        supporter_key=supporter_key(name, phone),
+                        status='To contact', monthly_cents=0,
+                        pledge_frequency='Monthly')
+                    db.session.add(contact)
+                    db.session.flush()
+                    if identity:
+                        identity['attach'](contact)
+                setattr(child, column, contact.id)
+            # Preserve pledge, status, history and any richer details entered
+            # on the supporter profile. Only refresh details sourced from the
+            # child form when the supporter still has the prior value.
+            changes = {}
+            if contact.name != name:
+                changes['name'] = name
+            if phone and contact.phone != phone:
+                changes['phone'] = phone
+            if cell_phone and contact.cell_phone != cell_phone:
+                changes['cell_phone'] = cell_phone
+            if home_phone and contact.home_phone != home_phone:
+                changes['home_phone'] = home_phone
+            if changes:
+                if 'phone' in changes:
+                    changes['supporter_key'] = supporter_key(name, phone, contact.supporter_key)
+                if identity:
+                    identity['update'](contact, changes)
+                else:
+                    for key, value in changes.items():
+                        setattr(contact, key, value)
+                    contact.supporter_key = supporter_key(contact.name, contact.phone,
+                                                          contact.supporter_key)
+            contact.relationship = relationship
+
+    app.extensions['sync_married_child_supporters'] = sync_married_child_supporters
 
     def setting(key, default):
         cache = g.setdefault('_settings_cache', {})
@@ -2685,6 +2761,7 @@ def create_app(test_config=None):
         db.session.add(child)
         db.session.flush()
         connect_child_profile_directory(child)
+        sync_married_child_supporters(child)
         audit('Added child and school details', family_id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family_id))
@@ -2737,6 +2814,7 @@ def create_app(test_config=None):
         child.home_phone = field('home_phone', limit=80)
         child.cell_phone = field('cell_phone', limit=80)
         connect_child_profile_directory(child)
+        sync_married_child_supporters(child)
         audit('Updated child and spouse details', child.family_id)
         db.session.commit()
         flash('Child and spouse updated.')
