@@ -807,20 +807,26 @@ details.quick-action-popup>form label{min-width:0}
 
 details.quick-action-popup>form>label:has(textarea),details.quick-action-popup>form>p,details.quick-action-popup>form>button,details.quick-action-popup>form>.form-grid{grid-column:1/-1}
 @media(max-width:600px){details.quick-action-popup>form{grid-template-columns:1fr}}
-/* Five columns: the former inline pledge form no longer owns the final 40%. */
-#circle-of-support .family-supporters-table{table-layout:fixed;width:100%;min-width:0}
-#circle-of-support .family-supporters-table th:nth-child(1){width:29%}
-#circle-of-support .family-supporters-table th:nth-child(2){width:25%}
-#circle-of-support .family-supporters-table th:nth-child(3){width:15%}
-#circle-of-support .family-supporters-table th:nth-child(4){width:20%}
-#circle-of-support .family-supporters-table th:nth-child(5){width:11%}
-#circle-of-support .family-supporters-table td{overflow-wrap:anywhere}
-#circle-of-support .family-supporters-table td:nth-child(3){overflow-wrap:normal;white-space:nowrap}
+/* Case supporter list: one aligned column for every heading in both text directions. */
+#circle-of-support .family-supporters-table{table-layout:fixed;width:100%;min-width:1050px}
+#circle-of-support .family-supporters-table th:nth-child(1){width:18%}
+#circle-of-support .family-supporters-table th:nth-child(2){width:23%}
+#circle-of-support .family-supporters-table th:nth-child(3){width:12%}
+#circle-of-support .family-supporters-table th:nth-child(4){width:12%}
+#circle-of-support .family-supporters-table th:nth-child(5){width:15%}
+#circle-of-support .family-supporters-table th:nth-child(6){width:20%}
+#circle-of-support .family-supporters-table th,#circle-of-support .family-supporters-table td{text-align:start;vertical-align:middle;overflow-wrap:break-word}
+#circle-of-support .family-supporters-table .supporter-phone,#circle-of-support .family-supporters-table .supporter-pledge{white-space:nowrap;font-variant-numeric:tabular-nums}
 #circle-of-support .family-supporters-table .supporter-name{display:block}
 #circle-of-support .family-supporters-table .inline-children{margin:3px 0 0;font-size:11px}
 #circle-of-support .family-supporters-table .inline-children small{font-size:10px}
-#circle-of-support .family-supporters-table td:last-child .button{white-space:normal;line-height:1.2}
-@media(max-width:850px){#circle-of-support .family-supporters-table{min-width:760px}}
+#circle-of-support .family-supporters-table .supporter-actions{white-space:normal}
+#circle-of-support .family-supporters-table .supporter-actions>.button,#circle-of-support .family-supporters-table .supporter-actions>details{display:inline-block;vertical-align:middle;margin:2px}
+#circle-of-support .family-supporters-table .supporter-actions .button{white-space:normal;line-height:1.2}
+#circle-of-support .family-supporters-table .supporter-actions details>form{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px;width:100%;white-space:normal}
+#circle-of-support .family-supporters-table .supporter-actions details>form label{display:block;margin-bottom:8px}
+#circle-of-support .family-supporters-table .supporter-actions details>form :is(input,select){display:block;width:100%}
+
 #task-reminder-popup:not([hidden]) { position:fixed; z-index:10000; inset:auto 1.5rem 1.5rem auto; width:min(360px,calc(100vw - 3rem)); padding:1.4rem; border:2px solid #b49a52; border-radius:16px; color:#172f4c; background:#fff; box-shadow:0 12px 40px #102b4b55; display:flex; flex-direction:column; gap:.8rem }
 #task-reminder-popup p { margin:0; overflow-wrap:anywhere }
 #task-reminder-popup button { align-self:start }
