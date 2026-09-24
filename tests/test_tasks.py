@@ -2,7 +2,7 @@ from app_entry import create_app
 from datetime import date
 from werkzeug.security import generate_password_hash
 
-from app import StaffTask
+from app import StaffTask, SupporterCommunication
 from app_original import Contact, Family, FamilyAssignment, StaffUser, db
 
 
@@ -394,3 +394,84 @@ def test_supporter_task_verdict_does_not_claim_an_unanswered_call_was_contacted(
     page = client.get(f'/tasks/{task_id}').text
     assert 'Called twice; there was no answer.' in page
     assert 'Supporter outreach result' in page
+
+
+def test_cancelling_supporter_task_keeps_the_status_note_and_does_not_record_contact():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        login(client, 'admin@example.test')
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        family = Family(name='Cancellation note family')
+        db.session.add(family)
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Supporter who declined',
+                          relationship='Friend', status='To contact')
+        db.session.add(contact)
+        db.session.flush()
+        task = StaffTask(title='Contact supporter', source_contact_id=contact.id,
+                         family_id=family.id, assigned_to=admin.id,
+                         created_by=admin.id)
+        db.session.add(task)
+        db.session.commit()
+        task_id, contact_id = task.id, contact.id
+
+    response = client.post(f'/tasks/{task_id}/status', data={
+        'csrf': 'test-csrf', 'status': 'Cancelled',
+        'outcome': 'No further outreach requested by the family.'})
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(StaffTask, task_id).outcome == (
+            'No further outreach requested by the family.')
+        assert db.session.get(Contact, contact_id).status == 'Paused'
+    page = client.get(f'/tasks/{task_id}').text
+    assert 'Recent communications' in page
+    assert 'task-detail-grid-single' not in page
+    assert 'No further outreach requested by the family.' in page
+    assert 'Status note' in page
+
+    response = client.post(f'/tasks/{task_id}/status', data={
+        'csrf': 'test-csrf', 'status': 'Waiting', 'outcome': ''})
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(StaffTask, task_id).outcome == (
+            'No further outreach requested by the family.')
+
+
+def test_supporter_task_shows_only_its_five_latest_communications():
+    app = make_app()
+    client = app.test_client()
+    with app.app_context():
+        login(client, 'admin@example.test')
+        admin = db.session.scalar(db.select(StaffUser).where(
+            StaffUser.email == 'admin@example.test'))
+        family = Family(name='Communication family')
+        db.session.add(family)
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Called supporter',
+                          relationship='Friend', status='To contact')
+        other = Contact(family_id=family.id, name='Other supporter',
+                        relationship='Friend', status='To contact')
+        db.session.add_all([contact, other])
+        db.session.flush()
+        task = StaffTask(title='Call', source_contact_id=contact.id,
+                         family_id=family.id, assigned_to=admin.id,
+                         created_by=admin.id)
+        db.session.add(task)
+        for number in range(7):
+            db.session.add(SupporterCommunication(
+                contact_id=contact.id, family_id=family.id, kind='phone_call',
+                subject=f'Call {number}', body=f'Conversation {number}'))
+        db.session.add(SupporterCommunication(
+            contact_id=other.id, family_id=family.id, kind='phone_call',
+            subject='Private other supporter', body='Different person'))
+        db.session.commit()
+        task_id = task.id
+    page = client.get(f'/tasks/{task_id}').text
+    assert 'Recent communications' in page
+    assert 'Conversation 6' in page
+    assert 'Conversation 2' in page
+    assert 'Conversation 1' not in page
+    assert 'Private other supporter' not in page
+    assert 'task-detail-grid-single' not in page

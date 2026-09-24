@@ -14,6 +14,7 @@ from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.orm.exc import StaleDataError
+from werkzeug.exceptions import Forbidden
 from twilio_service import (account_overview, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
                             message_status, normalize_phone,
@@ -3952,8 +3953,23 @@ def create_app(test_config=None):
         staff = _app.db.session.scalars(select(_app.StaffUser).where(
             _app.StaffUser.status == 'active').order_by(
                 _app.StaffUser.name, _app.StaffUser.email)).all()
+        recent_communications = None
+        if task.source_contact and task_user().role in (
+                'organization_admin', 'family_admin', 'fundraiser'):
+            try:
+                communication_contact(task.source_contact_id)
+            except Forbidden:
+                pass
+            else:
+                recent_communications = _app.db.session.scalars(
+                    select(SupporterCommunication).where(
+                        SupporterCommunication.contact_id == task.source_contact_id
+                    ).order_by(SupporterCommunication.created_at.desc(),
+                               SupporterCommunication.id.desc()).limit(5)
+                ).all()
         return _app.render_template(
             'task_detail.html', title='Task details', task=task,
+            recent_communications=recent_communications,
             callback=scheduled_callback(task.source_contact_id),
             task_statuses=TASK_STATUSES, task_priorities=TASK_PRIORITIES,
             outreach_results=TASK_OUTREACH_RESULTS,
@@ -3967,14 +3983,17 @@ def create_app(test_config=None):
             _app.abort(400, 'Choose a valid task status.')
         outcome = _app.request.form.get('outcome', '').strip()
         outreach_status = _app.request.form.get('outreach_status', '').strip()
+        if len(outcome) > 5000:
+            _app.abort(400, 'Enter a status note of up to 5000 characters.')
         if status == 'Completed':
-            if not outcome or len(outcome) > 5000:
+            if not outcome:
                 _app.abort(400, 'Enter a completion verdict (up to 5000 characters).')
             if task.source_contact and outreach_status not in TASK_OUTREACH_RESULTS:
                 _app.abort(400, 'Choose the actual supporter outreach result.')
         previous_status = task.status
         task.status = status
-        task.outcome = outcome if status == 'Completed' else ''
+        if outcome:
+            task.outcome = outcome
         task.completed_at = (_app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
                              if status == 'Completed' else None)
         if task.source_contact:
@@ -4004,7 +4023,7 @@ def create_app(test_config=None):
                     if contact.status == 'To contact':
                         contact.status = 'Paused'
         add_audit(f'Changed task #{task.id} status to {status}' +
-                  (f'; verdict: {outcome}' if status == 'Completed' else ''))
+                  (f'; note: {outcome}' if outcome else ''))
         _app.db.session.commit()
         _app.flash('Task status updated.')
         return _app.redirect(_app.url_for('task_detail', task_id=task.id))
