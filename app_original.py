@@ -2931,6 +2931,9 @@ def create_app(test_config=None):
         relationship_group = request.form.get('relationship_group', '').strip()
         if relationship_group not in ('siblings', 'nephews'):
             relationship_group = None
+        if request.form.get('return_to') == 'family':
+            return redirect(url_for('family_detail', family_id=family_id,
+                                    _anchor='circle-of-support'))
         return redirect(url_for('supporters', family_id=family_id,
                                 relationship_group=relationship_group))
 
