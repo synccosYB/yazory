@@ -66,6 +66,9 @@ def test_one_canonical_person_can_serve_multiple_shuls(app, client):
     with app.app_context():
         person_id = db.session.scalar(
             db.select(RabbiPerson.id).where(RabbiPerson.name == 'Rabbi Shared'))
+    directory = client.get(f'/community-directories?kind=Shul&network_id={shabbos_id}')
+    assert directory.status_code == 200
+    assert f'<option value="{person_id}">Rabbi Shared</option>' in directory.get_data(as_text=True)
     assert connect_rabbi(client, shabbos_id, rabbi_person_id=str(person_id)).status_code == 302
 
     with app.app_context():

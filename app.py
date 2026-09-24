@@ -2109,7 +2109,7 @@ def create_app(test_config=None):
                 if _app.request.method == 'POST' else _family_phones(family)),
         }
         if _app.request.endpoint not in {
-                'new_family', 'edit_family', 'family_detail', 'directories'}:
+                'new_family', 'edit_family', 'family_detail', 'community_directories'}:
             return empty_context
 
         # A family profile can display contacts for only its weekday and
@@ -2176,7 +2176,7 @@ def create_app(test_config=None):
             institution_contacts[institution.id] = payload
             mapping[institution.name] = payload
         people = (_app.db.session.scalars(select(RabbiPerson).order_by(RabbiPerson.name)).all()
-                  if _app.request.endpoint in {'new_family', 'edit_family', 'directories'}
+                  if _app.request.endpoint in {'new_family', 'edit_family', 'community_directories'}
                   else [])
         def family_rabbi_preference(family_id):
             return _app.db.session.get(FamilyRabbiPreference, family_id) if family_id else None
