@@ -177,7 +177,10 @@ def test_abcharity_payment_appears_in_same_portal_history_and_is_private(app, cl
     assert 'ABCharity #481872' in page.text
     response = client.get(f'/donor/abcharity/{donation_id}.pdf')
     assert response.status_code == 200
-    assert 'Payment processed by ABCharity' in PdfReader(BytesIO(response.data)).pages[0].extract_text()
+    payment_text = PdfReader(BytesIO(response.data)).pages[0].extract_text()
+    assert 'Payment processed by ABCharity' in payment_text
+    assert 'Campaign tax ID' in payment_text
+    assert '92-3617094' in payment_text
     with app.app_context():
         contact_id = db.session.scalar(db.select(CharityDonor.contact_id).where(
             CharityDonor.id == db.session.get(CharityDonation, donation_id).donor_id))

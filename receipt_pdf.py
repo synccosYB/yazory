@@ -136,6 +136,7 @@ def build_abcharity_payment_pdf(donation, contact):
         ('Date received', donation.donation_time.strftime('%m/%d/%Y')),
         ('Donor', contact.name),
         ('Supported family', contact.family.name),
+        ('Campaign tax ID', '92-3617094'),
         ('Amount paid', f'${donation.amount_cents / 100:,.2f}'),
         ('Net received by case', f'${donation.net_cents / 100:,.2f}'),
     ), ('Payment processed by ABCharity; imported into Yazory.',
