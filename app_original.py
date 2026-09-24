@@ -2974,7 +2974,9 @@ def create_app(test_config=None):
             contact.relationship = relationship
             connect_shul_friend(contact)
         contact.status = status
-        contact.decline_reason = field('decline_reason', limit=5000) if status == 'Declined' else ''
+        contact.decline_reason = (field('decline_reason', limit=5000)
+                                  if 'decline_reason' in request.form else contact.decline_reason) \
+            if status == 'Declined' else ''
         contact.monthly_cents = monthly_cents
         contact.pledge_frequency = pledge_frequency
         sync_followup = app.extensions.get('sync_supporter_followup_task')
@@ -3081,7 +3083,9 @@ def create_app(test_config=None):
                     for key, value in personal.items():
                         setattr(linked_contact, key, value)
             contact.status = status
-            contact.decline_reason = field('decline_reason', limit=5000) if status == 'Declined' else ''
+            contact.decline_reason = (field('decline_reason', limit=5000)
+                                      if 'decline_reason' in request.form else contact.decline_reason) \
+                if status == 'Declined' else ''
             contact.monthly_cents = supporter_amount(contact, status)
             contact.pledge_frequency = pledge_frequency
             contact.relationship = relationship
@@ -3605,6 +3609,12 @@ def create_app(test_config=None):
                     key=lambda row: row.name.casefold()),
             })
         contact_ids = [row.id for row in linked_contacts]
+        communication_model = app.extensions.get('supporter_communication_model')
+        communications = (db.session.scalars(select(communication_model).where(
+            communication_model.contact_id.in_(contact_ids)).order_by(
+                communication_model.created_at.desc(),
+                communication_model.id.desc()).limit(30)).all()
+            if communication_model and contact_ids else [])
         receipts = db.session.scalars(select(Receipt).where(
             Receipt.contact_id.in_(contact_ids)
         ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if contact_ids else []
@@ -3630,17 +3640,6 @@ def create_app(test_config=None):
         payments = db.session.scalars(select(StripePayment).where(
             StripePayment.contact_id.in_(contact_ids)
         ).order_by(StripePayment.created_at.desc())).all() if contact_ids else []
-        possible_parents = db.session.scalars(select(Contact).where(
-            Contact.family_id == contact.family_id,
-            Contact.id != contact.id
-        ).order_by(Contact.name)).all()
-        descendants, pending = set(), [contact.id]
-        while pending:
-            found = db.session.scalars(select(Contact.id).where(Contact.parent_contact_id.in_(pending))).all()
-            pending = [row_id for row_id in found if row_id not in descendants]
-            descendants.update(pending)
-        possible_parents = [row for row in possible_parents
-                            if row.id not in descendants and contact_visible(row)]
         linked_family_ids = {row.family_id for row in linked_contacts}
         family_statement = select(Family).where(
             Family.id.not_in(linked_family_ids),
@@ -3667,11 +3666,11 @@ def create_app(test_config=None):
             if available_family_ids else []
         return render_template('supporter_detail.html', title='Supporter history',
                                supporter=contact, linked_contacts=linked_contacts,
+                               communications=communications,
                                hierarchy_groups=hierarchy_groups,
                                receipts=receipts, abcharity_donations=abcharity_donations,
                                donations=donations,
                                payments=payments,
-                               possible_parents=possible_parents,
                                available_families=available_families,
                                available_parents=available_parents,
                                available_institutions=available_institutions,

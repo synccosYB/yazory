@@ -1127,6 +1127,7 @@ def _assistant_payload(institution):
 
 def create_app(test_config=None):
     app = _app.create_app(test_config)
+    app.extensions['supporter_communication_model'] = SupporterCommunication
 
     # Core supporter forms live in app_original.py, while the imported people
     # directory is supplied by this compatibility layer. Publish the model to
@@ -1820,9 +1821,7 @@ def create_app(test_config=None):
             family_id=family_id, name=profile.name, phone=profile.phone,
             cell_phone=profile.phone, email=profile.email,
             relationship=relationship, supporter_key=key,
-            monthly_cents=existing.monthly_cents if existing else 0,
-            pledge_frequency=existing.pledge_frequency if existing else 'Monthly',
-            status=existing.status if existing else 'To contact')
+            monthly_cents=0, pledge_frequency='Monthly', status='To contact')
         _app.db.session.add(contact)
         _app.db.session.flush()
         attach_supporter_person(contact, source=existing)
@@ -2551,6 +2550,10 @@ def create_app(test_config=None):
                    SupporterCommunication.id.desc()))
         if latest:
             return next(contact for contact in matches if contact.id == latest.contact_id)
+        if len({contact.family_id for contact in matches}) > 1:
+            # A shared supporter can belong to several cases. Without an
+            # outbound thread there is no evidence which case the reply means.
+            return None
         return min(matches, key=lambda contact: contact.id)
 
     def sms_phone_key(value):
@@ -2859,8 +2862,26 @@ def create_app(test_config=None):
             row.contact_id for row in due
             if row.scheduled_for and row.scheduled_for < now
         }
-        email_replies = [row for row in history
-                         if row.kind == 'email_reply' and row.status == 'received']
+        reply_statement = select(SupporterCommunication).join(
+            _app.Contact, _app.Contact.id == SupporterCommunication.contact_id
+        ).where(
+            SupporterCommunication.direction == 'inbound',
+            SupporterCommunication.status == 'received',
+            SupporterCommunication.kind.in_(('email_reply', 'sms', 'whatsapp')))
+        if selected_contact is not None:
+            reply_statement = reply_statement.where(
+                SupporterCommunication.contact_id == selected_contact.id)
+        elif not task_is_admin(user):
+            reply_statement = reply_statement.where(_app.Contact.family_id.in_(select(
+                _app.FamilyAssignment.family_id).where(
+                    _app.FamilyAssignment.staff_user_id == user.id)))
+            if user.role == 'fundraiser' and app.extensions['workflows']['enforced']():
+                link_model = app.extensions['workflows']['models']['SupporterLink']
+                reply_statement = reply_statement.where(_app.Contact.id.in_(select(
+                    link_model.contact_id).where(link_model.assigned_to == user.id)))
+        email_replies = _app.db.session.scalars(reply_statement.order_by(
+            SupporterCommunication.created_at.desc(),
+            SupporterCommunication.id.desc()).limit(300)).all()
         applicant_history = []
         if selected_contact is None and user.role != 'fundraiser':
             applicant_statement = select(ApplicantMessage).order_by(
@@ -2945,7 +2966,11 @@ def create_app(test_config=None):
             now=now)
 
     def contact_mobile(contact):
-        return contact.cell_phone or contact.phone or contact.home_phone or ''
+        # The legacy primary phone can hold a home number. A labeled home
+        # number must never silently become an SMS or WhatsApp destination.
+        return contact.cell_phone or (contact.phone if contact.phone != contact.home_phone else '') or ''
+
+    app.jinja_env.globals['supporter_mobile'] = contact_mobile
 
     @app.route('/communications/case-broadcast', methods=['GET', 'POST'])
     def case_broadcast():
@@ -3167,8 +3192,9 @@ def create_app(test_config=None):
                 contact, channel,
                 'Incoming WhatsApp message' if channel == 'whatsapp'
                 else 'Incoming text message',
-                body, status='completed', provider_message_id=provider_id,
+                body, status='received', provider_message_id=provider_id,
                 direction='inbound')
+            reopen_supporter_reply_task(contact, channel)
             _app.db.session.commit()
         elif channel == 'sms':
             try:
@@ -3230,9 +3256,9 @@ def create_app(test_config=None):
             contact = _app.db.session.get(_app.Contact, contact_id)
             if contact is None:
                 _app.abort(404)
-            recipient = contact_mobile(contact)
-            if not recipient:
-                _app.abort(400, 'The selected person does not have a mobile number.')
+            # Named supporters use the same delivery and timeline as the
+            # supporter page. General SMS is only for an unlinked number.
+            return send_supporter_message(contact.id, 'sms', force_contact_phone=True)
         body = _app.request.form.get('body', '').strip()[:1600]
         if not body:
             _app.abort(400, 'Enter a message.')
@@ -3406,13 +3432,8 @@ def create_app(test_config=None):
         _app.db.session.add(_app.Audit(
             actor=f'Supporter: {sender}', action='Supporter replied by email',
             family_id=timeline.family_id))
-        task = _app.db.session.scalar(select(StaffTask).where(
-            StaffTask.source_contact_id == timeline.contact_id))
-        if task:
-            task.status = 'To do'
-            task.description = 'Supporter replied by email. Review the reply in Communications.'
-            task.due_date = now.date()
-            task.completed_at = None
+        reopen_supporter_reply_task(
+            _app.db.session.get(_app.Contact, timeline.contact_id), 'email')
         _app.db.session.add(ResendWebhookEvent(
             event_id=event_id, email_id=email_id, event_type=event_type))
         _app.db.session.commit()
@@ -3441,14 +3462,14 @@ def create_app(test_config=None):
     @app.post('/communications/replies/<int:reply_id>/handled')
     def handle_supporter_email_reply(reply_id):
         reply = _app.db.get_or_404(SupporterCommunication, reply_id)
-        if reply.kind != 'email_reply' or reply.direction != 'inbound':
+        if reply.kind not in ('email_reply', 'sms', 'whatsapp') or reply.direction != 'inbound':
             _app.abort(404)
         communication_contact(reply.contact_id)
         reply.status = 'handled'
         reply.completed_at = _app.datetime.now(
             _app.timezone.utc).replace(tzinfo=None)
         _app.db.session.commit()
-        _app.flash('Email reply marked as handled.')
+        _app.flash('Supporter reply marked as handled.')
         return _app.redirect(_app.url_for('communications', contact_id=reply.contact_id))
 
     @app.post('/communications/inbox/<int:message_id>/handled')
@@ -3659,12 +3680,14 @@ def create_app(test_config=None):
             status='completed' if message.status == 'sent' else message.status,
             email_message=message)
         update_supporter_person(contact, {'email': recipient_email})
-        contact.status = 'To contact'
-        task = _app.db.session.scalar(select(StaffTask).where(
-            StaffTask.source_contact_id == contact.id))
-        if task:
-            task.status = 'Waiting'
-            task.description = 'Waiting for supporter to reply to the initial email.'
+        if message.status == 'sent':
+            task = _app.db.session.scalar(select(StaffTask).where(
+                StaffTask.source_contact_id == contact.id))
+            if task:
+                task.status = 'Waiting'
+                task.description = 'Waiting for supporter to reply to the initial email.'
+                task.completed_at = None
+                task.outcome = ''
         add_audit(f'{"Sent" if message.status == "sent" else "Prepared"} initial supporter email: {contact.name}')
         _app.db.session.commit()
         if message.status == 'sent':
@@ -3740,15 +3763,11 @@ def create_app(test_config=None):
         for callback in pending_callbacks:
             callback.status = 'completed'
             callback.completed_at = now
-        linked = _app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.supporter_key == contact.supporter_key)).all() \
-            if contact.supporter_key else [contact]
-        for row in linked:
-            if row.status in ('To contact', 'No answer', 'Left a message',
+        if contact.status in ('To contact', 'No answer', 'Left a message',
                               'Call back', 'Contacted'):
-                row.status = outreach_status
-                if outreach_status == 'Declined':
-                    row.decline_reason = note
+            contact.status = outreach_status
+            if outreach_status == 'Declined':
+                contact.decline_reason = note
         task = _app.db.session.scalar(select(StaffTask).where(
             StaffTask.source_contact_id == contact.id))
         if task:
@@ -3780,14 +3799,13 @@ def create_app(test_config=None):
         return communication_return(contact.id)
 
     @app.post('/contacts/<int:contact_id>/communications/message/<channel>')
-    def send_supporter_message(contact_id, channel):
+    def send_supporter_message(contact_id, channel, force_contact_phone=False):
         if channel not in ('sms', 'whatsapp'):
             _app.abort(404)
         contact = communication_contact(contact_id)
         validate_communication_task(contact.id)
-        recipient = (_app.request.form.get('recipient_phone') or
-                     contact.cell_phone or contact.phone or
-                     contact.home_phone or '').strip()[:80]
+        recipient = (('' if force_contact_phone else _app.request.form.get('recipient_phone')) or
+                     contact_mobile(contact)).strip()[:80]
         body = _app.request.form.get('body', '').strip()[:1600]
         if not body:
             _app.abort(400, 'Enter a message.')
@@ -3863,11 +3881,7 @@ def create_app(test_config=None):
         communication_row(contact, 'pledge_email', subject, body,
                           status='completed' if message.status == 'sent' else message.status,
                           email_message=message)
-        linked = _app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.supporter_key == contact.supporter_key)).all() \
-            if contact.supporter_key else [contact]
-        for row in linked:
-            row.status = 'Pledged'
+        contact.status = 'Pledged'
         add_audit(f'{"Sent" if message.status == "sent" else "Prepared"} supporter pledge via {delivery["kind"]}: {contact.name}')
         _app.db.session.commit()
         if message.status == 'sent':
@@ -3898,13 +3912,9 @@ def create_app(test_config=None):
         frequency = (_app.request.form.get('pledge_frequency') or 'Monthly').strip()
         if frequency not in _app.PLEDGE_FREQUENCIES:
             _app.abort(400, 'Choose a valid donation frequency.')
-        linked = _app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.supporter_key == contact.supporter_key)).all() \
-            if contact.supporter_key else [contact]
-        for row in linked:
-            row.email = email
-            row.monthly_cents = pledge_cents
-            row.pledge_frequency = frequency
+        update_supporter_person(contact, {'email': email})
+        contact.monthly_cents = pledge_cents
+        contact.pledge_frequency = frequency
         add_audit(f'Updated pledge details from communications: {contact.name}')
         _app.db.session.commit()
         _app.flash('Pledge details saved.')
@@ -3944,6 +3954,26 @@ def create_app(test_config=None):
         return _app.db.session.scalar(select(_app.StaffUser).where(
             _app.StaffUser.status == 'active',
             _app.StaffUser.role == 'organization_admin').order_by(_app.StaffUser.id))
+
+    def reopen_supporter_reply_task(contact, channel):
+        if contact is None:
+            return
+        task = _app.db.session.scalar(select(StaffTask).where(
+            StaffTask.source_contact_id == contact.id))
+        if task is None:
+            assignee = automatic_task_assignee(contact)
+            if assignee is None:
+                return
+            task = StaffTask(
+                family_id=contact.family_id, source_contact_id=contact.id,
+                assigned_to=assignee.id, created_by=assignee.id,
+                title=f'Contact supporter: {contact.name}')
+            _app.db.session.add(task)
+        task.status = 'To do'
+        task.description = f'Supporter replied by {channel}. Review the reply in Communications.'
+        task.due_date = _app.datetime.now(ZoneInfo('America/New_York')).date()
+        task.completed_at = None
+        task.outcome = ''
 
     def sync_supporter_followup_task(contact):
         task = _app.db.session.scalar(select(StaffTask).where(
@@ -4325,19 +4355,13 @@ def create_app(test_config=None):
                     communication_row(task.source_contact, 'phone_call',
                                       'Phone call completed',
                                       outcome)
-            linked = [task.source_contact]
-            if task.source_contact.supporter_key:
-                linked = _app.db.session.scalars(select(_app.Contact).where(
-                    _app.Contact.supporter_key == task.source_contact.supporter_key)).all()
             if status == 'Completed':
-                for contact in linked:
-                    if contact.status in ('To contact', 'No answer', 'Left a message',
-                                          'Call back', 'Contacted'):
-                        contact.status = outreach_status
+                if task.source_contact.status in ('To contact', 'No answer', 'Left a message',
+                                                  'Call back', 'Contacted'):
+                    task.source_contact.status = outreach_status
             elif status == 'Cancelled':
-                for contact in linked:
-                    if contact.status == 'To contact':
-                        contact.status = 'Paused'
+                if task.source_contact.status == 'To contact':
+                    task.source_contact.status = 'Paused'
         add_audit(f'Changed task #{task.id} status to {status}' +
                   (f'; note: {outcome}' if outcome else ''))
         _app.db.session.commit()

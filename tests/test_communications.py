@@ -245,11 +245,11 @@ def test_family_supporter_contact_actions_open_the_existing_workflow(monkeypatch
         family_id = db.session.get(Contact, contact_id).family_id
     page = client.get(f'/families/{family_id}')
     assert page.status_code == 200
-    assert 'supporter-contact-actions' in page.text
-    assert f'/contacts/{contact_id}/communications/message/sms' in page.text
-    assert f'/contacts/{contact_id}/communications/callback' in page.text
-    assert f'/contacts/{contact_id}/communications/call' in page.text
-    assert f'/communications?contact_id={contact_id}#outreach-workflow' in page.text
+    assert 'family-supporters-table' in page.text
+    assert f'/supporters/{contact_id}#record-call' in page.text
+    supporter = client.get(f'/supporters/{contact_id}').text
+    assert f'/contacts/{contact_id}/communications/call' in supporter
+    assert f'/communications?contact_id={contact_id}' in supporter
     conversation = client.get(f'/communications?contact_id={contact_id}')
     assert conversation.status_code == 200
     assert 'id="outreach-workflow" open' in conversation.text
@@ -486,6 +486,131 @@ def test_no_answer_ai_draft_preview_and_send(monkeypatch):
     assert '<small class="preserve">Dear Test Supporter' not in result_page.text
 
 
+def test_initial_email_preview_does_not_change_supporter_or_followup(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        contact.status = 'No answer'
+        db.session.add(StaffTask(
+            family_id=contact.family_id, source_contact_id=contact.id,
+            assigned_to=1, created_by=1, title='Contact supporter',
+            status='To do', description='Try calling again'))
+        db.session.commit()
+    response = post(client, f'/contacts/{contact_id}/communications/initial-email', {
+        'recipient_email': 'supporter@example.test',
+        'subject': 'A time to speak', 'body': 'Please let us know a good time.'})
+    assert response.status_code == 302
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        task = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        assert contact.status == 'No answer'
+        assert task.status == 'To do'
+        assert task.description == 'Try calling again'
+        assert db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'initial_email')).status == 'preview'
+
+
+def test_named_sms_and_pledge_changes_stay_on_the_selected_case(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        first = db.session.get(Contact, contact_id)
+        second_family = Family(name='Second case')
+        db.session.add(second_family)
+        db.session.flush()
+        other = Contact(family_id=second_family.id, name=first.name,
+                        phone=first.phone, email=first.email,
+                        supporter_key=first.supporter_key, relationship='Friend',
+                        status='To contact', monthly_cents=5000,
+                        pledge_frequency='Weekly')
+        db.session.add(other)
+        db.session.commit()
+        other_id = other.id
+    response = post(client, '/communications/general-sms', {
+        'contact_id': str(contact_id), 'recipient_phone': '8455559999',
+        'body': 'Can we speak tomorrow?'})
+    assert response.status_code == 302
+    with app.app_context():
+        message = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'sms'))
+        assert message.body == 'Can we speak tomorrow?'
+        assert db.session.scalar(db.select(GeneralSmsMessage).where(
+            GeneralSmsMessage.body == 'Can we speak tomorrow?')) is None
+        assert db.session.get(Contact, contact_id).phone == '8455551212'
+    supporter_page = client.get(f'/supporters/{contact_id}').text
+    assert 'Can we speak tomorrow?' in supporter_page
+    assert 'Test family' in supporter_page
+    assert post(client, f'/contacts/{contact_id}/communications/pledge-details', {
+        'email': 'new@example.test', 'monthly': '75',
+        'pledge_frequency': 'Monthly'}).status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).monthly_cents == 7500
+        assert db.session.get(Contact, other_id).monthly_cents == 5000
+        assert db.session.get(Contact, other_id).pledge_frequency == 'Weekly'
+        assert db.session.get(Contact, other_id).email == 'new@example.test'
+    assert post(client, f'/contacts/{contact_id}/communications/call', {
+        'note': 'Spoke about the first case',
+        'outreach_status': 'Contacted'}).status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).status == 'Contacted'
+        assert db.session.get(Contact, other_id).status == 'To contact'
+
+
+def test_status_update_does_not_erase_decline_reason(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        contact.status = 'Declined'
+        contact.decline_reason = 'Asked us to refrain from contact.'
+        db.session.commit()
+    response = post(client, f'/contacts/{contact_id}', {
+        'status': 'Declined', 'monthly': '36',
+        'pledge_frequency': 'Monthly'})
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).decline_reason == (
+            'Asked us to refrain from contact.')
+
+
+def test_home_only_number_is_not_treated_as_mobile(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        contact.home_phone = contact.phone
+        contact.cell_phone = ''
+        db.session.commit()
+    page = client.get(f'/communications?contact_id={contact_id}').text
+    assert '<input dir="ltr" type="tel" name="recipient_phone" required>' in page
+    assert post(client, f'/contacts/{contact_id}/communications/message/sms', {
+        'body': 'Please call us'}).status_code == 400
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).cell_phone == ''
+        assert db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == contact_id,
+            SupporterCommunication.kind == 'sms')) is None
+
+
+def test_unread_reply_is_visible_beyond_first_supporter_page(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        family_id = db.session.get(Contact, contact_id).family_id
+        for index in range(80):
+            db.session.add(Contact(
+                family_id=family_id, name=f'Alpha {index:03}',
+                relationship='Friend', phone=f'845555{index:04}',
+                status='To contact'))
+        db.session.add(SupporterCommunication(
+            contact_id=contact_id, family_id=family_id,
+            kind='sms', direction='inbound', status='received',
+            subject='Incoming text message', body='Please call after dinner'))
+        db.session.commit()
+    page = client.get('/communications').text
+    assert 'Please call after dinner' in page
+    assert 'New supporter replies' in page
+
+
 def test_yiddish_supporter_email_is_delivered_rtl(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     delivered = {}
@@ -560,9 +685,13 @@ def test_resend_inbound_reply_is_matched_to_exact_supporter_and_case(monkeypatch
         assert reply.status == 'received'
         assert 'Tomorrow evening works for me.' in reply.body
         assert 'schedule.pdf' in reply.body
+        task = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        assert task is not None and task.status == 'To do'
+        assert 'replied by email' in task.description
         reply_id = reply.id
     inbox = client.get(f'/communications?contact_id={contact_id}')
-    assert 'New email replies' in inbox.text
+    assert 'New supporter replies' in inbox.text
     assert 'Tomorrow evening works for me.' in inbox.text
     assert 'Mark handled' in inbox.text
     handled = post(client, f'/communications/replies/{reply_id}/handled', {})
@@ -570,7 +699,7 @@ def test_resend_inbound_reply_is_matched_to_exact_supporter_and_case(monkeypatch
     with app.app_context():
         assert db.session.get(SupporterCommunication, reply_id).status == 'handled'
     assert 'Tomorrow evening works for me.' not in client.get(handled.location).text.split(
-        'New email replies', 1)[1].split('Outreach workflow', 1)[0]
+        'New supporter replies', 1)[1].split('Outreach workflow', 1)[0]
 
 
 def test_email_to_public_info_address_appears_in_messages(monkeypatch):
@@ -919,8 +1048,44 @@ def test_valid_twilio_reply_is_saved_once_in_supporter_history(monkeypatch):
         assert rows[0].contact_id == contact_id
         assert rows[0].kind == 'sms'
         assert rows[0].direction == 'inbound'
+        assert rows[0].status == 'received'
         assert rows[0].subject == 'Incoming text message'
         assert rows[0].body == 'Yes, please call after six.'
+        task = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        assert task is not None and task.status == 'To do'
+        assert 'replied by sms' in task.description
+        reply_id = rows[0].id
+    inbox = client.get(f'/communications?contact_id={contact_id}')
+    assert 'Yes, please call after six.' in inbox.text
+    assert f'/communications/replies/{reply_id}/handled' in inbox.text
+    assert post(client, f'/communications/replies/{reply_id}/handled', {}).status_code == 302
+    with app.app_context():
+        assert db.session.get(SupporterCommunication, reply_id).status == 'handled'
+
+
+def test_shared_supporter_reply_without_outbound_case_stays_unassigned(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    app.config.update(TESTING=False, DEMO=False, TWILIO_AUTH_TOKEN='secret')
+    monkeypatch.setattr('app.validate_webhook_signature', lambda *args: True)
+    with app.app_context():
+        first = db.session.get(Contact, contact_id)
+        family = Family(name='Another case')
+        db.session.add(family)
+        db.session.flush()
+        db.session.add(Contact(family_id=family.id, name=first.name,
+                               phone=first.phone, relationship='Friend',
+                               supporter_key=first.supporter_key))
+        db.session.commit()
+    response = client.post('/twilio/incoming-message', data={
+        'From': '+18455551212', 'To': '+12513063232',
+        'Body': 'Which case is this about?', 'MessageSid': 'SM' + 'e' * 32})
+    assert response.status_code == 200
+    with app.app_context():
+        assert db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.body == 'Which case is this about?')) is None
+        assert db.session.scalar(db.select(GeneralSmsMessage).where(
+            GeneralSmsMessage.body == 'Which case is this about?')).status == 'unread'
 
 
 def test_valid_twilio_reply_from_applicant_is_saved_in_family_messages(monkeypatch):

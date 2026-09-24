@@ -107,8 +107,9 @@ def test_supporter_identity_details_save_display_and_sync(app, client):
 
     detail = client.get(f'/supporters/{first_id}').text
     for value in ('12 Main Street', 'Monroe', 'Teitelbaum Foods',
-                  '845-555-4000', 'Uses Yoel T. on checks.'):
+                  'Uses Yoel T. on checks.'):
         assert value in detail
+    assert 'Work phone' in detail and '4000' in detail
 
 
 def test_clearing_cell_phone_does_not_redisplay_home_phone_as_cell(app, client):

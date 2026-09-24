@@ -127,6 +127,36 @@ def test_imported_profile_connects_once_to_a_case(app, client):
     assert 'Imported Person' in case_page.text
 
 
+def test_directory_connection_starts_a_separate_case_pledge_and_followup(app, client):
+    with app.app_context():
+        first_family = db.session.scalar(db.select(Family).order_by(Family.id))
+        second_family = Family(name='Another case')
+        profile = SupporterProfile(name='Shared Person', phone='845-555-1301',
+                                   normalized_phone='8455551301',
+                                   email='shared@example.test')
+        db.session.add_all([second_family, profile])
+        db.session.flush()
+        db.session.add(Contact(
+            family_id=first_family.id, name=profile.name, phone=profile.phone,
+            email=profile.email, relationship='Friend',
+            supporter_key='phone:8455551301', status='Pledged',
+            monthly_cents=6500, pledge_frequency='Weekly'))
+        db.session.commit()
+        profile_id, second_id = profile.id, second_family.id
+    response = client.post(f'/supporter-directory/{profile_id}/connect', data={
+        'csrf': csrf(client), 'family_id': str(second_id),
+        'relationship': 'Friend'})
+    assert response.status_code == 302
+    with app.app_context():
+        second = db.session.scalar(db.select(Contact).where(
+            Contact.family_id == second_id,
+            Contact.supporter_key == 'phone:8455551301'))
+        assert second.status == 'To contact'
+        assert second.monthly_cents == 0
+        assert second.pledge_frequency == 'Monthly'
+        assert second.email == 'shared@example.test'
+
+
 def test_case_supporter_form_can_select_imported_profile_and_blocks_duplicate(app, client):
     with app.app_context():
         profile = SupporterProfile(name='Directory Name', phone='(845) 555-1350',
