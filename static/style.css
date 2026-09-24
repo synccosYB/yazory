@@ -798,9 +798,9 @@ body[data-endpoint="dashboard"] .monthly-sponsor{margin-top:10px;padding:7px 12p
 /* Shared short-action popup, with the native details form as a no-script fallback. */
 details.quick-action-popup[open]{position:fixed!important;inset:50% auto auto 50%!important;transform:translate(-50%,-50%)!important;z-index:41!important;display:block!important;width:min(760px,calc(100vw - 32px))!important;max-height:calc(100dvh - 32px)!important;overflow:auto!important;margin:0!important;padding:20px!important;border:1px solid var(--line)!important;border-radius:12px!important;background:var(--surface,#fff)!important;box-shadow:0 18px 50px #102f5040!important;white-space:normal!important}
 body:has(details.quick-action-popup[open])::before{content:"";position:fixed;inset:0;z-index:40;background:#102f5066}
-details.quick-action-popup>summary{display:block!important;white-space:normal!important;padding:0 90px 12px 0!important;margin:0 0 10px!important;border:0!important;border-bottom:1px solid var(--line)!important;font-size:17px!important;list-style:none!important}
+details.quick-action-popup[open]>summary{display:block!important;white-space:normal!important;padding:0 90px 12px 0!important;margin:0 0 10px!important;border:0!important;border-bottom:1px solid var(--line)!important;font-size:17px!important;list-style:none!important}
 details.quick-action-popup>summary::after{display:none!important}
-[dir=rtl] details.quick-action-popup>summary{padding:0 0 12px 90px!important}
+[dir=rtl] details.quick-action-popup[open]>summary{padding:0 0 12px 90px!important}
 details.quick-action-popup>.quick-action-close{position:absolute;inset-block-start:14px;inset-inline-end:16px;width:auto;margin:0;padding:5px 9px}
 details.quick-action-popup>form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px;width:100%;max-width:none!important;margin:0!important;padding:0!important;background:transparent!important}
 details.quick-action-popup>form label{min-width:0}
