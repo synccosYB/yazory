@@ -59,6 +59,48 @@ if(networkSide&&networkRelationship&&networkParent&&networkParentConnection){
   updateNetworkConnections();
 }
 if(candidates.length>1){document.body.dataset.pageTabs='true';const nav=document.createElement('nav');nav.className='page-panels';nav.setAttribute('aria-label',labels.sections);const controls=candidates.map((section,i)=>{const directUrl=section.dataset.panelHref;if(directUrl){const a=document.createElement('a');a.href=directUrl;a.textContent=section.querySelector('h2').textContent;nav.append(a);return a;}const b=document.createElement('button');b.type='button';b.textContent=section.querySelector('h2').textContent;b.onclick=()=>{candidates.forEach((p,n)=>p.hidden=n!==i);controls.forEach((p,n)=>{p.classList.toggle('selected',n===i);if(p.tagName==='BUTTON')p.setAttribute('aria-pressed',String(n===i));});window.dispatchEvent(new Event('resize'));};nav.append(b);return b;});candidates[0].before(nav);const requestedPanel=Number(new URLSearchParams(location.search).get('panel'));const initialIndex=candidates.findIndex(s=>s.dataset.initialPanel==='true');const firstPanel=(requestedPanel>0?controls[requestedPanel-1]:null)||(initialIndex>=0?controls[initialIndex]:null)||controls.find(control=>control.tagName==='BUTTON');if(firstPanel?.tagName==='BUTTON')firstPanel.click();const revealHashPanel=()=>{const id=decodeURIComponent(location.hash.slice(1));if(!id)return;const target=document.getElementById(id);const index=candidates.findIndex(section=>section===target||section.contains(target));if(index>=0&&controls[index]?.tagName==='BUTTON')controls[index].click();};window.addEventListener('hashchange',revealHashPanel);revealHashPanel();}
+// Give short, self-contained actions the same dismissible popup on staff pages.
+(()=>{
+  const lang=document.documentElement.lang;
+  const closeLabel=lang==='yi'?'פארמאכן':lang==='he'?'סגירה':'Close';
+  const actionDetails=[...main.querySelectorAll('details')].filter(details=>{
+    if(details.classList.contains('supporter-contact-actions')||details.closest('.supporter-contact-panel')||details.hasAttribute('open'))return false;
+    const children=[...details.children];
+    const forms=children.filter(child=>child.matches('form'));
+    if(!forms.length||details.querySelector('details, iframe'))return false;
+    if(details.matches('.communication-accordion-item,.supporter-accordion-item,.mailbox-message,.foldable-communication-section'))return false;
+    return forms.every(form=>form.querySelectorAll('input:not([type="hidden"]),textarea,select').length<=6);
+  });
+  let current=null;
+  const dismiss=details=>{if(details?.open)details.open=false;};
+  actionDetails.forEach(details=>{
+    details.classList.add('quick-action-popup');
+    const anchor=document.createComment('quick action position');
+    details.before(anchor);
+    const close=document.createElement('button');
+    close.type='button';close.className='quick-action-close secondary small';
+    close.textContent=`${closeLabel} ×`;close.setAttribute('aria-label',closeLabel);
+    const summary=details.querySelector(':scope > summary');
+    if(!summary)return;
+    summary.id ||= `quick-action-${Math.random().toString(36).slice(2)}`;
+    summary.after(close);
+    close.addEventListener('click',()=>dismiss(details));
+    details.addEventListener('toggle',()=>{
+      if(details.open){if(current&&current!==details)dismiss(current);document.body.append(details);current=details;details.setAttribute('role','dialog');details.setAttribute('aria-modal','true');details.setAttribute('aria-labelledby',summary.id);close.focus();}
+      else {anchor.after(details);details.removeAttribute('role');details.removeAttribute('aria-modal');details.removeAttribute('aria-labelledby');if(current===details){current=null;summary.focus();}}
+    });
+  });
+  document.addEventListener('click',event=>{if(current?.open&&!current.contains(event.target))dismiss(current);});
+  document.addEventListener('keydown',event=>{
+    if(!current?.open)return;
+    if(event.key==='Escape'){event.preventDefault();dismiss(current);return;}
+    if(event.key!=='Tab')return;
+    const items=[...current.querySelectorAll('summary,button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]')].filter(item=>item.getClientRects().length);
+    if(!items.length)return;
+    if(event.shiftKey&&document.activeElement===items[0]){event.preventDefault();items.at(-1).focus();}
+    else if(!event.shiftKey&&document.activeElement===items.at(-1)){event.preventDefault();items[0].focus();}
+  });
+})();
 const familySupporterTable=[...main.querySelectorAll('table')].find(table=>table.querySelector('form[action^="/contacts/"]')&&table.closest('section')?.querySelector('.supporter-summary-heading'));
 if(familySupporterTable){
   familySupporterTable.addEventListener('click',event=>{
