@@ -118,6 +118,10 @@ real helper and links every case-specific `contact` row through `person_id`.
 Existing contacts, pledges, receipts, donations, tasks, and affiliations are
 preserved. Helpers sharing a household phone inside the same case remain
 distinct; an identity already connected across different cases is consolidated.
+On deployment, `init-db` also links existing shared shul gabbaim to each
+connected case's Circle of Support. It preserves case pledge and status data
+and adds a workflow supporter link where one is missing. Subsequent family
+profile saves and gabbai edits synchronize new links automatically.
 
 The publishing command in `.replit` sets `APP_ENV=production`, runs the additive `init-db` upgrade, and then starts Gunicorn on port 5000. This prevents a newly deployed page from querying tables or columns that the existing database does not yet have. Production enforces secure cookies, staff authentication, CSRF protection, and PostgreSQL. Demo records are never seeded into PostgreSQL.
 

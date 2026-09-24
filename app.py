@@ -1440,6 +1440,59 @@ def create_app(test_config=None):
         sync_person_snapshots(person)
         return person
 
+    def sync_shul_gabbai_supporters(family_ids=None):
+        """Connect shared shul gabbaim to each case's Circle of Support.
+
+        Existing case contacts are retained, including their pledge and status.
+        The shul link remains the source of the gabbai's role.
+        """
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        families = _app.db.session.scalars(select(_app.Family).where(
+            _app.Family.id.in_(family_ids)) if family_ids is not None else
+            select(_app.Family)).all()
+        for family in families:
+            existing = _app.db.session.scalars(select(_app.Contact).where(
+                _app.Contact.family_id == family.id)).all()
+            for shul in _family_profile_shuls(family):
+                for association in _app.db.session.scalars(select(
+                        ShulHelperAssociation).where(
+                        ShulHelperAssociation.institution_id == shul.id,
+                        ShulHelperAssociation.role == 'shul_gabbai')).all():
+                    helper = association.helper_person
+                    phones = _helper_phones(helper)
+                    phone = phones[0] if phones else ''
+                    normalized = normalized_profile_phone(phone)
+                    key = 'phone:' + normalized if normalized else f'helper:{helper.id}'
+                    shared = _app.db.session.scalar(select(_app.Contact).where(
+                        _app.Contact.supporter_key == key).order_by(_app.Contact.id))
+                    if shared and shared.name.strip().casefold() != helper.name.strip().casefold():
+                        key = f'helper:{helper.id}'
+                    contact = next((row for row in existing if
+                        row.supporter_key == key or (
+                            row.name.strip().casefold() == helper.name.strip().casefold()
+                            and (not normalized or normalized in {
+                                normalized_profile_phone(row.phone),
+                                normalized_profile_phone(row.cell_phone)}))), None)
+                    if contact is None:
+                        contact = _app.Contact(
+                            family_id=family.id, name=helper.name, phone=phone,
+                            cell_phone=phone, relationship='Other',
+                            supporter_key=key, status='To contact')
+                        _app.db.session.add(contact)
+                        _app.db.session.flush()
+                        source = _app.db.session.scalar(select(_app.Contact).where(
+                            _app.Contact.supporter_key == key,
+                            _app.Contact.id != contact.id).order_by(_app.Contact.id))
+                        attach_supporter_person(contact, source=source)
+                        existing.append(contact)
+                    if _app.db.session.get(link_model, contact.id) is None:
+                        _app.db.session.add(link_model(
+                            contact_id=contact.id, side='Community',
+                            relationship='Other', introduced_by=shul.name,
+                            permission='Not requested', preference='',
+                            verified=False))
+
+
     def update_supporter_person(contact, values):
         """Update one person once, then refresh every connected case snapshot."""
         person = attach_supporter_person(contact)
@@ -1574,6 +1627,8 @@ def create_app(test_config=None):
         _migrate_canonical_rabbis()
         _migrate_canonical_helpers()
         _migrate_family_gabbaim_to_shared_shuls()
+        sync_shul_gabbai_supporters()
+        _app.db.session.commit()
 
     app.extensions.setdefault('init_db_hooks', []).append(ensure_extension_schema)
     # Keep production worker startup below Replit's health-check deadline.
@@ -2027,6 +2082,7 @@ def create_app(test_config=None):
         person = _canonical_helper(name, [phone])
         if person is not None:
             _attach_helper(institution, person, 'shul_gabbai')
+        sync_shul_gabbai_supporters()
         actor = user.email if user else 'Demo user'
         _app.db.session.add(_app.Audit(
             actor=actor, action='Added shared shul gabbai', family_id=family.id))
@@ -2061,6 +2117,8 @@ def create_app(test_config=None):
         _app.db.session.flush()
         if phone:
             _app.db.session.add(HelperPhone(helper_person_id=helper.id, phone=phone))
+        _app.db.session.flush()
+        sync_shul_gabbai_supporters()
         _app.db.session.add(_app.Audit(
             actor=user.email if user else 'Demo user',
             action='Updated shared shul helper'))
@@ -2360,6 +2418,8 @@ def create_app(test_config=None):
                     for attempt in range(2):
                         try:
                             _save_shul_connections(int(family_id))
+                            sync_shul_gabbai_supporters([int(family_id)])
+                            _app.db.session.commit()
                             sync_error = None
                             break
                         except (IntegrityError, StaleDataError) as exc:
@@ -2506,11 +2566,20 @@ def create_app(test_config=None):
         candidates = {}
 
         def add(key, name, url, profile_id=None):
+            # The same supporter can appear as a profile, canonical person,
+            # and case contact. Those rows are one SMS identity.
+            name_key = ' '.join((name or '').split()).casefold()
+            for candidate in candidates.values():
+                if candidate['name_key'] == name_key:
+                    if key[0] == 'contact':
+                        candidate['url'] = url
+                    return
             if key not in candidates:
                 candidates[key] = {
                     'known': True, 'name': name, 'url': url,
                     'normalized_phone': normalized, 'ambiguous': False,
-                    'profile_id': profile_id, 'confirmed': False}
+                    'profile_id': profile_id, 'confirmed': False,
+                    'name_key': name_key}
 
         directory = getattr(_app.g, 'sms_directory_cache', None)
         if directory is None:

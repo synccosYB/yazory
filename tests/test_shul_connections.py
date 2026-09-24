@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
 from app import (
+    Contact,
     Family,
     FamilyGabbaiConnection,
     FamilyRabbiConnection,
@@ -239,6 +240,27 @@ def test_profile_does_not_repeat_gabbai_when_weekday_and_shabbos_shul_match(app,
     page = client.get('/families/1').get_data(as_text=True)
 
     assert page.count('<strong>One Shared Gabbai</strong>') == 1
+
+
+def test_shared_shul_gabbai_has_one_case_supporter_record(app, client):
+    add_shuls(app)
+    form = {
+        'name': 'Sample family',
+        'weekday_shul': 'Weekday Test Shul',
+        'shabbos_shul': 'Weekday Test Shul',
+        'weekday_shul_gabbai_name': ['Shared Gabbai'],
+        'weekday_shul_gabbai_phone': ['845-555-4777'],
+    }
+    assert post(client, '/families/1/edit', form).status_code == 302
+    assert post(client, '/families/1/edit', form).status_code == 302
+    with app.app_context():
+        contacts = db.session.scalars(db.select(Contact).where(
+            Contact.family_id == 1, Contact.name == 'Shared Gabbai')).all()
+        assert len(contacts) == 1
+        assert contacts[0].phone == '845-555-4777'
+        link = app.extensions['workflows']['models']['SupporterLink']
+        assert db.session.get(link, contacts[0].id) is not None
+
 
 
 def test_profile_does_not_classify_rabbi_assistant_as_shul_gabbai(app, client):

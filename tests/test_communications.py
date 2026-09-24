@@ -1049,6 +1049,23 @@ def test_unknown_sms_can_be_linked_to_existing_person(monkeypatch):
     assert 'Known Person' in page.text
 
 
+def test_sms_displays_supporter_name_separately_from_case(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).where(Family.name == 'Test family'))
+        db.session.add(Contact(
+            family_id=family.id, name='Shared Supporter',
+            relationship='Other', phone='3473851693', cell_phone='3473851693'))
+        db.session.add(GeneralSmsMessage(
+            phone='+13473851693', family_id=family.id,
+            direction='outbound', body='Hello', status='completed'))
+        db.session.commit()
+    page = client.get('/communications').text
+    assert 'Shared Supporter' in page
+    assert 'Test family' in page
+    assert '347' in page
+
+
 def test_family_askan_sms_button_prefills_and_links_message_to_case(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)
     with app.app_context():
