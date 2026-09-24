@@ -82,6 +82,29 @@ def setup_workspace(monkeypatch):
         return app, client, contact.id
 
 
+def test_call_creates_linked_followup_and_records_decline(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    response = post(client, f'/contacts/{contact_id}/communications/call', {
+        'note': 'He cannot contribute this year.', 'outreach_status': 'Declined',
+        'followup_title': 'Review again next year',
+        'followup_due_date': '2027-01-15', 'return_to': 'supporter'})
+    assert response.status_code == 302
+    assert response.location.endswith(f'/supporters/{contact_id}#record-call')
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        assert contact.status == 'Declined'
+        assert contact.decline_reason == 'He cannot contribute this year.'
+        parent = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        child = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.parent_id == parent.id))
+        assert child.title == 'Review again next year'
+        assert child.due_date.isoformat() == '2027-01-15'
+        assert child.status == 'To do'
+    assert 'He cannot contribute this year.' in client.get(
+        f'/supporters/{contact_id}').text
+
+
 def test_callback_task_keeps_time_and_communication_status_in_sync(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     assert post(client, f'/contacts/{contact_id}/communications/callback', {

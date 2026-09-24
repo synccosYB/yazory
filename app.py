@@ -3709,6 +3709,14 @@ def create_app(test_config=None):
         outreach_status = _app.request.form.get('outreach_status', '').strip()
         if outreach_status not in TASK_OUTREACH_RESULTS:
             _app.abort(400, 'Choose the actual supporter outreach result.')
+        followup_title = _app.request.form.get('followup_title', '').strip()[:240]
+        followup_due_raw = _app.request.form.get('followup_due_date', '').strip()
+        if followup_due_raw and not followup_title:
+            _app.abort(400, 'Enter a task before choosing its due date.')
+        try:
+            followup_due_date = _app.date.fromisoformat(followup_due_raw) if followup_due_raw else None
+        except ValueError:
+            _app.abort(400, 'Enter a valid task due date.')
         communication_row(contact, 'phone_call', 'Phone call completed', note)
         now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
         pending_callbacks = _app.db.session.scalars(select(SupporterCommunication).where(
@@ -3725,15 +3733,36 @@ def create_app(test_config=None):
             if row.status in ('To contact', 'No answer', 'Left a message',
                               'Call back', 'Contacted'):
                 row.status = outreach_status
+                if outreach_status == 'Declined':
+                    row.decline_reason = note
         task = _app.db.session.scalar(select(StaffTask).where(
             StaffTask.source_contact_id == contact.id))
         if task:
             task.status = 'Completed'
             task.completed_at = now
             task.outcome = note
+        if followup_title:
+            assignee = task_user() or automatic_task_assignee(contact)
+            if assignee is None:
+                _app.abort(400, 'No active staff member is available for the follow-up task.')
+            if task is None:
+                task = StaffTask(
+                    family_id=contact.family_id, source_contact_id=contact.id,
+                    assigned_to=assignee.id, created_by=assignee.id,
+                    title=f'Contact supporter: {contact.name}',
+                    status='Completed', completed_at=now, outcome=note)
+                _app.db.session.add(task)
+            _app.db.session.add(StaffTask(
+                family_id=contact.family_id, parent=task,
+                assigned_to=assignee.id, created_by=task_user().id,
+                title=followup_title, description=note,
+                due_date=followup_due_date, priority='Normal'))
         add_audit(f'Completed supporter call: {contact.name}')
         _app.db.session.commit()
         _app.flash('Phone call recorded.')
+        if _app.request.form.get('return_to') == 'supporter':
+            return _app.redirect(_app.url_for('supporter_detail', contact_id=contact.id,
+                                              _anchor='record-call'))
         return communication_return(contact.id)
 
     @app.post('/contacts/<int:contact_id>/communications/message/<channel>')

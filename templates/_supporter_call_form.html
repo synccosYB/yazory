@@ -1,0 +1,9 @@
+<details><summary>{{ _('Record completed call') }}</summary>
+<form method="post" action="{{ url_for('complete_supporter_call', contact_id=contact.id) }}">{{ token(csrf) }}
+<input type="hidden" name="return_to" value="{{ call_return_to }}">
+<label>{{ _('Call notes') }}<textarea name="note" maxlength="5000" rows="2" required></textarea></label>
+<label>{{ _('Supporter outreach result') }}<select name="outreach_status" required><option value="">{{ _('Choose…') }}</option>{% for value in ['No answer', 'Left a message', 'Contacted', 'Wrong number', 'Paused', 'Declined'] %}<option value="{{ value }}">{{ _(value) }}</option>{% endfor %}</select></label>
+<label>{{ _('Follow-up task (optional)') }}<input name="followup_title" maxlength="240" placeholder="{{ _('What needs to be done next?') }}"></label>
+<label>{{ _('Task due date') }}<input type="date" name="followup_due_date"></label>
+<button class="small">{{ _('Call completed') }}</button>
+</form></details>

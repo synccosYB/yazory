@@ -6,6 +6,9 @@ LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 _ROWS = '''
 Reason for declining|סיבת הסירוב|פארוואס ער האט אפגעזאגט
 What did he say?|מה הוא אמר?|וואס האט ער געזאגט?
+Follow-up task (optional)|משימת המשך (לא חובה)|ווייטערדיגע אויפגאבע (אויב נויטיג)
+What needs to be done next?|מה צריך לעשות בהמשך?|וואס דארף מען ווייטער טון?
+Task due date|תאריך יעד למשימה|ביז ווען די אויפגאבע
 Part of|חלק מ|א טייל פון
 Supporter callback|שיחת חזרה לתומך|צוריקרופן דעם העלפער
 Scheduled for|נקבע ל|באשטימט אויף
