@@ -90,6 +90,21 @@ def test_opening_one_notification_marks_only_that_item_read(app, client):
     assert b'Replied to Yazory inbox message' in page.data
 
 
+    # A saved link or a second click still opens the activity after it is read.
+    opened_again = client.get(f'/notifications/{first_id}/open')
+    assert opened_again.status_code == 302
+    assert opened_again.location.endswith('/communications#general-inbox')
+
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        db.session.get(StaffActivityCursor, user.id).last_seen_at = (
+            datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=1))
+        db.session.commit()
+    opened_after_clear = client.get(f'/notifications/{first_id}/open')
+    assert opened_after_clear.status_code == 302
+    assert opened_after_clear.location.endswith('/communications#general-inbox')
+
+
 def test_notifications_page_always_links_back_to_communications(app, client):
     response = client.get('/notifications')
     assert response.status_code == 200
