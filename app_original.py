@@ -1229,6 +1229,31 @@ def create_app(test_config=None):
             db.session.add(existing)
         return existing
 
+    def connect_shul_friend(contact):
+        """Link a shul friend to the applicant's shul network(s), once each."""
+        family = contact.family
+        names = {name.strip().casefold(): name.strip() for name in
+                 (family.weekday_shul, family.shabbos_shul) if name and name.strip()}
+        current_ids = set()
+        if contact.relationship == 'Shul friend':
+            for name in names.values():
+                institution = find_or_create_institution('Shul', name, family.city, family.state)
+                current_ids.add(institution.id)
+                ensure_profile_affiliation(institution, 'supporter', contact.id,
+                                           note='Shul friend · Supporter relationship')
+        for affiliation in db.session.scalars(select(PersonAffiliation).where(
+                PersonAffiliation.person_type == 'supporter',
+                PersonAffiliation.person_id == contact.id,
+                PersonAffiliation.note == 'Shul friend · Supporter relationship')).all():
+            if affiliation.institution_id not in current_ids:
+                db.session.delete(affiliation)
+
+    def reconcile_shul_friends():
+        """Fill links for supporters saved before automatic shul linking existed."""
+        for contact in db.session.scalars(select(Contact).where(
+                Contact.relationship == 'Shul friend')).all():
+            connect_shul_friend(contact)
+
     def connect_family_profile_directories(family, yeshivah_history=None):
         """Keep the applicant connected to profile shuls and yeshivah."""
         seen = set()
@@ -2792,6 +2817,7 @@ def create_app(test_config=None):
                           pledge_frequency=pledge_frequency, status=status)
         db.session.add(contact)
         db.session.flush()
+        connect_shul_friend(contact)
         identity = app.extensions.get('supporter_identity')
         if identity:
             identity['attach'](contact)
@@ -2841,6 +2867,7 @@ def create_app(test_config=None):
             if relationship not in set(RELATIONSHIPS) | LEGACY_RELATIONSHIPS:
                 abort(400, 'Choose a valid relationship.')
             contact.relationship = relationship
+            connect_shul_friend(contact)
         contact.status = status
         contact.monthly_cents = monthly_cents
         contact.pledge_frequency = pledge_frequency
@@ -2951,6 +2978,7 @@ def create_app(test_config=None):
             contact.monthly_cents = amount('monthly', allow_zero=status != 'Pledged')
             contact.pledge_frequency = pledge_frequency
             contact.relationship = relationship
+            connect_shul_friend(contact)
             contact.parent_contact_id = parent_contact_id
             contact.parent_connection = parent_connection
             sync_followup = app.extensions.get('sync_supporter_followup_task')
@@ -3712,6 +3740,8 @@ def create_app(test_config=None):
     @app.get('/community-directories')
     def community_directories():
         require_organization_admin()
+        reconcile_shul_friends()
+        db.session.commit()
         kind = request.args.get('kind', 'Shul')
         if kind not in ('Shul', 'Yeshivah'):
             abort(400, 'Choose a valid directory.')
