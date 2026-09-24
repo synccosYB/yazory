@@ -246,7 +246,13 @@ def test_family_supporter_contact_actions_open_the_existing_workflow(monkeypatch
     page = client.get(f'/families/{family_id}')
     assert page.status_code == 200
     assert 'family-supporters-table' in page.text
-    assert f'/supporters/{contact_id}#record-call' in page.text
+    assert f'href="/supporters/{contact_id}"' in page.text
+    assert f'href="/contacts/{contact_id}/edit"' not in page.text
+    assert f'action="/contacts/{contact_id}"' in page.text
+    assert f'action="/contacts/{contact_id}/communications/message/sms"' in page.text
+    assert f'action="/contacts/{contact_id}/communications/callback"' in page.text
+    assert f'href="/communications?contact_id={contact_id}"' in page.text
+    assert f'href="/contacts/{contact_id}/edit"' in client.get(f'/supporters/{contact_id}').text
     supporter = client.get(f'/supporters/{contact_id}').text
     assert f'/contacts/{contact_id}/communications/call' in supporter
     assert f'/communications?contact_id={contact_id}' in supporter
