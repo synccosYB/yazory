@@ -281,6 +281,45 @@ def test_two_family_pledges_automatically_use_one_yazory_link(monkeypatch):
         assert 'abcharity.org/campaign/test-family' not in message.text_body
 
 
+def test_shared_supporter_pledge_edits_keep_each_case_amount_and_status(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        original = db.session.get(Contact, contact_id)
+        second_family = Family(name='Second family')
+        db.session.add(second_family)
+        db.session.flush()
+        other = Contact(
+            family_id=second_family.id, name=original.name,
+            relationship='Friend', phone=original.phone, email=original.email,
+            supporter_key=original.supporter_key, monthly_cents=2400,
+            pledge_frequency='Monthly', status='Contacted')
+        db.session.add(other)
+        db.session.commit()
+        other_id = other.id
+
+    response = post(client, f'/contacts/{contact_id}/communications/pledge-details', {
+        'email': 'shared@example.test', 'monthly': '52.50',
+        'pledge_frequency': 'Weekly'})
+    assert response.status_code == 302
+    with app.app_context():
+        original = db.session.get(Contact, contact_id)
+        other = db.session.get(Contact, other_id)
+        assert (original.monthly_cents, original.pledge_frequency) == (5250, 'Weekly')
+        assert (other.monthly_cents, other.pledge_frequency) == (2400, 'Monthly')
+        assert original.email == other.email == 'shared@example.test'
+        assert original.person_id == other.person_id
+
+    response = post(client, f'/contacts/{contact_id}/communications/pledge', {})
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(Contact, contact_id).status == 'Pledged'
+        assert db.session.get(Contact, other_id).status == 'Contacted'
+        message = db.session.scalar(db.select(EmailMessage).where(
+            EmailMessage.kind == 'pledge_confirmation'))
+        assert 'Test family: $52.50 each week' in message.text_body
+        assert 'Second family: $24.00 each month' in message.text_body
+
+
 def test_missing_abcharity_campaign_falls_back_to_yazory(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     with app.app_context():
