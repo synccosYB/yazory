@@ -3,6 +3,7 @@ from io import BytesIO
 from pathlib import Path
 from datetime import date
 
+from bidi.algorithm import get_display
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
@@ -27,7 +28,9 @@ def _font():
 def _value(page, x, y, value):
     value = str(value)
     if any('\u0590' <= ch <= '\u05ff' for ch in value):
-        page.drawRightString(537, y, value, direction='RTL')
+        # ReportLab's direction argument does not reorder glyphs on the page.
+        # Convert logical Hebrew/Yiddish text to visual order for PDF drawing.
+        page.drawRightString(537, y, get_display(value, base_dir='R'), direction='LTR')
     else:
         page.drawString(x, y, value, direction='LTR')
 
