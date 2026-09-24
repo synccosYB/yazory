@@ -151,6 +151,17 @@ def test_isolation_linking_and_atomic_error(setup,monkeypatch):
 def test_invalid_receipts(field,value):
     with pytest.raises(ValueError):normalize({**ROW,field:value},'55')
 
+def test_subscription_commitment_is_visible_separately_from_payment(setup, monkeypatch):
+    _, client = setup
+    monkeypatch.setattr('abcharity.fetch_donations', lambda key: [{**ROW, 'amount': '1200.00', 'net': '94.09'}])
+    connect(client)
+    body = client.get('/families/1/donations').text
+    assert 'Pledged amount' in body
+    assert '$1,200.00' in body
+    assert '$100.00' in body
+    assert '$94.09' in body
+
+
 def test_subscription_counts_only_the_paid_installment():
     receipt, _ = normalize({**ROW, 'amount': '1200.00', 'net': '94.09'}, '55')
     assert receipt['subscription'] is True
