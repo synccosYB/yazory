@@ -816,6 +816,7 @@ details.quick-action-popup>form>label:has(textarea),details.quick-action-popup>f
 #circle-of-support .family-supporters-table th:nth-child(5){width:15%}
 #circle-of-support .family-supporters-table th:nth-child(6){width:24%}
 #circle-of-support .family-supporters-table th,#circle-of-support .family-supporters-table td{text-align:start;vertical-align:middle;overflow-wrap:break-word}
+#circle-of-support .family-supporters-table :is(th,td):nth-child(n+3){text-align:center}
 #circle-of-support .family-supporters-table .supporter-phone,#circle-of-support .family-supporters-table .supporter-pledge{white-space:nowrap;font-variant-numeric:tabular-nums}
 #circle-of-support .family-supporters-table .supporter-name{display:block}
 #circle-of-support .family-supporters-table .inline-children{margin:3px 0 0;font-size:11px}
@@ -826,10 +827,12 @@ details.quick-action-popup>form>label:has(textarea),details.quick-action-popup>f
 #circle-of-support .family-supporters-table .supporter-actions details>form{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px;width:100%;white-space:normal}
 #circle-of-support .family-supporters-table .supporter-actions details>form label{display:block;margin-bottom:8px}
 #circle-of-support .family-supporters-table .supporter-actions details>form :is(input,select){display:block;width:100%}
-#circle-of-support .family-supporters-table .supporter-action-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+#circle-of-support .family-supporters-table .supporter-action-buttons{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;min-width:0}
 #circle-of-support .family-supporters-table .supporter-action-buttons>a,#circle-of-support .family-supporters-table .supporter-action-buttons>details{flex:0 0 auto;margin:0;width:auto;max-width:none}
 #circle-of-support .family-supporters-table .supporter-action-buttons .button{display:inline-block;width:auto;min-width:max-content;white-space:nowrap;overflow-wrap:normal;word-break:normal;line-height:1.25}
-#circle-of-support .family-supporters-table .supporter-action-buttons>details{border:0;padding:0}
+#circle-of-support .family-supporters-table .supporter-action-buttons>details{border:0;padding:0;margin:0}
+#circle-of-support .family-supporters-table .supporter-action-buttons>details>summary{display:inline-block;list-style:none;margin:0;padding:6px 10px;font-size:12px;font-weight:700;line-height:1.25;text-align:center;cursor:pointer}
+#circle-of-support .family-supporters-table .supporter-action-buttons>details>summary::-webkit-details-marker{display:none}
 
 #task-reminder-popup:not([hidden]) { position:fixed; z-index:10000; inset:auto 1.5rem 1.5rem auto; width:min(360px,calc(100vw - 3rem)); padding:1.4rem; border:2px solid #b49a52; border-radius:16px; color:#172f4c; background:#fff; box-shadow:0 12px 40px #102b4b55; display:flex; flex-direction:column; gap:.8rem }
 #task-reminder-popup p { margin:0; overflow-wrap:anywhere }
