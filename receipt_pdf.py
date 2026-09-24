@@ -106,6 +106,7 @@ def build_pledge_acknowledgment_pdf(contact):
     paid_cents = 0
     fixed_twelve_months = False
     pledged_totals = []
+    abcharity_paid_cents = 0
     if session is not None:
         paid_cents = session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
             Receipt.contact_id == contact.id)) or 0
@@ -113,6 +114,7 @@ def build_pledge_acknowledgment_pdf(contact):
             CharityDonor, CharityDonor.id == CharityDonation.donor_id).where(
             CharityDonor.contact_id == contact.id)).all()
         paid_cents += sum(row.amount_cents for row in donations)
+        abcharity_paid_cents = sum(row.amount_cents for row in donations)
         pledged_totals = [row.pledge_total_cents for row in donations
                           if row.subscription and row.pledge_total_cents]
         fixed_twelve_months = bool(pledged_totals)
@@ -129,9 +131,18 @@ def build_pledge_acknowledgment_pdf(contact):
     if fixed_twelve_months or contact.pledge_frequency == 'One time':
         rows.append(('Remaining pledge', f'${max(total_cents - paid_cents, 0) / 100:,.2f}'))
     rows.append(('Issued on', date.today().strftime('%m/%d/%Y')))
-    return _document('Pledge acknowledgment', rows, (
+    notes = []
+    if abcharity_paid_cents:
+        notes.extend((
+            'ABCharity payment tax ID: 92-3617094',
+            'No goods or services were provided to the donor in exchange for the'
+            f' ${abcharity_paid_cents / 100:,.2f} received through ABCharity.',
+        ))
+    notes.extend((
         'Payments received are documented separately in your donation history.',
-        'This acknowledgment is not a receipt for unpaid pledge amounts.'), pledge=True)
+        'This acknowledgment is not a receipt for unpaid pledge amounts.',
+    ))
+    return _document('Pledge acknowledgment', rows, notes, pledge=True)
 
 
 def build_abcharity_payment_pdf(donation, contact):
@@ -142,7 +153,9 @@ def build_abcharity_payment_pdf(donation, contact):
         ('Donor', contact.name),
         ('Supported family', contact.family.name),
         ('Campaign tax ID', '92-3617094'),
+        ('Goods or services', 'None provided to the donor'),
         ('Amount paid', f'${donation.amount_cents / 100:,.2f}'),
         ('Net received by case', f'${donation.net_cents / 100:,.2f}'),
-    ), ('Payment processed by ABCharity; imported into Yazory.',
+    ), ('No goods or services were provided in exchange for this donation.',
+        'Payment processed by ABCharity; imported into Yazory.',
         'For the original processor receipt, contact ABCharity.'))

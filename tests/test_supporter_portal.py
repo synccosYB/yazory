@@ -181,6 +181,7 @@ def test_abcharity_payment_appears_in_same_portal_history_and_is_private(app, cl
     assert 'Payment processed by ABCharity' in payment_text
     assert 'Campaign tax ID' in payment_text
     assert '92-3617094' in payment_text
+    assert 'No goods or services were provided' in payment_text
     with app.app_context():
         contact_id = db.session.scalar(db.select(CharityDonor.contact_id).where(
             CharityDonor.id == db.session.get(CharityDonation, donation_id).donor_id))
@@ -189,6 +190,8 @@ def test_abcharity_payment_appears_in_same_portal_history_and_is_private(app, cl
     assert '$1,200.00' in pledge_text
     assert '$100.00' in pledge_text
     assert '$1,100.00' in pledge_text
+    assert 'ABCharity payment tax ID: 92-3617094' in pledge_text
+    assert 'No goods or services were provided' in pledge_text
 
 
 def test_requests_are_case_scoped_and_visible_only_to_owner(app, client):
