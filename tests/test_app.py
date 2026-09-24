@@ -1425,6 +1425,9 @@ def test_married_child_and_spouse_join_support_circle_without_duplicate(app, cli
         assert db.session.get(Contact, spouse_id).relationship == 'Child’s spouse'
         db.session.get(Contact, contact_id).status = 'Contacted'
         db.session.commit()
+    search_page = client.get('/supporters?q=Married+child').text
+    assert 'Married child' in search_page
+    assert 'foldable-supporter-list" open' in search_page
     data['name'] = 'Married child updated'
     data['cell_phone'] = '8455553434'
     assert post(client, f'/children/{child_id}', data).status_code == 302
