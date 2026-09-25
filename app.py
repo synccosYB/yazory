@@ -1895,6 +1895,30 @@ def create_app(test_config=None):
             if used_institutions:
                 institution_statement = institution_statement.where(
                     _app.Institution.id.not_in(used_institutions))
+            linked_contacts = _app.db.session.scalars(select(_app.Contact).where(
+                _app.or_(_app.Contact.person_id == person.id,
+                         _app.Contact.supporter_key == person.identity_key)
+            ).order_by(_app.Contact.id)).all()
+            contact_ids = [row.id for row in linked_contacts]
+            supporter_tasks = []
+            supporter_activity = []
+            supporter_tickets = []
+            if contact_ids:
+                supporter_tasks = _app.db.session.scalars(select(StaffTask).where(
+                    StaffTask.source_contact_id.in_(contact_ids)
+                ).order_by(StaffTask.created_at.desc(), StaffTask.id.desc())).all()
+                supporter_activity = _app.db.session.scalars(select(
+                    SupporterCommunication).where(
+                    SupporterCommunication.contact_id.in_(contact_ids)
+                ).order_by(SupporterCommunication.created_at.desc(),
+                           SupporterCommunication.id.desc())).all()
+                from supporter_portal import SupporterTicket
+                supporter_tickets = _app.db.session.scalars(select(
+                    SupporterTicket).where(
+                    _app.or_(SupporterTicket.contact_id.in_(contact_ids),
+                             SupporterTicket.supporter_key == person.identity_key)
+                ).order_by(SupporterTicket.created_at.desc(),
+                           SupporterTicket.id.desc())).all()
             return dict(
                 profile=profile, person=person,
                 person_relationships=related_people,
@@ -1904,7 +1928,11 @@ def create_app(test_config=None):
                 affiliations=affiliations,
                 institutions=_app.db.session.scalars(
                     institution_statement.order_by(
-                        _app.Institution.kind, _app.Institution.name)).all())
+                        _app.Institution.kind, _app.Institution.name)).all(),
+                linked_contacts=linked_contacts,
+                supporter_tasks=supporter_tasks,
+                supporter_activity=supporter_activity,
+                supporter_tickets=supporter_tickets)
         if _app.request.method == 'POST':
             name = _app.request.form.get('name', '').strip()
             phone = _app.request.form.get('phone', '').strip()
