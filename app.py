@@ -3894,12 +3894,12 @@ def create_app(test_config=None):
             _app.abort(400, 'Choose the actual supporter outreach result.')
         followup_title = _app.request.form.get('followup_title', '').strip()[:240]
         followup_due_raw = _app.request.form.get('followup_due_date', '').strip()
-        if followup_due_raw and not followup_title:
-            _app.abort(400, 'Enter a task before choosing its due date.')
         try:
             followup_due_date = _app.date.fromisoformat(followup_due_raw) if followup_due_raw else None
         except ValueError:
             _app.abort(400, 'Enter a valid task due date.')
+        if followup_due_date and not followup_title:
+            followup_title = f'Call back: {contact.name}'
         communication_row(contact, 'phone_call', 'Phone call completed',
                           note or outreach_status)
         now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)

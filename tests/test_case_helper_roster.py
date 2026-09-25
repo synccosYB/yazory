@@ -192,6 +192,40 @@ def test_completed_call_with_future_followup_stays_in_later_roster():
     assert b'Follow-up helper' in client.get(url + '?section=later').data
 
 
+def test_due_date_without_task_title_creates_callback_followup():
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'date-only-followup-test'})
+    with app.app_context():
+        admin = StaffUser(email='admin@dateonly.test', password_hash='x',
+                          role='organization_admin')
+        family = Family(name='Date-only family')
+        db.session.add_all([admin, family])
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Call later helper',
+                          relationship='Friend', status='To contact')
+        db.session.add(contact)
+        db.session.commit()
+        admin_id, family_id, contact_id = admin.id, family.id, contact.id
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = admin_id
+        session['csrf'] = 'date-only-csrf'
+    due = (datetime.now(ZoneInfo('America/New_York')) + timedelta(days=2)).date()
+    response = client.post(f'/contacts/{contact_id}/communications/call', data={
+        'csrf': 'date-only-csrf', 'return_to': 'case_roster',
+        'outreach_status': 'Contacted', 'followup_due_date': due.isoformat()})
+    assert response.status_code == 302
+    url = f'/families/{family_id}/helpers/work'
+    assert b'Call later helper' in client.get(url + '?section=later').data
+    with app.app_context():
+        parent = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        assert len(parent.subtasks) == 1
+        assert parent.subtasks[0].title == 'Call back: Call later helper'
+        assert parent.subtasks[0].due_date == due
+
+
 def test_helper_can_send_inline_and_see_only_selected_history():
     app = create_app({'TESTING': True, 'DEMO': False,
                       'SQLALCHEMY_DATABASE_URI': 'sqlite://',
