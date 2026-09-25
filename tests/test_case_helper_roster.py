@@ -90,3 +90,42 @@ def test_helper_picker_filters_and_keeps_selection_after_work():
     assert b'Brother' not in client.get(url + '?section=later').data
     assert client.post(url, data={'csrf': 'picker-csrf', 'mode': 'all'}).status_code == 302
     assert b'Brother' in client.get(url).data
+
+
+def test_completed_call_without_notes_leaves_ready_roster():
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'call-roster-test'})
+    with app.app_context():
+        admin = StaffUser(email='admin@call-roster.test', password_hash='x',
+                          role='organization_admin')
+        family = Family(name='Call roster family')
+        db.session.add_all([admin, family])
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Called helper',
+                          relationship='Shul friend', status='To contact')
+        db.session.add(contact)
+        db.session.commit()
+        admin_id, family_id, contact_id = admin.id, family.id, contact.id
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = admin_id
+        session['csrf'] = 'call-roster-csrf'
+    url = f'/families/{family_id}/helpers/work'
+    for language in ('en', 'he', 'yi'):
+        with client.session_transaction() as session:
+            session['language'] = language
+        assert b'Called helper' in client.get(url).data
+    response = client.post(f'/contacts/{contact_id}/communications/call', data={
+        'csrf': 'call-roster-csrf', 'return_to': 'case_roster',
+        'outreach_status': 'No answer', 'note': ''})
+    assert response.status_code == 302 and response.location.endswith(url)
+    for language in ('en', 'he', 'yi'):
+        with client.session_transaction() as session:
+            session['language'] = language
+        assert b'Called helper' not in client.get(url).data
+        assert b'Called helper' in client.get(url + '?section=finished').data
+    with app.app_context():
+        task = db.session.scalar(db.select(StaffTask).where(
+            StaffTask.source_contact_id == contact_id))
+        assert task.status == 'Completed' and task.outcome == 'No answer'

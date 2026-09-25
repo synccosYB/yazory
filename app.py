@@ -3873,8 +3873,6 @@ def create_app(test_config=None):
         outreach_status = _app.request.form.get('outreach_status', '').strip()
         if outreach_status not in TASK_OUTREACH_RESULTS:
             _app.abort(400, 'Choose the actual supporter outreach result.')
-        if not note and outreach_status != 'No answer':
-            _app.abort(400, 'Enter the result of the call before completing it.')
         followup_title = _app.request.form.get('followup_title', '').strip()[:240]
         followup_due_raw = _app.request.form.get('followup_due_date', '').strip()
         if followup_due_raw and not followup_title:
@@ -3883,7 +3881,8 @@ def create_app(test_config=None):
             followup_due_date = _app.date.fromisoformat(followup_due_raw) if followup_due_raw else None
         except ValueError:
             _app.abort(400, 'Enter a valid task due date.')
-        communication_row(contact, 'phone_call', 'Phone call completed', note)
+        communication_row(contact, 'phone_call', 'Phone call completed',
+                          note or outreach_status)
         now = _app.datetime.now(_app.timezone.utc).replace(tzinfo=None)
         pending_callbacks = _app.db.session.scalars(select(SupporterCommunication).where(
             SupporterCommunication.contact_id == contact.id,
@@ -3910,7 +3909,7 @@ def create_app(test_config=None):
         if task:
             task.status = 'Completed'
             task.completed_at = now
-            task.outcome = note
+            task.outcome = note or outreach_status
         if followup_title:
             assignee = task_user() or automatic_task_assignee(contact)
             if assignee is None:
