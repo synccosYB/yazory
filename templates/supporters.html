@@ -33,7 +33,7 @@
 {% for c in contacts %}<details class="supporter-accordion-item {{ 'nested-supporter-row' if c.parent_supporter }}" {% if request.args.get('edited', type=int) == c.id %}open{% endif %}>
 <summary>
 <span class="supporter-accordion-name"><strong>{{ c.name }}</strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% elif (c.parent_connection or '').startswith('F:') %}<small>{{ _('Son of applicant’s father') if c.parent_connection == 'F:Son' else _('Son-in-law of applicant’s father') }} · {{ c.family.father }}</small>{% elif (c.parent_connection or '').startswith('I:') %}<small>{{ _('Son of applicant’s father-in-law') if c.parent_connection == 'I:Son' else _('Son-in-law of applicant’s father-in-law') }} · {{ c.family.inlaws }}</small>{% endif %}</span>
-<span class="supporter-accordion-phone"><small>{{ _('Phone') }}</small><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></span>
+<span class="supporter-accordion-phone"><small>{{ _('Home phone') }}</small><bdi dir="ltr">{{ c.home_phone|phone if c.home_phone else '—' }}</bdi></span>
 <span class="supporter-accordion-cell"><small>{{ _('Cell phone') }}</small><bdi dir="ltr">{{ c.cell_phone|phone if c.cell_phone else '—' }}</bdi></span>
 <span><small>{{ _('Family') }}</small><strong>{{ c.family.name }}</strong></span>
 <span><strong>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</strong><small>{{ _('Received to date') }}: {{ received.get(c.id, 0)|money }}</small></span>
@@ -44,7 +44,7 @@
 <div><small>{{ _('Supporter') }}</small><a class="strong" href="{{ url_for('supporter_detail', contact_id=c.id) }}">{{ c.name }}</a></div>
 <div><small>{{ _('Family') }}</small><strong>{{ c.family.name }}</strong></div>
 <div><small>{{ _('Relationship') }}</small><strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</strong></div>
-<div><small>{{ _('Phone') }}</small><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></div>
+<div><small>{{ _('Home phone') }}</small><bdi dir="ltr">{{ c.home_phone|phone if c.home_phone else '—' }}</bdi></div>
 <div><small>{{ _('Cell phone') }}</small><bdi dir="ltr">{{ c.cell_phone|phone if c.cell_phone else '—' }}</bdi></div>
 <div><small>{{ _('Received to date') }}</small><strong>{{ received.get(c.id, 0)|money }}</strong></div>
 <div><small>{{ _('Follow-up status') }}</small><strong>{{ _(c.status) }}</strong></div>
@@ -97,11 +97,11 @@
 <section class="print-only supporter-print-list">
 <h2>{{ _('Supporters') }} <small>{{ contacts|length }} {{ _('records') }}</small></h2>
 <table>
-<thead><tr><th>{{ _('Supporter') }}</th><th>{{ _('Family') }}</th><th>{{ _('Relationship') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Cell phone') }}</th><th>{{ _('Donation commitment') }}</th><th>{{ _('Received to date') }}</th><th>{{ _('Follow-up status') }}</th></tr></thead>
+<thead><tr><th>{{ _('Supporter') }}</th><th>{{ _('Family') }}</th><th>{{ _('Relationship') }}</th><th>{{ _('Home phone') }}</th><th>{{ _('Cell phone') }}</th><th>{{ _('Donation commitment') }}</th><th>{{ _('Received to date') }}</th><th>{{ _('Follow-up status') }}</th></tr></thead>
 <tbody>{% for c in contacts %}<tr>
 <td>{{ c.name }}</td><td>{{ c.family.name }}</td>
 <td>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
-<td><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></td>
+<td><bdi dir="ltr">{{ c.home_phone|phone if c.home_phone else '—' }}</bdi></td>
 <td><bdi dir="ltr">{{ c.cell_phone|phone if c.cell_phone else '—' }}</bdi></td>
 <td>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</td>
 <td>{{ received.get(c.id, 0)|money }}</td><td>{{ _(c.status) }}</td>
