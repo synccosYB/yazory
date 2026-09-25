@@ -14,7 +14,7 @@
     {% for row in rows %}{% set person=row.contact %}
     <a class="helper-work-row {{ 'selected' if selected and person.id == selected.contact.id }}" href="{{ url_for('case_helper_roster', family_id=family.id, section=section, contact_id=person.id) }}">
       <strong>{{ person.name }}</strong><span>{{ _(person.relationship) }} · {{ _(person.status) }}</span>
-      {% if row.due %}<small>{{ _('Scheduled for') }}: <bdi dir="ltr">{{ row.due|american_date }}</bdi></small>{% endif %}
+      {% if row.callback %}<small>{{ _('Scheduled for') }}: <bdi dir="ltr">{{ row.callback.scheduled_for|callback_time }}</bdi></small>{% elif row.due %}<small>{{ _('Scheduled for') }}: <bdi dir="ltr">{{ row.due|american_date }}</bdi></small>{% endif %}
     </a>
     {% else %}<p class="empty">{{ _('No helpers in this roster.') }}</p>{% endfor %}
   </section>

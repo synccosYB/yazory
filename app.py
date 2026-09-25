@@ -3765,16 +3765,25 @@ def create_app(test_config=None):
             (child for child in task.subtasks if child.status not in ('Completed', 'Cancelled')),
             key=lambda child: (child.due_date or _app.date.min, child.id))
             for task in tasks}
-        today = _app.datetime.now(ZoneInfo('America/New_York')).date()
+        now_eastern = _app.datetime.now(ZoneInfo('America/New_York'))
+        today = now_eastern.date()
         ready, later, finished = [], [], []
         for contact in chosen_contacts:
             task = task_by_contact.get(contact.id)
             callback = callbacks.get(contact.id)
             child = followups.get(contact.id, [])
-            due = (callback.scheduled_for.date() if callback else
-                   child[0].due_date if child else task.due_date if task else None)
-            row = {'contact': contact, 'task': task, 'due': due}
-            if due and due > today and (child or (task and task.status not in ('Completed', 'Cancelled'))):
+            pending_dates = [item.due_date for item in child if item.due_date]
+            if task and task.status not in ('Completed', 'Cancelled') and task.due_date:
+                pending_dates.append(task.due_date)
+            future_callback = bool(callback and callback.scheduled_for.replace(
+                tzinfo=ZoneInfo('America/New_York')) > now_eastern)
+            future_dates = [due_date for due_date in pending_dates if due_date > today]
+            due = (callback.scheduled_for.date() if future_callback else
+                   min(future_dates) if future_dates else
+                   min(pending_dates) if pending_dates else None)
+            row = {'contact': contact, 'task': task, 'due': due,
+                   'callback': callback if future_callback else None}
+            if future_callback or future_dates:
                 later.append(row)
             elif contact.status in ('Declined', 'Paused') or (task and task.status in ('Completed', 'Cancelled') and not child):
                 finished.append(row)

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app_entry import create_app
 from app import StaffTask, SupporterCommunication
@@ -51,6 +52,36 @@ def test_case_roster_moves_future_callbacks_and_scopes_case_access():
             session['language'] = language
         page = client.get(url + '?section=later')
         assert page.status_code == 200 and b'Roster helper' in page.data
+
+
+def test_callback_later_today_appears_in_later_roster():
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'same-day-roster-test'})
+    with app.app_context():
+        admin = StaffUser(email='admin@sameday.test', password_hash='x',
+                          role='organization_admin')
+        family = Family(name='Same-day family')
+        db.session.add_all([admin, family])
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Afternoon helper',
+                          relationship='Friend', status='To contact')
+        db.session.add(contact)
+        db.session.commit()
+        admin_id, family_id, contact_id = admin.id, family.id, contact.id
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = admin_id
+        session['csrf'] = 'same-day-csrf'
+    later = datetime.now(ZoneInfo('America/New_York')) + timedelta(hours=1)
+    url = f'/families/{family_id}/helpers/work'
+    response = client.post(f'/contacts/{contact_id}/communications/callback', data={
+        'csrf': 'same-day-csrf', 'return_to': 'case_roster',
+        'scheduled_for': later.strftime('%Y-%m-%dT%H:%M')})
+    assert response.status_code == 302
+    if later.date() == datetime.now(ZoneInfo('America/New_York')).date():
+        assert b'Afternoon helper' not in client.get(url).data
+    assert b'Afternoon helper' in client.get(url + '?section=later').data
 
 
 def test_helper_picker_filters_and_keeps_selection_after_work():
@@ -129,6 +160,36 @@ def test_completed_call_without_notes_leaves_ready_roster():
         task = db.session.scalar(db.select(StaffTask).where(
             StaffTask.source_contact_id == contact_id))
         assert task.status == 'Completed' and task.outcome == 'No answer'
+
+
+def test_completed_call_with_future_followup_stays_in_later_roster():
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'followup-roster-test'})
+    with app.app_context():
+        admin = StaffUser(email='admin@followup.test', password_hash='x',
+                          role='organization_admin')
+        family = Family(name='Follow-up family')
+        db.session.add_all([admin, family])
+        db.session.flush()
+        contact = Contact(family_id=family.id, name='Follow-up helper',
+                          relationship='Friend', status='To contact')
+        db.session.add(contact)
+        db.session.commit()
+        admin_id, family_id, contact_id = admin.id, family.id, contact.id
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = admin_id
+        session['csrf'] = 'followup-csrf'
+    due = (datetime.now(ZoneInfo('America/New_York')) + timedelta(days=3)).date()
+    response = client.post(f'/contacts/{contact_id}/communications/call', data={
+        'csrf': 'followup-csrf', 'return_to': 'case_roster',
+        'outreach_status': 'Contacted', 'followup_title': 'Call back',
+        'followup_due_date': due.isoformat()})
+    assert response.status_code == 302
+    url = f'/families/{family_id}/helpers/work'
+    assert b'Follow-up helper' not in client.get(url).data
+    assert b'Follow-up helper' in client.get(url + '?section=later').data
 
 
 def test_helper_can_send_inline_and_see_only_selected_history():
