@@ -3870,11 +3870,11 @@ def create_app(test_config=None):
         contact = communication_contact(contact_id)
         validate_communication_task(contact.id)
         note = _app.request.form.get('note', '').strip()[:5000]
-        if not note:
-            _app.abort(400, 'Enter the result of the call before completing it.')
         outreach_status = _app.request.form.get('outreach_status', '').strip()
         if outreach_status not in TASK_OUTREACH_RESULTS:
             _app.abort(400, 'Choose the actual supporter outreach result.')
+        if not note and outreach_status != 'No answer':
+            _app.abort(400, 'Enter the result of the call before completing it.')
         followup_title = _app.request.form.get('followup_title', '').strip()[:240]
         followup_due_raw = _app.request.form.get('followup_due_date', '').strip()
         if followup_due_raw and not followup_title:
