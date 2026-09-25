@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Monthly commitments and received donations. A pledge is never a receipt, and Yazory does not move money.': {'he': 'התחייבויות חודשיות ותרומות שהתקבלו. התחייבות אינה קבלה, ויעזורו אינו מעביר כסף.', 'yi': 'חודש׳ליכע צוזאגן און באקומענע נדבות. א צוזאג איז קיינמאל נישט קיין קבלה, און יעזורו שיקט נישט קיין געלט.'},
     'Manual and automatic donations': {'he': 'תרומות ידניות ואוטומטיות', 'yi': 'ידנית און אויטאמאטישע נדבות'},
     'Task reminder': {'he': 'תזכורת למשימה', 'yi': 'דערמאנונג פאר אן אויפגאבע'},
     'Open task': {'he': 'פתיחת המשימה', 'yi': 'עפן די אויפגאבע'},

@@ -3427,6 +3427,8 @@ def create_app(test_config=None):
         families = db.session.scalars(family_statement).all()
         return render_template('collections.html', title='Collections', contacts=contacts,
                                receipts=receipts, donation_rows=donation_rows,
+                               manual_total=sum(r.amount_cents for r in receipts),
+                               automatic_total=sum(d.amount_cents for d in charity_donations),
                                received_by_contact=received_by_contact,
                                lifetime_by_contact=lifetime_by_contact, month=month,
                                families=families)
