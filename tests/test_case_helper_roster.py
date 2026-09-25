@@ -51,3 +51,42 @@ def test_case_roster_moves_future_callbacks_and_scopes_case_access():
             session['language'] = language
         page = client.get(url + '?section=later')
         assert page.status_code == 200 and b'Roster helper' in page.data
+
+
+def test_helper_picker_filters_and_keeps_selection_after_work():
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'picker-test'})
+    with app.app_context():
+        admin = StaffUser(email='admin@picker.test', password_hash='x',
+                          role='organization_admin')
+        family = Family(name='Picker family')
+        db.session.add_all([admin, family])
+        db.session.flush()
+        first = Contact(family_id=family.id, name='Shul friend',
+                        relationship='Shul friend', status='To contact')
+        second = Contact(family_id=family.id, name='Brother',
+                         relationship='Sibling', status='To contact')
+        db.session.add_all([first, second])
+        db.session.commit()
+        admin_id, family_id, first_id = admin.id, family.id, first.id
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = admin_id
+        session['csrf'] = 'picker-csrf'
+    url = f'/families/{family_id}/helpers/work'
+    picker = client.get(url + '?section=choose&relationship=Shul+friend')
+    assert b'Shul friend' in picker.data and b'Brother' not in picker.data
+    assert client.post(url, data={'csrf': 'picker-csrf',
+                                  'contact_ids': str(first_id)}).status_code == 302
+    page = client.get(url)
+    assert b'Shul friend' in page.data and b'Brother' not in page.data
+    future = (datetime.now() + timedelta(days=3)).strftime('%Y-%m-%dT12:00')
+    client.post(f'/contacts/{first_id}/communications/callback', data={
+        'csrf': 'picker-csrf', 'return_to': 'case_roster',
+        'scheduled_for': future})
+    assert b'Shul friend' not in client.get(url).data
+    assert b'Shul friend' in client.get(url + '?section=later').data
+    assert b'Brother' not in client.get(url + '?section=later').data
+    assert client.post(url, data={'csrf': 'picker-csrf', 'mode': 'all'}).status_code == 302
+    assert b'Brother' in client.get(url).data

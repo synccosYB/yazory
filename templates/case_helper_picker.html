@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<section class="card padded helper-work-header"><div><small>{{ _('Case') }} · {{ family.name }}</small><h1>{{ _('Choose helpers') }}</h1><p>{{ _('Choose the people for this work roster. Your selection stays in place as you work.') }}</p></div><a class="button secondary" href="{{ url_for('case_helper_roster', family_id=family.id) }}">{{ _('Back to work roster') }}</a></section>
+<section class="card padded helper-picker">
+  <form method="get" class="helper-picker-filters"><input type="hidden" name="section" value="choose"><label>{{ _('Search') }}<input type="search" name="q" value="{{ query }}" placeholder="{{ _('Name or phone') }}"></label><label>{{ _('Relationship') }}<select name="relationship"><option value="">{{ _('All relationships') }}</option>{% for value in relationships %}<option value="{{ value }}" {{ 'selected' if relationship == value }}>{{ _(value) }}</option>{% endfor %}</select></label><label>{{ _('Status') }}<select name="status"><option value="">{{ _('All statuses') }}</option>{% for value in statuses %}<option value="{{ value }}" {{ 'selected' if status == value }}>{{ _(value) }}</option>{% endfor %}</select></label><button>{{ _('Show helpers') }}</button></form>
+  <p>{{ selected_count }} {{ _('selected') }} · {{ available_count }} {{ _('helpers in this case') }}. {{ _('Saving makes the checked people your work roster.') }}</p>
+  <form method="post" id="helper-picker-form">{{ token(csrf) }}<input type="hidden" name="mode" value="selected">
+    <div class="helper-picker-controls"><button type="button" class="secondary" data-picker-check="all">{{ _('Select all shown') }}</button><button type="button" class="secondary" data-picker-check="none">{{ _('Clear shown') }}</button><button type="submit">{{ _('Work with selected helpers') }}</button></div>
+    <div class="helper-picker-rows">{% for person in contacts %}<label class="helper-picker-row"><input type="checkbox" name="contact_ids" value="{{ person.id }}" {{ 'checked' if person.id in selected_ids }}><span><strong>{{ person.name }}</strong><small>{{ _(person.relationship) }} · {{ _(person.status) }}{% if person.cell_phone %} · <bdi dir="ltr">{{ person.cell_phone|phone }}</bdi>{% endif %}</small></span></label>{% else %}<p class="empty">{{ _('No helpers match these filters.') }}</p>{% endfor %}</div>
+    <button>{{ _('Work with selected helpers') }}</button>
+  </form>
+  <form method="post" class="helper-picker-reset">{{ token(csrf) }}<input type="hidden" name="mode" value="all"><button class="secondary">{{ _('Work with all helpers') }}</button></form>
+</section>
+<script>document.querySelectorAll('[data-picker-check]').forEach(button => button.addEventListener('click', () => { document.querySelectorAll('#helper-picker-form input[name="contact_ids"]').forEach(box => { box.checked = button.dataset.pickerCheck === 'all'; }); }));</script>
+{% endblock %}

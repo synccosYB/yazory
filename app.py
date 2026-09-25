@@ -3693,7 +3693,7 @@ def create_app(test_config=None):
                                               family_id=contact.family_id))
         return _app.redirect(_app.url_for('communications', contact_id=contact_id))
 
-    @app.get('/families/<int:family_id>/helpers/work')
+    @app.route('/families/<int:family_id>/helpers/work', methods=['GET', 'POST'])
     def case_helper_roster(family_id):
         user = task_user()
         if not user or user.role not in ('organization_admin', 'family_admin', 'fundraiser'):
@@ -3712,7 +3712,47 @@ def create_app(test_config=None):
             allowed = set(_app.db.session.scalars(select(link_model.contact_id).where(
                 link_model.assigned_to == user.id)).all())
             contacts = [contact for contact in contacts if contact.id in allowed]
-        ids = [contact.id for contact in contacts]
+        selection_key = f'case_helper_selection:{user.id}:{family_id}'
+        available_ids = {contact.id for contact in contacts}
+        if _app.request.method == 'POST':
+            mode = _app.request.form.get('mode', 'selected')
+            if mode == 'all':
+                _app.session.pop(selection_key, None)
+            elif mode == 'selected':
+                chosen = set(_app.request.form.getlist('contact_ids', type=int))
+                _app.session[selection_key] = sorted(chosen & available_ids)
+            else:
+                _app.abort(400)
+            return _app.redirect(_app.url_for('case_helper_roster', family_id=family_id))
+        stored_ids = _app.session.get(selection_key)
+        selected_ids = (available_ids if stored_ids is None else
+                        set(stored_ids) & available_ids)
+        section = _app.request.args.get('section', 'ready')
+        if section == 'choose':
+            query = _app.request.args.get('q', '').strip()[:160]
+            relationship = _app.request.args.get('relationship', '')
+            status = _app.request.args.get('status', '')
+            relationships = sorted({contact.relationship for contact in contacts})
+            statuses = sorted({contact.status for contact in contacts})
+            if relationship and relationship not in relationships:
+                _app.abort(400)
+            if status and status not in statuses:
+                _app.abort(400)
+            matches = [contact for contact in contacts
+                       if (not query or query.casefold() in contact.name.casefold() or
+                           query in (contact.phone or '') or query in (contact.cell_phone or ''))
+                       and (not relationship or contact.relationship == relationship)
+                       and (not status or contact.status == status)]
+            return _app.render_template('case_helper_picker.html',
+                                        title='Choose helpers', family=family,
+                                        contacts=matches, relationships=relationships,
+                                        statuses=statuses, relationship=relationship,
+                                        status=status, query=query,
+                                        selected_ids=selected_ids,
+                                        selected_count=len(selected_ids),
+                                        available_count=len(available_ids))
+        chosen_contacts = [contact for contact in contacts if contact.id in selected_ids]
+        ids = [contact.id for contact in chosen_contacts]
         tasks = _app.db.session.scalars(select(StaffTask).where(
             StaffTask.source_contact_id.in_(ids))).all() if ids else []
         task_by_contact = {task.source_contact_id: task for task in tasks}
@@ -3723,7 +3763,7 @@ def create_app(test_config=None):
             for task in tasks}
         today = _app.datetime.now(ZoneInfo('America/New_York')).date()
         ready, later, finished = [], [], []
-        for contact in contacts:
+        for contact in chosen_contacts:
             task = task_by_contact.get(contact.id)
             callback = callbacks.get(contact.id)
             child = followups.get(contact.id, [])
@@ -3737,7 +3777,6 @@ def create_app(test_config=None):
             else:
                 ready.append(row)
         later.sort(key=lambda row: (row['due'], row['contact'].name))
-        section = _app.request.args.get('section', 'ready')
         if section not in ('ready', 'later', 'finished'):
             _app.abort(400)
         groups = {'ready': ready, 'later': later, 'finished': finished}
@@ -3747,7 +3786,9 @@ def create_app(test_config=None):
                         rows[0] if rows else None)
         return _app.render_template('case_helper_roster.html',
                                     title='Work helpers', family=family, groups=groups,
-                                    rows=rows, selected=selected, section=section)
+                                    rows=rows, selected=selected, section=section,
+                                    selected_count=len(selected_ids),
+                                    available_count=len(available_ids))
 
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):

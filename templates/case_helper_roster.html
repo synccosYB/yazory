@@ -2,7 +2,7 @@
 {% block content %}
 <section class="card padded helper-work-header">
   <div><small>{{ _('Case') }} · YZ-{{ '%04d'|format(family.id) }}</small><h1>{{ _('Work helpers') }} · {{ family.name }}</h1><p>{{ _('Work through the helpers due now. A future callback moves to Later.') }}</p></div>
-  <a class="button secondary" href="{{ url_for('family_detail', family_id=family.id, _anchor='circle-of-support') }}">{{ _('Case profile') }}</a>
+  <div class="helper-work-header-actions"><a class="button" href="{{ url_for('case_helper_roster', family_id=family.id, section='choose') }}">{{ _('Choose helpers') }} · {{ selected_count }}/{{ available_count }}</a><a class="button secondary" href="{{ url_for('family_detail', family_id=family.id, _anchor='circle-of-support') }}">{{ _('Case profile') }}</a></div>
 </section>
 <nav class="helper-work-tabs" aria-label="{{ _('Work roster') }}">
   {% for key, label in [('ready','To work'), ('later','Later'), ('finished','Finished')] %}

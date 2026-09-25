@@ -5,6 +5,21 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Choose helpers': {'he': 'בחירת מסייעים', 'yi': 'קלויב אויס העלפער'},
+    'Choose the people for this work roster. Your selection stays in place as you work.': {'he': 'בחרו את האנשים לרשימת העבודה. הבחירה תישמר בזמן העבודה.', 'yi': 'קלויב אויס מיט וועמען דו ווילסט יעצט ארבעטן. די אויסוואל בלייבט בשעת דו ארבעטסט.'},
+    'Back to work roster': {'he': 'חזרה לרשימת העבודה', 'yi': 'צוריק צום ארבעטס ליסטע'},
+    'Name or phone': {'he': 'שם או טלפון', 'yi': 'נאמען אדער טעלעפאן'},
+    'All relationships': {'he': 'כל הקרבות', 'yi': 'אלע קרבות'},
+    'All statuses': {'he': 'כל המצבים', 'yi': 'אלע מצבים'},
+    'Show helpers': {'he': 'הצגת מסייעים', 'yi': 'ווייז העלפער'},
+    'selected': {'he': 'נבחרו', 'yi': 'אויסגעקליבן'},
+    'helpers in this case': {'he': 'מסייעים בתיק זה', 'yi': 'העלפער אין דעם קעיס'},
+    'Select all shown': {'he': 'בחירת כל המוצגים', 'yi': 'קלויב אויס אלע וואס מען זעט'},
+    'Clear shown': {'he': 'ניקוי הבחירה המוצגת', 'yi': 'נעם אראפ די אויסוואל'},
+    'Work with selected helpers': {'he': 'עבודה עם המסייעים שנבחרו', 'yi': 'ארבעט מיט די אויסגעקליבענע העלפער'},
+    'Work with all helpers': {'he': 'עבודה עם כל המסייעים', 'yi': 'ארבעט מיט אלע העלפער'},
+    'No helpers match these filters.': {'he': 'אין מסייעים המתאימים לסינון.', 'yi': 'קיין העלפער שטימען נישט מיט דער אויסוואל.'},
+    'Saving makes the checked people your work roster.': {'he': 'השמירה תקבע את האנשים המסומנים כרשימת העבודה.', 'yi': 'ווען דו היטסט אפ ווערן די אנגעצייכנטע מענטשן דיין ארבעטס ליסטע.'},
     'Work helpers': {'he': 'עבודה עם מסייעים', 'yi': 'ארבעטן מיט העלפער'},
     'Work roster': {'he': 'רשימת עבודה', 'yi': 'ארבעטס ליסטע'},
     'To work': {'he': 'לטיפול כעת', 'yi': 'יעצט צו באארבעטן'},
