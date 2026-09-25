@@ -32,9 +32,9 @@
 <div class="supporter-accordion">
 {% for c in contacts %}<details class="supporter-accordion-item {{ 'nested-supporter-row' if c.parent_supporter }}" {% if request.args.get('edited', type=int) == c.id %}open{% endif %}>
 <summary>
-<span class="supporter-accordion-name"><strong>{{ c.name }}</strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% elif c.parent_connection.startswith('F:') %}<small>{{ _('Son of applicant’s father') if c.parent_connection == 'F:Son' else _('Son-in-law of applicant’s father') }} · {{ c.family.father }}</small>{% elif c.parent_connection.startswith('I:') %}<small>{{ _('Son of applicant’s father-in-law') if c.parent_connection == 'I:Son' else _('Son-in-law of applicant’s father-in-law') }} · {{ c.family.inlaws }}</small>{% endif %}</span>
+<span class="supporter-accordion-name"><strong>{{ c.name }}</strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}<small>{{ _('Under') }} {{ c.parent_supporter.name }}</small>{% elif (c.parent_connection or '').startswith('F:') %}<small>{{ _('Son of applicant’s father') if c.parent_connection == 'F:Son' else _('Son-in-law of applicant’s father') }} · {{ c.family.father }}</small>{% elif (c.parent_connection or '').startswith('I:') %}<small>{{ _('Son of applicant’s father-in-law') if c.parent_connection == 'I:Son' else _('Son-in-law of applicant’s father-in-law') }} · {{ c.family.inlaws }}</small>{% endif %}</span>
 <span><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi><small>{{ c.family.name }}</small></span>
-<span><strong>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</strong><small>{{ _('Received to date') }}: {{ received[c.id]|money }}</small></span>
+<span><strong>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</strong><small>{{ _('Received to date') }}: {{ received.get(c.id, 0)|money }}</small></span>
 <span class="supporter-accordion-status">{{ _(c.status) }}</span>
 </summary>
 <div class="supporter-accordion-panel">
@@ -43,7 +43,7 @@
 <div><small>{{ _('Family') }}</small><strong>{{ c.family.name }}</strong></div>
 <div><small>{{ _('Relationship') }}</small><strong>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</strong></div>
 <div><small>{{ _('Phone') }}</small><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></div>
-<div><small>{{ _('Received to date') }}</small><strong>{{ received[c.id]|money }}</strong></div>
+<div><small>{{ _('Received to date') }}</small><strong>{{ received.get(c.id, 0)|money }}</strong></div>
 <div><small>{{ _('Follow-up status') }}</small><strong>{{ _(c.status) }}</strong></div>
 {% if c.status == 'Declined' and c.decline_reason %}<div><small>{{ _('Reason for declining') }}</small><span class="preserve">{{ c.decline_reason }}</span></div>{% endif %}
 </div>
@@ -100,7 +100,7 @@
 <td>{% if c.parent_supporter and contact_visible(c.parent_supporter) %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
 <td><bdi dir="ltr">{{ c.phone|phone if c.phone else '—' }}</bdi></td>
 <td>{% if c.monthly_cents %}{{ c.monthly_cents|money }} · {{ _(c.pledge_frequency) }}{% else %}—{% endif %}</td>
-<td>{{ received[c.id]|money }}</td><td>{{ _(c.status) }}</td>
+<td>{{ received.get(c.id, 0)|money }}</td><td>{{ _(c.status) }}</td>
 </tr>{% else %}<tr><td colspan="7">{{ _('No supporters found.') }}</td></tr>{% endfor %}</tbody>
 </table>
 </section>
