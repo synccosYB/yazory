@@ -2985,7 +2985,7 @@ def create_app(test_config=None):
         audit(f'Updated donor pledge: {status}', contact.family_id)
         db.session.commit()
         if request.form.get('from_supporters') == '1':
-            return redirect(url_for('supporters', family_id=contact.family_id, edited=contact.id))
+            return redirect(url_for('supporters', family_id=contact.family_id))
         if current_user() and current_user().role == 'fundraiser':
             return redirect(url_for('fundraising_detail', family_id=contact.family_id))
         return redirect(url_for('family_detail', family_id=contact.family_id,
