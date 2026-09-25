@@ -5,6 +5,17 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Work helpers': {'he': 'עבודה עם מסייעים', 'yi': 'ארבעטן מיט העלפער'},
+    'Work roster': {'he': 'רשימת עבודה', 'yi': 'ארבעטס ליסטע'},
+    'To work': {'he': 'לטיפול כעת', 'yi': 'יעצט צו באארבעטן'},
+    'Later': {'he': 'להמשך בהמשך', 'yi': 'שפעטער'},
+    'Finished': {'he': 'הסתיים', 'yi': 'פארטיג'},
+    'Work through the helpers due now. A future callback moves to Later.': {'he': 'עברו על המסייעים שמועד הטיפול בהם הגיע. שיחה שנקבעה לעתיד תעבור להמשך בהמשך.', 'yi': 'גיי דורך די העלפער וואס זענען יעצט צו באארבעטן. א קאל וואס ווערט באשטימט פאר שפעטער גייט אריבער צו שפעטער.'},
+    'No helpers in this roster.': {'he': 'אין מסייעים ברשימה זו.', 'yi': 'קיין העלפער אין דער ליסטע.'},
+    'Full supporter profile': {'he': 'הפרופיל המלא של המסייע', 'yi': 'דער גאנצער העלפער פראפיל'},
+    'Schedule for another date': {'he': 'קביעת מועד אחר', 'yi': 'באשטימען אויף אן אנדערן טאג'},
+    'Next helper': {'he': 'המסייע הבא', 'yi': 'דער קומענדיגער העלפער'},
+    'Tasks and history': {'he': 'משימות והיסטוריה', 'yi': 'אויפגאבעס און היסטאריע'},
     'Not linked to a supporter': {'he': 'לא קושר לתומך', 'yi': 'נישט פארבונדן מיט א העלפער'},
     'Link supporter': {'he': 'קישור לתומך', 'yi': 'פארבינדן מיט א העלפער'},
     'Monthly commitments and received donations. A pledge is never a receipt, and Yazory does not move money.': {'he': 'התחייבויות חודשיות ותרומות שהתקבלו. התחייבות אינה קבלה, ויעזורו אינו מעביר כסף.', 'yi': 'חודש׳ליכע צוזאגן און באקומענע נדבות. א צוזאג איז קיינמאל נישט קיין קבלה, און יעזורו שיקט נישט קיין געלט.'},

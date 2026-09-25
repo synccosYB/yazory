@@ -1,0 +1,37 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<section class="card padded helper-work-header">
+  <div><small>{{ _('Case') }} · YZ-{{ '%04d'|format(family.id) }}</small><h1>{{ _('Work helpers') }} · {{ family.name }}</h1><p>{{ _('Work through the helpers due now. A future callback moves to Later.') }}</p></div>
+  <a class="button secondary" href="{{ url_for('family_detail', family_id=family.id, _anchor='circle-of-support') }}">{{ _('Case profile') }}</a>
+</section>
+<nav class="helper-work-tabs" aria-label="{{ _('Work roster') }}">
+  {% for key, label in [('ready','To work'), ('later','Later'), ('finished','Finished')] %}
+  <a class="button {{ '' if section == key else 'secondary' }}" href="{{ url_for('case_helper_roster', family_id=family.id, section=key) }}" {% if section == key %}aria-current="page"{% endif %}>{{ _(label) }} <strong>{{ groups[key]|length }}</strong></a>
+  {% endfor %}
+</nav>
+<div class="helper-work-layout">
+  <section class="card helper-work-list" aria-label="{{ _('Work roster') }}">
+    {% for row in rows %}{% set person=row.contact %}
+    <a class="helper-work-row {{ 'selected' if selected and person.id == selected.contact.id }}" href="{{ url_for('case_helper_roster', family_id=family.id, section=section, contact_id=person.id) }}">
+      <strong>{{ person.name }}</strong><span>{{ _(person.relationship) }} · {{ _(person.status) }}</span>
+      {% if row.due %}<small>{{ _('Scheduled for') }}: <bdi dir="ltr">{{ row.due|american_date }}</bdi></small>{% endif %}
+    </a>
+    {% else %}<p class="empty">{{ _('No helpers in this roster.') }}</p>{% endfor %}
+  </section>
+  <section class="card padded helper-work-panel">
+    {% if selected %}{% set person=selected.contact %}
+    <div class="section-heading"><div><small>{{ _('Supporter') }} · {{ _(person.relationship) }}</small><h2>{{ person.name }}</h2></div><a href="{{ url_for('supporter_detail', contact_id=person.id) }}">{{ _('Full supporter profile') }}</a></div>
+    <p class="helper-work-contact">{% if person.home_phone %}<span>{{ _('Phone') }}: <a href="tel:{{ person.home_phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"><bdi dir="ltr">{{ person.home_phone|phone }}</bdi></a></span>{% endif %}{% if person.cell_phone %}<span>{{ _('Cell phone') }}: <a href="tel:{{ person.cell_phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"><bdi dir="ltr">{{ person.cell_phone|phone }}</bdi></a></span>{% endif %}</p>
+    {% if selected.task and selected.task.description %}<p class="helper-work-note">{{ selected.task.description }}</p>{% endif %}
+    {% if section == 'ready' %}
+    <div class="helper-work-actions">
+      <form method="post" action="{{ url_for('schedule_supporter_callback', contact_id=person.id) }}">{{ token(csrf) }}<input type="hidden" name="return_to" value="case_roster"><h3>{{ _('Schedule for another date') }}</h3><label>{{ _('Good time to call') }}<input type="datetime-local" name="scheduled_for" required></label><label>{{ _('Notes') }}<textarea name="note" rows="2" maxlength="5000"></textarea></label><button>{{ _('Save callback') }}</button></form>
+      <form method="post" action="{{ url_for('complete_supporter_call', contact_id=person.id) }}">{{ token(csrf) }}<input type="hidden" name="return_to" value="case_roster"><h3>{{ _('Record completed call') }}</h3><label>{{ _('Call notes') }}<textarea name="note" rows="2" maxlength="5000" required></textarea></label><label>{{ _('Supporter outreach result') }}<select name="outreach_status" required><option value="">{{ _('Choose…') }}</option>{% for status in ['No answer','Left a message','Contacted','Wrong number','Paused','Declined'] %}<option value="{{ status }}">{{ _(status) }}</option>{% endfor %}</select></label><label>{{ _('Follow-up task') }}<input name="followup_title" maxlength="240"></label><label>{{ _('Due date') }}<input type="date" name="followup_due_date"></label><button class="secondary">{{ _('Call completed') }}</button></form>
+    </div>
+    {% endif %}
+    <p><a href="{{ url_for('communications', contact_id=person.id) }}">{{ _('Communications') }}</a> · <a href="{{ url_for('supporter_detail', contact_id=person.id) }}">{{ _('Tasks and history') }}</a></p>
+    {% if rows|length > 1 %}{% set index=rows.index(selected) %}<a class="button secondary" href="{{ url_for('case_helper_roster', family_id=family.id, section=section, contact_id=rows[(index + 1) % (rows|length)].contact.id) }}">{{ _('Next helper') }} →</a>{% endif %}
+    {% else %}<p class="empty">{{ _('No helpers in this roster.') }}</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

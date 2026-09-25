@@ -3687,7 +3687,67 @@ def create_app(test_config=None):
         if task:
             return _app.redirect(_app.url_for('task_detail', task_id=task.id,
                                               _anchor='task-communications'))
+        if _app.request.form.get('return_to') == 'case_roster':
+            contact = _app.db.session.get(_app.Contact, contact_id)
+            return _app.redirect(_app.url_for('case_helper_roster',
+                                              family_id=contact.family_id))
         return _app.redirect(_app.url_for('communications', contact_id=contact_id))
+
+    @app.get('/families/<int:family_id>/helpers/work')
+    def case_helper_roster(family_id):
+        user = task_user()
+        if not user or user.role not in ('organization_admin', 'family_admin', 'fundraiser'):
+            _app.abort(403)
+        if not task_is_admin(user) and not _app.db.session.scalar(select(
+                _app.FamilyAssignment.id).where(
+                    _app.FamilyAssignment.family_id == family_id,
+                    _app.FamilyAssignment.staff_user_id == user.id)):
+            _app.abort(403)
+        family = _app.db.get_or_404(_app.Family, family_id)
+        contacts = _app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.family_id == family_id).order_by(
+                _app.Contact.name, _app.Contact.id)).all()
+        if user.role == 'fundraiser' and app.extensions['workflows']['enforced']():
+            link_model = app.extensions['workflows']['models']['SupporterLink']
+            allowed = set(_app.db.session.scalars(select(link_model.contact_id).where(
+                link_model.assigned_to == user.id)).all())
+            contacts = [contact for contact in contacts if contact.id in allowed]
+        ids = [contact.id for contact in contacts]
+        tasks = _app.db.session.scalars(select(StaffTask).where(
+            StaffTask.source_contact_id.in_(ids))).all() if ids else []
+        task_by_contact = {task.source_contact_id: task for task in tasks}
+        callbacks = scheduled_callback_map(tasks)
+        followups = {task.source_contact_id: sorted(
+            (child for child in task.subtasks if child.status not in ('Completed', 'Cancelled')),
+            key=lambda child: (child.due_date or _app.date.min, child.id))
+            for task in tasks}
+        today = _app.datetime.now(ZoneInfo('America/New_York')).date()
+        ready, later, finished = [], [], []
+        for contact in contacts:
+            task = task_by_contact.get(contact.id)
+            callback = callbacks.get(contact.id)
+            child = followups.get(contact.id, [])
+            due = (callback.scheduled_for.date() if callback else
+                   child[0].due_date if child else task.due_date if task else None)
+            row = {'contact': contact, 'task': task, 'due': due}
+            if due and due > today and (child or (task and task.status not in ('Completed', 'Cancelled'))):
+                later.append(row)
+            elif contact.status in ('Declined', 'Paused') or (task and task.status in ('Completed', 'Cancelled') and not child):
+                finished.append(row)
+            else:
+                ready.append(row)
+        later.sort(key=lambda row: (row['due'], row['contact'].name))
+        section = _app.request.args.get('section', 'ready')
+        if section not in ('ready', 'later', 'finished'):
+            _app.abort(400)
+        groups = {'ready': ready, 'later': later, 'finished': finished}
+        rows = groups[section]
+        selected_id = _app.request.args.get('contact_id', type=int)
+        selected = next((row for row in rows if row['contact'].id == selected_id),
+                        rows[0] if rows else None)
+        return _app.render_template('case_helper_roster.html',
+                                    title='Work helpers', family=family, groups=groups,
+                                    rows=rows, selected=selected, section=section)
 
     @app.post('/contacts/<int:contact_id>/communications/initial-email')
     def send_supporter_initial_email(contact_id):
@@ -3798,6 +3858,14 @@ def create_app(test_config=None):
                 contact.decline_reason = note
         task = _app.db.session.scalar(select(StaffTask).where(
             StaffTask.source_contact_id == contact.id))
+        if task is None:
+            assignee = task_user() or automatic_task_assignee(contact)
+            if assignee:
+                task = StaffTask(
+                    family_id=contact.family_id, source_contact_id=contact.id,
+                    assigned_to=assignee.id, created_by=assignee.id,
+                    title=f'Contact supporter: {contact.name}')
+                _app.db.session.add(task)
         if task:
             task.status = 'Completed'
             task.completed_at = now
