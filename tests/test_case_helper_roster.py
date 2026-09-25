@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from app_entry import create_app
-from app import StaffTask
+from app import StaffTask, SupporterCommunication
 from app_original import Contact, Family, FamilyAssignment, StaffUser, db
 
 
@@ -129,3 +129,46 @@ def test_completed_call_without_notes_leaves_ready_roster():
         task = db.session.scalar(db.select(StaffTask).where(
             StaffTask.source_contact_id == contact_id))
         assert task.status == 'Completed' and task.outcome == 'No answer'
+
+
+def test_helper_can_send_inline_and_see_only_selected_history():
+    app = create_app({'TESTING': True, 'DEMO': False,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://',
+                      'SECRET_KEY': 'helper-message-test'})
+    with app.app_context():
+        admin = StaffUser(email='admin@messages.test', password_hash='x',
+                          role='organization_admin')
+        family = Family(name='Message family')
+        db.session.add_all([admin, family])
+        db.session.flush()
+        first = Contact(family_id=family.id, name='First helper',
+                        relationship='Friend', status='To contact',
+                        cell_phone='3475550199', email='first@example.com')
+        second = Contact(family_id=family.id, name='Second helper',
+                         relationship='Friend', status='To contact')
+        db.session.add_all([first, second])
+        db.session.commit()
+        admin_id, family_id, first_id, second_id = (
+            admin.id, family.id, first.id, second.id)
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = admin_id
+        session['csrf'] = 'message-csrf'
+    url = f'/families/{family_id}/helpers/work'
+    for language in ('en', 'he', 'yi'):
+        with client.session_transaction() as session:
+            session['language'] = language
+        page = client.get(url + f'?contact_id={first_id}')
+        assert page.status_code == 200
+        assert f'/contacts/{first_id}/communications/message/sms'.encode() in page.data
+    response = client.post(f'/contacts/{first_id}/communications/message/sms', data={
+        'csrf': 'message-csrf', 'return_to': 'case_roster',
+        'roster_section': 'ready', 'body': 'Checking in today'})
+    assert response.status_code == 302
+    assert f'contact_id={first_id}' in response.location
+    assert b'Checking in today' in client.get(response.location).data
+    assert b'Checking in today' not in client.get(url + f'?contact_id={second_id}').data
+    with app.app_context():
+        record = db.session.scalar(db.select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == first_id))
+        assert record.kind == 'sms' and record.body == 'Checking in today'

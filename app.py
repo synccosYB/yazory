@@ -3689,8 +3689,12 @@ def create_app(test_config=None):
                                               _anchor='task-communications'))
         if _app.request.form.get('return_to') == 'case_roster':
             contact = _app.db.session.get(_app.Contact, contact_id)
-            return _app.redirect(_app.url_for('case_helper_roster',
-                                              family_id=contact.family_id))
+            destination = {'family_id': contact.family_id}
+            if _app.request.form.get('roster_section'):
+                destination.update(section=_app.request.form['roster_section'],
+                                   contact_id=contact_id,
+                                   _anchor='helper-communications')
+            return _app.redirect(_app.url_for('case_helper_roster', **destination))
         return _app.redirect(_app.url_for('communications', contact_id=contact_id))
 
     @app.route('/families/<int:family_id>/helpers/work', methods=['GET', 'POST'])
@@ -3784,9 +3788,15 @@ def create_app(test_config=None):
         selected_id = _app.request.args.get('contact_id', type=int)
         selected = next((row for row in rows if row['contact'].id == selected_id),
                         rows[0] if rows else None)
+        history = (_app.db.session.scalars(select(SupporterCommunication).where(
+            SupporterCommunication.contact_id == selected['contact'].id).order_by(
+                SupporterCommunication.created_at.desc(),
+                SupporterCommunication.id.desc()).limit(20)).all()
+            if selected else [])
         return _app.render_template('case_helper_roster.html',
                                     title='Work helpers', family=family, groups=groups,
                                     rows=rows, selected=selected, section=section,
+                                    history=history,
                                     selected_count=len(selected_ids),
                                     available_count=len(available_ids))
 
