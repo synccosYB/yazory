@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Manual and automatic donations': {'he': 'תרומות ידניות ואוטומטיות', 'yi': 'ידנית און אויטאמאטישע נדבות'},
     'Task reminder': {'he': 'תזכורת למשימה', 'yi': 'דערמאנונג פאר אן אויפגאבע'},
     'Open task': {'he': 'פתיחת המשימה', 'yi': 'עפן די אויפגאבע'},
     'Dismiss reminder': {'he': 'סגירת התזכורת', 'yi': 'פארמאך די דערמאנונג'},

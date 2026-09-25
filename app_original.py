@@ -2234,8 +2234,19 @@ def create_app(test_config=None):
             requested_statement = requested_statement.where(Expense.family_id.in_(
                 select(FamilyAssignment.family_id).where(FamilyAssignment.staff_user_id == current_user().id)))
         requested = db.session.scalars(requested_statement).all()
-        received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
-            Receipt.family_id.in_(family_ids))) if family_ids and network_visible else 0
+        month_start = datetime.strptime(month + '-01', '%Y-%m-%d').date()
+        month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        received = 0
+        if family_ids and network_visible:
+            manual_received = db.session.scalar(select(func.coalesce(func.sum(Receipt.amount_cents), 0)).where(
+                Receipt.family_id.in_(family_ids), Receipt.received_on >= month_start,
+                Receipt.received_on < month_end))
+            automatic_received = db.session.scalar(select(func.coalesce(func.sum(CharityDonation.amount_cents), 0)).join(
+                CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
+                CharityCampaign.family_id.in_(family_ids),
+                CharityDonation.donation_time >= datetime.combine(month_start, datetime.min.time()),
+                CharityDonation.donation_time < datetime.combine(month_end, datetime.min.time())))
+            received = manual_received + automatic_received
         return render_template('dashboard.html', title='Overview', families=families, active=sum(f.status=='Active' for f in families), pledged=pledged, received=received, network_visible=network_visible, shortfall=sum(budget_totals(f, budget_records.get(f.id))['shortfall'] for f in families), approved=sum(e.amount_cents for e in expenses if e.status in ('Approved','Paid')), paid=sum(e.amount_cents for e in expenses if e.status=='Paid'), requested=requested)
 
     @app.get('/families')
