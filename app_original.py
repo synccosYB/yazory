@@ -3381,23 +3381,40 @@ def create_app(test_config=None):
         month_start = datetime.strptime(month + '-01', '%Y-%m-%d').date()
         month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
         contacts = db.session.scalars(scoped_contacts_statement()).all()
-        family_ids = [contact.family_id for contact in contacts]
+        family_ids = list({contact.family_id for contact in contacts})
+        if current_user().role != 'fundraiser':
+            family_scope = select(Family.id)
+            if not organization_admin():
+                family_scope = family_scope.where(Family.id.in_(select(FamilyAssignment.family_id).where(
+                    FamilyAssignment.staff_user_id == current_user().id)))
+            family_ids = db.session.scalars(family_scope).all()
         receipts = db.session.scalars(select(Receipt).where(
             Receipt.contact_id.in_([c.id for c in contacts]),
             Receipt.received_on >= month_start, Receipt.received_on < month_end
         ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if family_ids else []
-        charity_donations = db.session.scalars(select(CharityDonation).join(
-            CharityDonor, CharityDonor.id == CharityDonation.donor_id).where(
-            CharityDonor.contact_id.in_([c.id for c in contacts]),
+        charity_statement = select(CharityDonation).join(
+            CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
+            CharityCampaign.family_id.in_(family_ids),
             CharityDonation.donation_time >= datetime.combine(month_start, datetime.min.time()),
-            CharityDonation.donation_time < datetime.combine(month_end, datetime.min.time())
-        )).all() if family_ids else []
+            CharityDonation.donation_time < datetime.combine(month_end, datetime.min.time()))
+        if current_user().role == 'fundraiser':
+            charity_statement = charity_statement.join(
+                CharityDonor, CharityDonor.id == CharityDonation.donor_id).where(
+                CharityDonor.contact_id.in_([c.id for c in contacts]))
+        charity_donations = db.session.scalars(charity_statement).all() if family_ids else []
         contacts_by_id = {c.id: c for c in contacts}
+        families_by_id = {f.id: f for f in db.session.scalars(select(Family).where(
+            Family.id.in_(family_ids))).all()} if family_ids else {}
+        campaigns_by_id = {campaign.id: campaign for campaign in db.session.scalars(
+            select(CharityCampaign).where(CharityCampaign.family_id.in_(family_ids))).all()} if family_ids else {}
         donation_rows = ([{'date': r.received_on, 'contact': r.contact,
+                           'family': r.family, 'donor_name': r.contact.name,
                            'amount_cents': r.amount_cents, 'reference': r.reference,
                            'note': r.note, 'source': 'Yazory', 'receipt': r,
                            'donation_id': None} for r in receipts] +
-                         [{'date': d.donation_time.date(), 'contact': contacts_by_id[d.donor.contact_id],
+                         [{'date': d.donation_time.date(), 'contact': contacts_by_id.get(d.donor.contact_id),
+                           'family': families_by_id[campaigns_by_id[d.campaign_id].family_id],
+                           'donor_name': d.donor.local_name or d.donor.name,
                            'amount_cents': d.amount_cents,
                            'reference': f'ABCharity #{d.external_id}',
                            'note': '', 'source': 'ABCharity', 'receipt': None,
@@ -3408,7 +3425,8 @@ def create_app(test_config=None):
             received_by_contact[receipt.contact_id] = received_by_contact.get(receipt.contact_id, 0) + receipt.amount_cents
         for donation in charity_donations:
             contact_id = donation.donor.contact_id
-            received_by_contact[contact_id] = received_by_contact.get(contact_id, 0) + donation.amount_cents
+            if contact_id in contacts_by_id:
+                received_by_contact[contact_id] = received_by_contact.get(contact_id, 0) + donation.amount_cents
         contact_ids = [contact.id for contact in contacts]
         lifetime_by_contact = {contact_id: total for contact_id, total in db.session.execute(select(
             Receipt.contact_id, func.coalesce(func.sum(Receipt.amount_cents), 0)
