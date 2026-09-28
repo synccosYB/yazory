@@ -2996,7 +2996,70 @@ def create_app(test_config=None):
                     _app.EmailMessage.family_id.in_(assigned_family_ids),
                     _app.EmailMessage.staff_user_id == user.id))
             outbound_history = _app.db.session.scalars(outbound_statement).all()
-        pledge_delivery = {row.id: supporter_pledge_delivery(row) for row in contacts}
+        # Build pledge destinations in bulk. Calling supporter_pledge_delivery
+        # once per row caused up to two extra queries for every supporter.
+        supporter_keys = {row.supporter_key for row in contacts if row.supporter_key}
+        linked_by_key = {}
+        if supporter_keys:
+            linked_rows = _app.db.session.scalars(select(_app.Contact).where(
+                _app.Contact.supporter_key.in_(supporter_keys)).order_by(
+                    _app.Contact.family_id, _app.Contact.id)).all()
+            for linked_row in linked_rows:
+                linked_by_key.setdefault(linked_row.supporter_key, []).append(linked_row)
+        pledge_rows_by_contact = {}
+        campaign_family_ids = set()
+        for row in contacts:
+            linked = linked_by_key.get(row.supporter_key, [row])
+            active = [item for item in linked
+                      if item.monthly_cents > 0 and item.status not in ('Paused', 'Declined')]
+            by_family = {}
+            for item in active:
+                by_family.setdefault(item.family_id, item)
+            pledges = list(by_family.values()) or [row]
+            pledge_rows_by_contact[row.id] = pledges
+            if len(pledges) == 1:
+                campaign_family_ids.add(pledges[0].family_id)
+        campaigns = {}
+        if campaign_family_ids:
+            campaign_rows = _app.db.session.scalars(select(
+                _app.CharityCampaign).where(
+                    _app.CharityCampaign.family_id.in_(campaign_family_ids)).order_by(
+                    _app.CharityCampaign.family_id,
+                    _app.CharityCampaign.id.desc())).all()
+            for campaign in campaign_rows:
+                campaigns.setdefault(campaign.family_id, campaign)
+        pledge_delivery = {}
+        for row in contacts:
+            pledges = pledge_rows_by_contact[row.id]
+            if len(pledges) > 1:
+                pledge_delivery[row.id] = {
+                    'kind': 'Yazory',
+                    'url': _public_url('supporter_donation', contact_id=row.id),
+                    'pledges': pledges,
+                    'reason': f'{len(pledges)} connected family pledges · one charge',
+                }
+                continue
+            pledge = pledges[0]
+            campaign = campaigns.get(pledge.family_id)
+            if campaign and campaign.public_url:
+                pledge_delivery[row.id] = {
+                    'kind': 'ABCharity', 'url': campaign.public_url,
+                    'pledges': pledges,
+                    'reason': f'One family pledge · campaign {campaign.external_id}',
+                }
+            elif campaign:
+                pledge_delivery[row.id] = {
+                    'kind': 'ABCharity link missing', 'url': '',
+                    'pledges': pledges, 'family_id': pledge.family_id,
+                    'reason': 'Add the public ABCharity campaign link before sending this pledge.',
+                }
+            else:
+                pledge_delivery[row.id] = {
+                    'kind': 'Yazory',
+                    'url': _public_url('supporter_donation', contact_id=row.id),
+                    'pledges': pledges,
+                    'reason': 'ABCharity campaign is unavailable · secure Yazory payment',
+                }
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             selected_contact=selected_contact,
