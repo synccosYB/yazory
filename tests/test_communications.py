@@ -1132,6 +1132,31 @@ def test_valid_twilio_reply_from_applicant_is_saved_in_family_messages(monkeypat
         assert label in client.get('/communications').text
 
 
+def test_twilio_signature_uses_the_public_url_called_by_twilio(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    app.config.update(APP_BASE_URL='https://yaazory.org',
+                      TWILIO_AUTH_TOKEN='secret')
+    payload = {'From': '+19176856594', 'To': '+12513063232',
+               'Body': 'Applicant SMS', 'MessageSid': 'MM' + 'a' * 32}
+    signed_url = 'https://yazory.replit.app/twilio/incoming-message'
+    signed_value = signed_url + ''.join(
+        key + payload[key] for key in sorted(payload))
+    signature = base64.b64encode(hmac.new(
+        b'secret', signed_value.encode(), hashlib.sha1).digest()).decode()
+    response = client.post('/twilio/incoming-message', data=payload,
+                           base_url='https://yazory.replit.app',
+                           headers={'X-Twilio-Signature': signature})
+    assert response.status_code == 200
+    with app.app_context():
+        assert db.session.scalar(db.select(GeneralSmsMessage).where(
+            GeneralSmsMessage.provider_message_id == payload['MessageSid'])) is not None
+    payload['MessageSid'] = 'MM' + 'b' * 32
+    rejected = client.post('/twilio/incoming-message', data=payload,
+                           base_url='https://yazory.replit.app',
+                           headers={'X-Twilio-Signature': signature})
+    assert rejected.status_code == 403
+
+
 def test_unknown_twilio_reply_is_saved_in_general_sms_inbox(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)
     app.config.update(TESTING=False, DEMO=False, TWILIO_AUTH_TOKEN='secret')

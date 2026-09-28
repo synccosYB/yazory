@@ -3356,11 +3356,16 @@ def create_app(test_config=None):
     def twilio_incoming_message():
         signature = _app.request.headers.get('X-Twilio-Signature', '')
         public_base = app.config.get('APP_BASE_URL', '').rstrip('/')
-        webhook_url = (public_base + _app.request.full_path.rstrip('?')
-                       if public_base else _app.request.url)
-        if not validate_webhook_signature(
-                app.config['TWILIO_AUTH_TOKEN'], webhook_url,
-                _app.request.form, signature):
+        path = _app.request.full_path.rstrip('?')
+        # Twilio signs the exact URL it called. Replit's public hostname can
+        # differ from APP_BASE_URL (used for links in emails), and a proxy can
+        # report the internal scheme as HTTP for an external HTTPS request.
+        webhook_urls = {_app.request.url, 'https://' + _app.request.host + path}
+        if public_base:
+            webhook_urls.add(public_base + path)
+        if not any(validate_webhook_signature(
+                app.config['TWILIO_AUTH_TOKEN'], url,
+                _app.request.form, signature) for url in webhook_urls):
             _app.abort(403)
 
         provider_id = (_app.request.form.get('MessageSid') or
