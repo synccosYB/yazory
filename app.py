@@ -2191,11 +2191,34 @@ def create_app(test_config=None):
 
     @app.get('/api/shul-gabbais')
     def shul_gabbais_api():
+        # Build the complete gabbai directory in three bulk queries.  The old
+        # implementation queried associations and phones separately for every
+        # shul, which made this tiny JSON endpoint scale as an N+1 request.
         shuls = _app.db.session.scalars(select(_app.Institution).where(
             _app.Institution.kind == 'Shul').order_by(_app.Institution.name)).all()
-        result = {}
-        for shul in shuls:
-            result[shul.name] = _helper_payloads(shul, 'shul_gabbai')
+        result = {shul.name: [] for shul in shuls}
+        if not shuls:
+            return result
+        shul_by_id = {shul.id: shul for shul in shuls}
+        associations = _app.db.session.scalars(select(ShulHelperAssociation).where(
+            ShulHelperAssociation.institution_id.in_(shul_by_id),
+            ShulHelperAssociation.role == 'shul_gabbai'
+        ).order_by(ShulHelperAssociation.id)).all()
+        helper_ids = {row.helper_person_id for row in associations}
+        phones_by_helper = {}
+        if helper_ids:
+            for row in _app.db.session.scalars(select(HelperPhone).where(
+                    HelperPhone.helper_person_id.in_(helper_ids)).order_by(
+                    HelperPhone.helper_person_id, HelperPhone.id)).all():
+                phones_by_helper.setdefault(row.helper_person_id, []).append(row.phone)
+        for association in associations:
+            person = association.helper_person
+            phones = phones_by_helper.get(association.helper_person_id, [])
+            result[shul_by_id[association.institution_id].name].append({
+                'name': person.name,
+                'phone': phones[0] if phones else '',
+                'phones': phones,
+            })
         return result
 
     @app.context_processor
