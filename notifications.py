@@ -47,7 +47,10 @@ def install(app):
             ensure_schema()
 
     def user_and_cursor():
-        user = core.db.session.get(core.StaffUser, session.get('user_id'))
+        user_id = session.get('user_id')
+        if not user_id:
+            return None, None
+        user = core.db.session.get(core.StaffUser, user_id)
         if not user:
             return None, None
         cursor = core.db.session.get(StaffActivityCursor, user.id)
