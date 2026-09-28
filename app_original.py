@@ -88,6 +88,7 @@ class Askan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), nullable=False)
     phone = db.Column(db.String(80), nullable=False, default='')
+    cell_phone = db.Column(db.String(80), nullable=False, default='')
     email = db.Column(db.String(254), nullable=False, default='', index=True)
     families = db.relationship('Family', backref='designated_askan', lazy=True,
                                foreign_keys='Family.designated_askan_id')
@@ -799,6 +800,9 @@ def create_app(test_config=None):
     def ensure_schema(run_data_migrations=False):
         """Create missing tables and apply the additive legacy-schema upgrades."""
         db.create_all()
+        askan_columns = {column['name'] for column in inspect(db.engine).get_columns('askan')}
+        if 'cell_phone' not in askan_columns:
+            db.session.execute(text("ALTER TABLE askan ADD COLUMN cell_phone VARCHAR(80) NOT NULL DEFAULT ''"))
         staff_columns = {column['name'] for column in inspect(db.engine).get_columns('staff_user')}
         for column, definition in {
             'name': "VARCHAR(160) NOT NULL DEFAULT ''",
@@ -1170,7 +1174,8 @@ def create_app(test_config=None):
         elif person_type == 'supporter':
             row = db.session.get(Contact, person_id)
             if row:
-                return {'name': row.name, 'phone': row.phone, 'email': row.email}
+                return {'name': row.name, 'phone': row.phone, 'cell_phone': row.cell_phone,
+                        'email': row.email}
         elif person_type in ('supporter_child', 'supporter_child_spouse'):
             row = db.session.get(ContactChild, person_id)
             if row:
@@ -1183,7 +1188,8 @@ def create_app(test_config=None):
         elif person_type == 'askan':
             row = db.session.get(Askan, person_id)
             if row:
-                return {'name': row.name, 'phone': row.phone, 'email': row.email}
+                return {'name': row.name, 'phone': row.phone,
+                        'cell_phone': row.cell_phone, 'email': row.email}
         for resolver in app.extensions.get('person_directory_resolvers', ()):
             details = resolver(person_type, person_id)
             if details:
@@ -2274,6 +2280,7 @@ def create_app(test_config=None):
                                  if family.designated_askan else ''),
                 'askan_name': family.designated_askan.name if family.designated_askan else '',
                 'askan_phone': family.designated_askan.phone if family.designated_askan else '',
+                'askan_cell_phone': family.designated_askan.cell_phone if family.designated_askan else '',
                 'askan_email': family.designated_askan.email if family.designated_askan else '',
             })
         budget = intake_for_form(family.intake_record.data if family and family.intake_record else {})
@@ -2392,6 +2399,7 @@ def create_app(test_config=None):
                     Askan.phone == details['phone']))
             if askan is None:
                 askan = Askan(name=details['name'], phone=details.get('phone', ''),
+                              cell_phone=details.get('cell_phone', ''),
                               email=details.get('email', ''))
                 db.session.add(askan)
             family.designated_askan = askan
@@ -2400,9 +2408,10 @@ def create_app(test_config=None):
             return
         name = field('askan_name', limit=160)
         phone = field('askan_phone', limit=80)
+        cell_phone = field('askan_cell_phone', limit=80)
         email = optional_email_field('askan_email')
         if not name:
-            if phone or email:
+            if phone or cell_phone or email:
                 raise ValueError('Enter the designated askan name.')
             family.designated_askan = None
             return
@@ -2416,7 +2425,7 @@ def create_app(test_config=None):
         if askan is None:
             askan = Askan(name=name)
             db.session.add(askan)
-        askan.name, askan.phone, askan.email = name, phone, email
+        askan.name, askan.phone, askan.cell_phone, askan.email = name, phone, cell_phone, email
         if request.form.get('askan_person') == '__new__':
             for creator in app.extensions.get('person_directory_creators', ()):
                 creator(name=name, phone=phone, email=email)
@@ -2431,6 +2440,7 @@ def create_app(test_config=None):
         name = field('name', True, 160)
         email = optional_email_field('email')
         phone = field('phone', limit=80)
+        cell_phone = field('cell_phone', limit=80)
         if email and is_case_askan(family, email):
             abort(400, 'This askan is already on the family file.')
         if family.designated_askan and not email and (family.designated_askan.name.casefold() == name.casefold()
@@ -2442,9 +2452,11 @@ def create_app(test_config=None):
             askan = db.session.scalar(select(Askan).where(
                 func.lower(Askan.name) == name.lower(), Askan.phone == phone))
         if askan is None:
-            askan = Askan(name=name, email=email, phone=phone)
+            askan = Askan(name=name, email=email, phone=phone, cell_phone=cell_phone)
             db.session.add(askan)
             db.session.flush()
+        elif cell_phone and not askan.cell_phone:
+            askan.cell_phone = cell_phone
         if db.session.scalar(select(FamilyAskan.id).where(
                 FamilyAskan.family_id == family.id, FamilyAskan.askan_id == askan.id)):
             abort(400, 'This askan is already on the family file.')

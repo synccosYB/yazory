@@ -1301,7 +1301,7 @@ def create_app(test_config=None):
         person = canonical_person_for_profile(profile)
         person.name = askan.name
         person.phone = askan.phone or ''
-        person.cell_phone = askan.phone or ''
+        person.cell_phone = askan.cell_phone or person.cell_phone or ''
         person.email = askan.email or ''
         if not person.notes or person.notes.startswith('Askan in Yazory directory'):
             person.notes = 'Askan in Yazory directory'

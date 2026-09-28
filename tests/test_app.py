@@ -33,12 +33,15 @@ def test_additional_askan_keeps_designated_askan(app, client):
         family.designated_askan = primary
         db.session.commit()
     path = '/families/1/additional-askanim'
-    assert post(client, path, {'name': 'Second askan', 'phone': '8452222222'}).status_code == 302
+    assert post(client, path, {'name': 'Second askan', 'phone': '8452222222',
+                               'cell_phone': '8453333333'}).status_code == 302
     with app.app_context():
         family = db.session.get(Family, 1)
         assert family.designated_askan.name == 'Primary askan'
-        assert [(link.askan.name, link.askan.phone) for link in family.additional_askanim] == [
-            ('Second askan', '8452222222')]
+        assert [(link.askan.name, link.askan.phone, link.askan.cell_phone)
+                for link in family.additional_askanim] == [
+            ('Second askan', '8452222222', '8453333333')]
+    assert '(845) 333-3333' in client.get('/families/1').text
     assert post(client, path, {'name': 'Second askan', 'phone': '8452222222'}).status_code == 400
 
 def test_pages(client):
@@ -786,6 +789,7 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
         'askan_person': '__new__',
         'askan_name': 'New Case Askan',
         'askan_phone': '845-555-0188',
+        'askan_cell_phone': '845-555-0190',
         'askan_email': 'new-askan@example.org',
     })
     assert response.status_code == 302
@@ -793,6 +797,7 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
         askan = db.session.get(Family, 1).designated_askan
         assert (askan.name, askan.phone, askan.email) == (
             'New Case Askan', '845-555-0188', 'new-askan@example.org')
+        assert askan.cell_phone == '845-555-0190'
 
     directory = client.get('/community-directories?kind=Shul')
     assert directory.status_code == 200
