@@ -77,11 +77,11 @@ def install(app):
         return statement
 
     def unread_count(user, cursor):
-        count = core.db.session.scalar(select(func.count()).select_from(
+        # Keep the global navigation badge cheap. Provider item builders can
+        # resolve identities and load message threads, so they belong on the
+        # notifications page itself rather than on every rendered staff page.
+        return core.db.session.scalar(select(func.count()).select_from(
             audit_statement(user, cursor.last_seen_at).subquery())) or 0
-        for provider in app.extensions.get('notification_item_providers', ()):
-            count += len(provider(user, cursor.last_seen_at))
-        return count
 
     def activity_kind(action):
         lowered = action.lower()
