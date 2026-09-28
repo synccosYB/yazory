@@ -2990,7 +2990,10 @@ def create_app(test_config=None):
             # the bounded overview. Previously sms_conversation() scanned the
             # entire GeneralSmsMessage table once per request.
             general_index = {}
-            raw_phone_values = set(phone_values.values())
+            # Older rows can use a different spelling of the same number.
+            # Include every spelling in the bounded history, not just the
+            # first one chosen for the overview.
+            raw_phone_values = {message.phone for message in general_sms_history}
             if raw_phone_values:
                 thread_general_rows = _app.db.session.scalars(select(
                     GeneralSmsMessage).where(
