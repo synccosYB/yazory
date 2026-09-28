@@ -49,7 +49,10 @@ def create_app(test_config=None):
         if app.config['DEMO']:
             return dict(my_tasks=[], my_task_count=0, my_tasks_due=0,
                         my_tasks_overdue=0)
-        user = _app.db.session.get(_app.StaffUser, _app.session.get('user_id'))
+        user_id = _app.session.get('user_id')
+        if not user_id:
+            return {}
+        user = _app.db.session.get(_app.StaffUser, user_id)
         if user is None:
             return {}
         today = datetime.now(ZoneInfo('America/New_York')).date()
