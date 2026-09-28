@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone
 
 from flask import abort, redirect, render_template, session, url_for
-from sqlalchemy import Index, func, select
+from sqlalchemy import func, select, text
 
 import app_original as core
 
@@ -36,9 +36,12 @@ def install(app):
         # The unread badge is calculated on every authenticated staff page.
         # Keep its growing audit scan on indexed columns rather than allowing
         # navigation latency to increase with the lifetime of the application.
-        Index('ix_audit_at', core.Audit.at).create(core.db.engine, checkfirst=True)
-        Index('ix_audit_family_at', core.Audit.family_id, core.Audit.at).create(
-            core.db.engine, checkfirst=True)
+        # Keep index DDL out of ORM metadata: app factories can run repeatedly
+        # in a single process, and transient Index objects would accumulate.
+        core.db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_audit_at ON audit (at)'))
+        core.db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_audit_family_at ON audit (family_id, at)'))
         now = _now()
         for user in core.db.session.scalars(select(core.StaffUser)).all():
             if core.db.session.get(StaffActivityCursor, user.id) is None:

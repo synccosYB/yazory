@@ -2749,7 +2749,15 @@ def create_app(test_config=None):
             'normalized_phone': normalized or (phone or ''), 'ambiguous': False}
         if not normalized:
             return unknown
-        manual = _app.db.session.get(SmsPhoneLink, normalized)
+        manual_cache = getattr(_app.g, 'sms_manual_identity_cache', None)
+        if manual_cache is not None and normalized in manual_cache:
+            cached = manual_cache[normalized]
+            if cached is not None:
+                cache[normalized] = cached
+                return cached
+            manual = None
+        else:
+            manual = _app.db.session.get(SmsPhoneLink, normalized)
         if manual and manual.profile:
             cache[normalized] = {
                 'known': True, 'name': manual.profile.name,
@@ -3052,7 +3060,10 @@ def create_app(test_config=None):
             row.contact_id for row in due
             if row.scheduled_for and row.scheduled_for < now
         }
-        reply_statement = select(SupporterCommunication).join(
+        reply_statement = select(SupporterCommunication).options(
+            joinedload(SupporterCommunication.contact),
+            joinedload(SupporterCommunication.family),
+        ).join(
             _app.Contact, _app.Contact.id == SupporterCommunication.contact_id
         ).where(
             SupporterCommunication.direction == 'inbound',
@@ -3074,7 +3085,8 @@ def create_app(test_config=None):
             SupporterCommunication.id.desc()).limit(300)).all()
         applicant_history = []
         if selected_contact is None and user.role != 'fundraiser':
-            applicant_statement = select(ApplicantMessage).order_by(
+            applicant_statement = select(ApplicantMessage).options(
+                joinedload(ApplicantMessage.family)).order_by(
                 ApplicantMessage.created_at.desc(), ApplicantMessage.id.desc()).limit(300)
             if not task_is_admin(user):
                 applicant_statement = applicant_statement.where(
@@ -3093,7 +3105,8 @@ def create_app(test_config=None):
         general_sms_history = None
         if selected_contact is None and user.role == 'organization_admin':
             general_sms_history = _app.db.session.scalars(
-                select(GeneralSmsMessage).order_by(
+                select(GeneralSmsMessage).options(
+                    joinedload(GeneralSmsMessage.family)).order_by(
                     GeneralSmsMessage.created_at.desc(),
                     GeneralSmsMessage.id.desc()).limit(300)).all()
         general_sms_messages = [
@@ -3119,7 +3132,8 @@ def create_app(test_config=None):
             raw_phone_values = {message.phone for message in general_sms_history}
             if raw_phone_values:
                 thread_general_rows = _app.db.session.scalars(select(
-                    GeneralSmsMessage).where(
+                    GeneralSmsMessage).options(
+                        joinedload(GeneralSmsMessage.family)).where(
                         GeneralSmsMessage.phone.in_(raw_phone_values)).order_by(
                         GeneralSmsMessage.created_at,
                         GeneralSmsMessage.id)).all()
@@ -3130,6 +3144,23 @@ def create_app(test_config=None):
 
             contact_ids_by_phone = {}
             all_sms_contact_ids = set()
+            normalized_sms_keys = {
+                sms_phone_key(phone) for phone in phone_values.values()
+            } - {''}
+            manual_links = {}
+            if normalized_sms_keys:
+                for link in _app.db.session.scalars(select(SmsPhoneLink).options(
+                        joinedload(SmsPhoneLink.profile)).where(
+                            SmsPhoneLink.normalized_phone.in_(normalized_sms_keys))):
+                    manual_links[link.normalized_phone] = {
+                        'known': True, 'name': link.profile.name,
+                        'url': _app.url_for(
+                            'edit_supporter_profile', profile_id=link.profile_id),
+                        'normalized_phone': link.normalized_phone,
+                        'ambiguous': False, 'profile_id': link.profile_id,
+                        'confirmed': True}
+            _app.g.sms_manual_identity_cache = {
+                key: manual_links.get(key) for key in normalized_sms_keys}
             for key, phone in phone_values.items():
                 sms_identities[key] = sms_person_identity(phone)
                 contact_ids_by_phone[key] = sms_contact_ids(phone)
@@ -3137,7 +3168,8 @@ def create_app(test_config=None):
             supporter_sms_by_contact = {}
             if all_sms_contact_ids:
                 supporter_sms_rows = _app.db.session.scalars(select(
-                    SupporterCommunication).where(
+                    SupporterCommunication).options(
+                        joinedload(SupporterCommunication.family)).where(
                         SupporterCommunication.contact_id.in_(all_sms_contact_ids),
                         SupporterCommunication.kind == 'sms')).all()
                 for row in supporter_sms_rows:
@@ -3256,6 +3288,10 @@ def create_app(test_config=None):
                     'pledges': pledges,
                     'reason': 'ABCharity campaign is unavailable · secure Yazory payment',
                 }
+        overdue_count = len(overdue_contact_ids)
+        outbound_sms_count = sum(
+            row.direction == 'outbound'
+            for row in (general_sms_history or ()))
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             selected_contact=selected_contact,
@@ -3277,6 +3313,8 @@ def create_app(test_config=None):
             sms_phone=sms_phone, sms_name=sms_name, sms_family=sms_family,
             supporter_query=supporter_query, supporter_page=supporter_page,
             supporters_have_next=supporters_have_next,
+            overdue_count=overdue_count,
+            outbound_sms_count=outbound_sms_count,
             now=now)
 
     def contact_mobile(contact):

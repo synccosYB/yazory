@@ -6,6 +6,7 @@ import json
 import time
 from datetime import datetime
 
+from sqlalchemy import event
 from werkzeug.security import generate_password_hash
 
 import app_original as core_module
@@ -1465,3 +1466,46 @@ def test_full_name_greeting_in_sms_and_whatsapp_all_locales(monkeypatch):
                 assert unescape(body.group(1)).strip() == f'Hi {name},'
     with app.app_context():
         assert app.jinja_env.globals['message_greeting']('') == ''
+
+
+def test_communications_get_eager_loads_replies_and_performs_no_writes(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        original = db.session.get(Contact, contact_id)
+        db.session.add_all(Contact(
+            family_id=original.family_id, name=f'Alpha supporter {number:03}',
+            relationship='Friend', phone=f'845555{number:04}',
+            status='To contact') for number in range(80))
+        for number in range(4):
+            family = Family(name=f'Reply family {number}')
+            db.session.add(family)
+            db.session.flush()
+            contact = Contact(
+                family_id=family.id, name=f'Zulu supporter {number}',
+                relationship='Friend', phone=f'84555512{number:02}',
+                email=f'reply{number}@example.test', status='To contact')
+            db.session.add(contact)
+            db.session.flush()
+            db.session.add(SupporterCommunication(
+                contact_id=contact.id, family_id=family.id, kind='email_reply',
+                direction='inbound', subject='Reply', body='Please call.',
+                status='received'))
+        db.session.commit()
+
+    statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement.lower())
+
+    event.listen(db.engine, 'before_cursor_execute', record_statement)
+    try:
+        response = client.get('/communications')
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', record_statement)
+
+    assert response.status_code == 200
+    assert 'Zulu supporter 3' in response.text
+    assert not any('from contact where contact.id =' in sql for sql in statements)
+    assert not any('from family where family.id =' in sql for sql in statements)
+    assert not any(sql.lstrip().startswith(('insert ', 'update ', 'delete '))
+                   for sql in statements)

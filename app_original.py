@@ -2299,7 +2299,11 @@ def create_app(test_config=None):
     def families():
         require_capability(('family_admin', 'office_employee'))
         query = request.args.get('q', '').strip()[:160]
-        statement = select(Family).order_by(Family.id.desc())
+        # The directory displays intake-derived children counts (and legacy
+        # denial metadata), so preload the one-to-one intake row for the whole
+        # page rather than issuing one query per listed family.
+        statement = select(Family).options(
+            selectinload(Family.intake_record)).order_by(Family.id.desc())
         if query:
             statement = statement.where(Family.name.icontains(query, autoescape=True))
         if not organization_admin():
@@ -2626,10 +2630,19 @@ def create_app(test_config=None):
         if not can_access_family(family_id):
             abort(403, 'You are not assigned to this family.')
         family = db.session.scalar(select(Family).options(
-            selectinload(Family.children), selectinload(Family.contacts).selectinload(Contact.nested_supporters),
+            selectinload(Family.children),
+            selectinload(Family.contacts).selectinload(Contact.nested_supporters),
+            selectinload(Family.contacts).selectinload(Contact.nested_supporters).selectinload(
+                Contact.children),
+            selectinload(Family.contacts).selectinload(Contact.nested_supporters).selectinload(
+                Contact.parent_supporter),
+            selectinload(Family.contacts).selectinload(Contact.parent_supporter),
+            selectinload(Family.contacts).selectinload(Contact.children),
             selectinload(Family.expenses),
             selectinload(Family.documents).defer(Document.data),
-            selectinload(Family.gabbais), selectinload(Family.intake_record)
+            selectinload(Family.gabbais), selectinload(Family.intake_record),
+            selectinload(Family.designated_askan),
+            selectinload(Family.additional_askanim).selectinload(FamilyAskan.askan),
         ).where(Family.id == family_id))
         if family is None:
             abort(404)
@@ -3408,9 +3421,20 @@ def create_app(test_config=None):
                                contacts=contacts, pledged=pledged, approved_story=(app.extensions['workflows']['approved']('fundraising_plan',family_id).data.get('disclosure','') if app.extensions['workflows']['approved']('fundraising_plan',family_id) else ''))
 
     def contact_visible(contact):
-        if not app.extensions['workflows']['enforced']() or not current_user() or current_user().role!='fundraiser':return True
+        user = current_user()
+        # Only fundraiser views use per-contact workflow visibility. Returning
+        # early for every other staff role avoids re-reading workflow policy
+        # rows each time a list template checks a parent relationship.
+        if not user or user.role != 'fundraiser':
+            return True
+        enforced = getattr(g, '_yazory_contact_workflow_enforced', None)
+        if enforced is None:
+            enforced = app.extensions['workflows']['enforced']()
+            g._yazory_contact_workflow_enforced = enforced
+        if not enforced:
+            return True
         link=db.session.get(app.extensions['workflows']['models']['SupporterLink'],contact.id)
-        return bool(can_access_family(contact.family_id) and link and link.assigned_to==current_user().id)
+        return bool(can_access_family(contact.family_id) and link and link.assigned_to==user.id)
 
     def scoped_contacts_statement():
         statement = select(Contact).options(
@@ -3683,7 +3707,11 @@ def create_app(test_config=None):
             linked_statement = linked_statement.where(Contact.supporter_key == contact.supporter_key)
         else:
             linked_statement = linked_statement.where(Contact.id == contact.id)
-        linked_contacts = db.session.scalars(linked_statement.order_by(Contact.id)).all()
+        linked_contacts = db.session.scalars(linked_statement.options(
+            selectinload(Contact.nested_supporters).selectinload(Contact.children),
+            selectinload(Contact.nested_supporters).selectinload(Contact.parent_supporter),
+            selectinload(Contact.children),
+        ).order_by(Contact.id)).all()
         hierarchy_groups = []
         seen_hierarchy_roots = set()
         for linked_contact in linked_contacts:
@@ -3701,16 +3729,19 @@ def create_app(test_config=None):
         contact_ids = [row.id for row in linked_contacts]
         communication_model = app.extensions.get('supporter_communication_model')
         communications = (db.session.scalars(select(communication_model).where(
-            communication_model.contact_id.in_(contact_ids)).order_by(
+            communication_model.contact_id.in_(contact_ids)).options(
+                selectinload(communication_model.family)).order_by(
                 communication_model.created_at.desc(),
                 communication_model.id.desc()).limit(30)).all()
             if communication_model and contact_ids else [])
-        receipts = db.session.scalars(select(Receipt).where(
+        receipts = db.session.scalars(select(Receipt).options(
+            selectinload(Receipt.family)).where(
             Receipt.contact_id.in_(contact_ids)
         ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if contact_ids else []
         abcharity_donations = db.session.scalars(select(CharityDonation).join(
             CharityDonor, CharityDonor.id == CharityDonation.donor_id
-        ).where(CharityDonor.contact_id.in_(contact_ids)).order_by(
+        ).options(selectinload(CharityDonation.donor)).where(
+            CharityDonor.contact_id.in_(contact_ids)).order_by(
             CharityDonation.donation_time.desc(), CharityDonation.id.desc()
         )).all() if contact_ids else []
         donations = ([{'kind': 'Yazory', 'date': r.received_on,
@@ -3727,7 +3758,8 @@ def create_app(test_config=None):
                        'receipt_id': None, 'donation_id': d.id}
                       for d in abcharity_donations])
         donations.sort(key=lambda row: row['date'], reverse=True)
-        payments = db.session.scalars(select(StripePayment).where(
+        payments = db.session.scalars(select(StripePayment).options(
+            selectinload(StripePayment.settlements)).where(
             StripePayment.contact_id.in_(contact_ids)
         ).order_by(StripePayment.created_at.desc())).all() if contact_ids else []
         linked_family_ids = {row.family_id for row in linked_contacts}

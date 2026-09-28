@@ -61,10 +61,13 @@ def install_workflows(app, db, entities, helpers):
         cache = getattr(g, '_workflow_roles', None)
         if cache is None:
             cache = g._workflow_roles = {}
-        if user.id not in cache:
-            cache[user.id] = frozenset(db.session.scalars(
+        transaction = db.session().get_transaction()
+        cached = cache.get(user.id)
+        if cached is None or cached[0] is not transaction:
+            value = frozenset(db.session.scalars(
                 select(Grant.role).where(Grant.user_id == user.id)))
-        return cache[user.id]
+            cache[user.id] = (db.session().get_transaction(), value)
+        return cache[user.id][1]
 
     def scope(user,fid):
         return user.role=='organization_admin' or bool(fid and db.session.scalar(select(Assignment.id).where(
