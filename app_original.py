@@ -2402,6 +2402,8 @@ def create_app(test_config=None):
                               cell_phone=details.get('cell_phone', ''),
                               email=details.get('email', ''))
                 db.session.add(askan)
+            if 'askan_selected_cell_phone' in request.form:
+                askan.cell_phone = field('askan_selected_cell_phone', limit=80)
             family.designated_askan = askan
             for sync_people in app.extensions.get('askan_profile_person_sync', ()):
                 sync_people(askan)

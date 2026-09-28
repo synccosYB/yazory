@@ -773,16 +773,21 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
     assert 'Shared Directory Person' in edit.text
     assert '+ Add new askan' in edit.text
     assert 'data-add-new-person' in edit.text
+    assert 'name="askan_selected_cell_phone"' in edit.text
 
     response = post(client, '/families/1/edit', {
         'name': 'Sample family',
         'askan_person': f'supporter_profile:{person_id}',
+        'askan_selected_cell_phone': '845-555-0190',
     })
     assert response.status_code == 302
     with app.app_context():
         askan = db.session.get(Family, 1).designated_askan
         assert (askan.name, askan.phone, askan.email) == (
             'Shared Directory Person', '845-555-0177', 'shared@example.org')
+        assert askan.cell_phone == '845-555-0190'
+    edit = client.get('/families/1/edit')
+    assert 'value="845-555-0190" data-initial-person=' in edit.text
 
     response = post(client, '/families/1/edit', {
         'name': 'Sample family',

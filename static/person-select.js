@@ -41,14 +41,26 @@
     search.setAttribute('aria-autocomplete', 'list');
     search.setAttribute('aria-expanded', 'false');
     search.addEventListener('focus', render);
-    search.addEventListener('input', () => { select.value = ''; render(); });
+    search.addEventListener('input', () => {
+      select.value = '';
+      select.dispatchEvent(new Event('change', {bubbles: true}));
+      render();
+    });
     search.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
     search.addEventListener('blur', () => setTimeout(close, 120));
     select.addEventListener('change', () => {
-      const fields = select.closest('[data-person-picker]')?.querySelector('[data-new-person]');
+      const picker = select.closest('[data-person-picker]');
+      const fields = picker?.querySelector('[data-new-person]');
       if (fields) {
         fields.hidden = select.value !== '__new__';
         fields.querySelector('[name="askan_name"]')?.toggleAttribute('required', select.value === '__new__');
+      }
+      const existingCell = picker?.querySelector('[data-existing-askan-cell]');
+      if (existingCell) {
+        const input = existingCell.querySelector('input');
+        if (input && select.value !== input.dataset.initialPerson) input.value = '';
+        existingCell.hidden = !select.value || select.value === '__new__';
+        if (input) input.disabled = existingCell.hidden;
       }
     });
     select.closest('[data-person-picker]')?.querySelector('[data-add-new-person]')
