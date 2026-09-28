@@ -21,13 +21,13 @@ body[data-endpoint="new_family"] .intake-applicant {
 
 body[data-endpoint="family_detail"] .profile-record-main {
   display: grid;
-  grid-template-columns: minmax(500px, 1fr) minmax(170px, auto) minmax(500px, auto);
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 12px;
 }
 
 body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
   display: grid;
-  grid-template-columns: minmax(500px, 1fr) minmax(170px, auto) minmax(500px, auto);
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
   gap: 12px;
 }
@@ -41,7 +41,24 @@ body[data-endpoint="family_detail"][data-page-tabs] .profile-record-actions {
 }
 
 body[data-endpoint="family_detail"][data-page-tabs] .profile-record-actions {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+body[data-endpoint="family_detail"] .profile-record-identity {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  justify-content: start;
+  align-items: center;
+  column-gap: 10px;
+}
+
+body[data-endpoint="family_detail"] .profile-record-identity .eyebrow,
+body[data-endpoint="family_detail"] .profile-record-contact {
+  grid-column: 1 / -1;
+}
+
+body[data-endpoint="family_detail"] .profile-record-metrics > div {
+  min-height: 0;
 }
 
 body[data-endpoint="family_detail"] .profile-record-identity h1,
@@ -153,7 +170,7 @@ body[data-endpoint="family_detail"] .case-denial-details > p {
 
 body[data-endpoint="family_detail"] .profile-record-actions {
   justify-content: flex-start;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 /* The edit identity fields stay on a dense row instead of making a tall card. */
@@ -381,7 +398,7 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
   }
   body[data-endpoint="family_detail"] .profile-record-main,
   body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 180px);
+    grid-template-columns: minmax(0, 1fr);
   }
   body[data-endpoint="family_detail"] .profile-record-contact {
     flex-wrap: wrap;
@@ -389,6 +406,10 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
   }
   body[data-endpoint="family_detail"] .profile-record-actions {
     grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  body[data-endpoint="family_detail"][data-page-tabs] .profile-record-actions {
+    flex-wrap: wrap;
   }
 }
 
