@@ -10,9 +10,9 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, Response, abort, flash, g, has_request_context, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import case, select, func, or_, UniqueConstraint, inspect, text
+from sqlalchemy import case, select, func, or_, UniqueConstraint, inspect, text, event
 from sqlalchemy.orm import selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -572,6 +572,32 @@ def create_app(test_config=None):
     if app.config['DEMO'] and not app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:'):
         raise RuntimeError('Demo mode must use a local SQLite database, never a shared production database.')
     db.init_app(app)
+
+    # Production performance diagnostics. Keep this lightweight and never log
+    # SQL text or parameters: only aggregate query count/time per request.
+    # This lets Replit logs distinguish database latency from Python/template
+    # rendering without exposing family or supporter data.
+    if not app.config.get('TESTING'):
+        with app.app_context():
+            engine = db.engine
+            if not getattr(engine, '_yazory_perf_listeners', False):
+                @event.listens_for(engine, 'before_cursor_execute')
+                def _perf_query_start(conn, cursor, statement, parameters,
+                                      context, executemany):
+                    context._yazory_query_started_at = time.perf_counter()
+
+                @event.listens_for(engine, 'after_cursor_execute')
+                def _perf_query_end(conn, cursor, statement, parameters,
+                                    context, executemany):
+                    started = getattr(context, '_yazory_query_started_at', None)
+                    if started is None or not has_request_context():
+                        return
+                    g.db_query_count = getattr(g, 'db_query_count', 0) + 1
+                    g.db_query_ms = getattr(g, 'db_query_ms', 0.0) + (
+                        time.perf_counter() - started) * 1000
+
+                engine._yazory_perf_listeners = True
+
     app.jinja_env.globals['_'] = translate
     app.jinja_env.globals['_audit'] = translate_audit
 
@@ -1589,13 +1615,18 @@ def create_app(test_config=None):
         started_at = getattr(g, 'request_started_at', None)
         if started_at is not None:
             elapsed_ms = (time.perf_counter() - started_at) * 1000
-            response.headers['Server-Timing'] = f'app;dur={elapsed_ms:.1f}'
+            query_count = getattr(g, 'db_query_count', 0)
+            db_ms = getattr(g, 'db_query_ms', 0.0)
+            response.headers['Server-Timing'] = (
+                f'app;dur={elapsed_ms:.1f}, db;dur={db_ms:.1f};desc="queries:{query_count}"')
             slow_ms = float(app.config.get('SLOW_REQUEST_MS', 750))
             if elapsed_ms >= slow_ms:
                 app.logger.warning(
-                    'Slow request method=%s endpoint=%s path=%s status=%s duration_ms=%.1f',
+                    'Slow request method=%s endpoint=%s path=%s status=%s '
+                    'duration_ms=%.1f db_queries=%s db_ms=%.1f render_python_ms=%.1f',
                     request.method, request.endpoint or 'unknown', request.path,
-                    response.status_code, elapsed_ms)
+                    response.status_code, elapsed_ms, query_count, db_ms,
+                    max(0.0, elapsed_ms - db_ms))
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
