@@ -2713,8 +2713,15 @@ def create_app(test_config=None):
         rows = []
         general_index = getattr(_app.g, 'sms_general_index', None)
         if general_index is None:
+            # Fallback for callers outside the Communications overview. The
+            # overview preloads only the phone threads visible on that screen,
+            # avoiding a full GeneralSmsMessage table scan on every visit.
             general_index = _app.g.sms_general_index = {}
-            for message in _app.db.session.scalars(select(GeneralSmsMessage)):
+            for message in _app.db.session.scalars(select(
+                    GeneralSmsMessage).where(
+                        GeneralSmsMessage.phone == phone).order_by(
+                        GeneralSmsMessage.created_at,
+                        GeneralSmsMessage.id)):
                 general_index.setdefault(sms_phone_key(message.phone), []).append(message)
         for message in general_index.get(normalized, ()):
             rows.append({
@@ -2955,6 +2962,23 @@ def create_app(test_config=None):
             for message in general_sms_history:
                 key = sms_phone_key(message.phone) or message.phone
                 phone_values.setdefault(key, message.phone)
+
+            # Load complete General SMS history only for numbers represented by
+            # the bounded overview. Previously sms_conversation() scanned the
+            # entire GeneralSmsMessage table once per request.
+            general_index = {}
+            raw_phone_values = set(phone_values.values())
+            if raw_phone_values:
+                thread_general_rows = _app.db.session.scalars(select(
+                    GeneralSmsMessage).where(
+                        GeneralSmsMessage.phone.in_(raw_phone_values)).order_by(
+                        GeneralSmsMessage.created_at,
+                        GeneralSmsMessage.id)).all()
+                for row in thread_general_rows:
+                    general_index.setdefault(
+                        sms_phone_key(row.phone) or row.phone, []).append(row)
+            _app.g.sms_general_index = general_index
+
             contact_ids_by_phone = {}
             all_sms_contact_ids = set()
             for key, phone in phone_values.items():
@@ -2970,6 +2994,29 @@ def create_app(test_config=None):
                 for row in supporter_sms_rows:
                     supporter_sms_by_contact.setdefault(row.contact_id, []).append(row)
             _app.g.sms_supporter_communications_by_contact = supporter_sms_by_contact
+
+            # Campaign links are needed while rendering SMS threads. Prime the
+            # request cache in one query instead of one CharityCampaign query
+            # for each family encountered by sms_conversation().
+            sms_family_ids = {
+                row.family_id for rows in general_index.values() for row in rows
+                if row.family_id
+            }
+            sms_family_ids.update(
+                row.family_id for rows in supporter_sms_by_contact.values()
+                for row in rows if row.family_id
+            )
+            campaign_cache = {}
+            if sms_family_ids:
+                campaign_rows = _app.db.session.scalars(select(
+                    _app.CharityCampaign).where(
+                        _app.CharityCampaign.family_id.in_(sms_family_ids)).order_by(
+                        _app.CharityCampaign.family_id,
+                        _app.CharityCampaign.id.desc())).all()
+                for campaign in campaign_rows:
+                    campaign_cache.setdefault(campaign.family_id, campaign)
+            _app.g.sms_campaign_cache = campaign_cache
+
             for key, phone in phone_values.items():
                 sms_threads[key] = sms_conversation(phone)
             for message in general_sms_history:
