@@ -1373,6 +1373,38 @@ def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
     assert configured[0][3].endswith('/twilio/incoming-message')
 
 
+def test_recover_incoming_sms_into_inbox_only_once(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    sid = 'MM' + 'a' * 32
+    monkeypatch.setattr('app.inbound_message', lambda *args: ({
+        'sid': sid, 'direction': 'inbound', 'from': '+19176856594',
+        'to': '+12513063232', 'body': 'Missed applicant text'}, None))
+    monkeypatch.setattr('app.account_overview', lambda *args: ({
+        'numbers': [{'phone_number': '+12513063232'}]}, None))
+    assert post(client, '/twilio-setup/recover-message', {'message_sid': sid}).status_code == 302
+    assert post(client, '/twilio-setup/recover-message', {'message_sid': sid}).status_code == 302
+    with app.app_context():
+        messages = db.session.scalars(db.select(GeneralSmsMessage).where(
+            GeneralSmsMessage.provider_message_id == sid)).all()
+        assert len(messages) == 1
+        assert messages[0].body == 'Missed applicant text'
+        assert messages[0].status == 'unread'
+    assert 'Missed applicant text' in client.get('/communications').text
+
+
+def test_recovery_refuses_messages_to_other_numbers(monkeypatch):
+    app, client, _ = setup_workspace(monkeypatch)
+    monkeypatch.setattr('app.inbound_message', lambda *args: ({
+        'sid': 'MM' + 'a' * 32, 'direction': 'inbound',
+        'from': '+19176856594', 'to': '+12513063232', 'body': 'Not ours'}, None))
+    monkeypatch.setattr('app.account_overview', lambda *args: ({
+        'numbers': [{'phone_number': '+18455551212'}]}, None))
+    assert post(client, '/twilio-setup/recover-message', {
+        'message_sid': 'MM' + 'a' * 32}).status_code == 302
+    with app.app_context():
+        assert db.session.scalar(db.select(GeneralSmsMessage)) is None
+
+
 def test_twilio_test_message_shows_actual_delivery_status(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)
     sid = 'SM' + 'a' * 32

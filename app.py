@@ -6,6 +6,7 @@ import hashlib
 import hmac
 from decimal import Decimal, InvalidOperation
 from email.utils import getaddresses
+from email.utils import parsedate_to_datetime
 from io import BytesIO, StringIO
 from zoneinfo import ZoneInfo
 
@@ -19,7 +20,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.exceptions import Forbidden
 from twilio_service import (account_overview, configure_inbound_webhook, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
-                            message_status, normalize_phone,
+                            inbound_message, message_status, normalize_phone,
                             validate_webhook_signature)
 
 
@@ -3352,6 +3353,94 @@ def create_app(test_config=None):
                 'Check the delivery status below.')
         return _app.redirect(_app.url_for('twilio_setup'))
 
+    @app.post('/twilio-setup/recover-message')
+    def recover_twilio_message():
+        user = task_user()
+        if not task_is_admin(user):
+            _app.abort(403)
+        message_sid = _app.request.form.get('message_sid', '').strip()
+        message, error = inbound_message(
+            app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+            message_sid)
+        if error:
+            _app.flash(error, 'error')
+            return _app.redirect(_app.url_for('twilio_setup'))
+        overview, error = account_overview(
+            app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'])
+        owned_numbers = {
+            sms_phone_key(row.get('phone_number'))
+            for row in (overview or {}).get('numbers', [])}
+        if error or message['from'].startswith('whatsapp:') or (
+                message['to'].startswith('whatsapp:')) or not sms_phone_key(message['to']) or (
+                sms_phone_key(message['to']) not in owned_numbers):
+            _app.flash(error or 'This message was not sent to a Yazory Twilio number.', 'error')
+            return _app.redirect(_app.url_for('twilio_setup'))
+        received_at = None
+        if message.get('date_created'):
+            try:
+                received_at = parsedate_to_datetime(message['date_created']).astimezone(
+                    _app.timezone.utc).replace(tzinfo=None)
+            except (TypeError, ValueError, OverflowError):
+                pass
+        if save_incoming_message(
+                message_sid, message['from'], message.get('body') or '',
+                received_at=received_at):
+            _app.db.session.add(_app.Audit(
+                actor=user.email, action=f'Recovered incoming Twilio SMS {message_sid}'))
+            _app.db.session.commit()
+            _app.flash('Incoming message recovered. Check the Communications inbox.')
+        else:
+            _app.flash('This message is already saved in Yazory.')
+        return _app.redirect(_app.url_for('twilio_setup'))
+
+    def save_incoming_message(provider_id, sender, body, *, received_at=None):
+        """Store an inbound message once in the same destination for live and recovery."""
+        if provider_id and (
+                _app.db.session.scalar(select(SupporterCommunication.id).where(
+                    SupporterCommunication.provider_message_id == provider_id)) or
+                _app.db.session.scalar(select(ApplicantMessage.id).where(
+                    ApplicantMessage.provider_message_id == provider_id)) or
+                _app.db.session.scalar(select(GeneralSmsMessage.id).where(
+                    GeneralSmsMessage.provider_message_id == provider_id))):
+            return False
+        sender = (sender or '').strip()[:80]
+        body = (body or '').strip()[:1600]
+        channel = 'whatsapp' if sender.startswith('whatsapp:') else 'sms'
+        family = family_for_inbound_phone(sender)
+        contact = None if family else contact_for_inbound_phone(sender, channel)
+        if family:
+            row = ApplicantMessage(
+                family_id=family.id, direction='applicant', status='unread',
+                body=body, provider_message_id=provider_id or None)
+            if received_at:
+                row.created_at = received_at
+            _app.db.session.add(row)
+            _app.db.session.commit()
+        elif contact:
+            row = communication_row(
+                contact, channel,
+                'Incoming WhatsApp message' if channel == 'whatsapp'
+                else 'Incoming text message',
+                body, status='received', provider_message_id=provider_id,
+                direction='inbound')
+            if received_at:
+                row.created_at = received_at
+            reopen_supporter_reply_task(contact, channel)
+            _app.db.session.commit()
+        elif channel == 'sms':
+            try:
+                sender = normalize_phone(sender)
+            except ValueError:
+                sender = sender[:80]
+            row = GeneralSmsMessage(
+                provider_message_id=provider_id or None, phone=sender,
+                direction='inbound', body=body, status='unread')
+            if received_at:
+                row.created_at = received_at
+            _app.db.session.add(row)
+            _app.db.session.commit()
+        return True
+
     @app.post('/twilio/incoming-message')
     def twilio_incoming_message():
         signature = _app.request.headers.get('X-Twilio-Signature', '')
@@ -3370,43 +3459,9 @@ def create_app(test_config=None):
 
         provider_id = (_app.request.form.get('MessageSid') or
                        _app.request.form.get('SmsSid') or '').strip()[:100]
-        if provider_id and (
-                _app.db.session.scalar(select(SupporterCommunication.id).where(
-                    SupporterCommunication.provider_message_id == provider_id)) or
-                _app.db.session.scalar(select(ApplicantMessage.id).where(
-                    ApplicantMessage.provider_message_id == provider_id)) or
-                _app.db.session.scalar(select(GeneralSmsMessage.id).where(
-                    GeneralSmsMessage.provider_message_id == provider_id))):
-            return Response('<Response></Response>', mimetype='application/xml')
-
-        sender = _app.request.form.get('From', '').strip()[:80]
-        body = _app.request.form.get('Body', '').strip()[:1600]
-        channel = 'whatsapp' if sender.startswith('whatsapp:') else 'sms'
-        family = family_for_inbound_phone(sender)
-        contact = None if family else contact_for_inbound_phone(sender, channel)
-        if family:
-            _app.db.session.add(ApplicantMessage(
-                family_id=family.id, direction='applicant', status='unread',
-                body=body, provider_message_id=provider_id or None))
-            _app.db.session.commit()
-        elif contact:
-            communication_row(
-                contact, channel,
-                'Incoming WhatsApp message' if channel == 'whatsapp'
-                else 'Incoming text message',
-                body, status='received', provider_message_id=provider_id,
-                direction='inbound')
-            reopen_supporter_reply_task(contact, channel)
-            _app.db.session.commit()
-        elif channel == 'sms':
-            try:
-                sender = normalize_phone(sender)
-            except ValueError:
-                sender = sender[:80]
-            _app.db.session.add(GeneralSmsMessage(
-                provider_message_id=provider_id or None, phone=sender,
-                direction='inbound', body=body, status='unread'))
-            _app.db.session.commit()
+        save_incoming_message(
+            provider_id, _app.request.form.get('From'),
+            _app.request.form.get('Body'))
         return Response('<Response></Response>', mimetype='application/xml')
 
     @app.get('/communications')

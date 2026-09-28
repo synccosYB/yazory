@@ -6,7 +6,7 @@ from werkzeug.datastructures import MultiDict
 
 from twilio_service import (account_overview, configure_inbound_webhook, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
-                            message_status, normalize_phone,
+                            inbound_message, message_status, normalize_phone,
                             validate_webhook_signature)
 
 
@@ -151,3 +151,17 @@ def test_message_status_returns_delivery_error_without_secrets(monkeypatch):
 def test_message_status_rejects_invalid_reference():
     assert message_status('AC1', 'token', 'not-a-message') == (
         None, 'Enter a valid Twilio message reference.')
+
+
+def test_recovery_fetches_only_original_inbound_messages(monkeypatch):
+    sid = 'MM' + 'a' * 32
+    monkeypatch.setattr('twilio_service._request', lambda *args, **kwargs: ({
+        'sid': sid, 'direction': 'inbound', 'from': '+19176856594',
+        'to': '+12513063232', 'body': 'Original message'}, None))
+    result, error = inbound_message('AC1', 'token', sid)
+    assert error is None and result['body'] == 'Original message'
+    assert inbound_message('AC1', 'token', 'bad')[0] is None
+    monkeypatch.setattr('twilio_service._request', lambda *args, **kwargs: ({
+        'sid': sid, 'direction': 'outbound-api', 'from': '+12513063232',
+        'to': '+19176856594', 'body': 'Other message'}, None))
+    assert inbound_message('AC1', 'token', sid)[0] is None

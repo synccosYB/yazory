@@ -195,3 +195,21 @@ def message_status(account_sid, auth_token, message_sid):
         key: data.get(key)
         for key in ("sid", "status", "error_code", "error_message", "to", "from")
     }, None
+
+
+def inbound_message(account_sid, auth_token, message_sid):
+    """Fetch one original inbound message for an administrator to recover."""
+    if not re.fullmatch(r"(?:SM|MM)[a-fA-F0-9]{32}", message_sid or ""):
+        return None, "Enter a valid Twilio message reference."
+    data, error = _request(
+        "GET", TWILIO_MESSAGE_API.format(
+            account_sid=account_sid, message_sid=message_sid),
+        account_sid, auth_token)
+    if error:
+        return None, error
+    if data.get('sid') != message_sid or data.get('direction') not in (
+            'inbound', 'inbound-reply'):
+        return None, "Twilio did not identify this as an incoming message."
+    if not data.get('from') or not data.get('to'):
+        return None, "Twilio did not provide both message phone numbers."
+    return data, None
