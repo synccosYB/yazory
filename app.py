@@ -3818,6 +3818,20 @@ def create_app(test_config=None):
                 'direct_url': True,
                 'profile_name': identity['name'] if identity['known'] else '',
                 'profile_url': identity['url'] if identity['known'] else ''})
+        applicant_texts = _app.db.session.scalars(select(ApplicantMessage).where(
+            ApplicantMessage.direction == 'applicant',
+            ApplicantMessage.status == 'unread',
+            ApplicantMessage.provider_message_id.is_not(None)).order_by(
+            ApplicantMessage.created_at.desc(),
+            ApplicantMessage.id.desc()).limit(100)).all()
+        for message in applicant_texts:
+            items.append({
+                'id': f'applicant-sms-{message.id}', 'kind': 'Message',
+                'action': 'Incoming SMS from applicant',
+                'actor': message.family.phone or '', 'at': message.created_at,
+                'url': _app.url_for('communications', _anchor='mailbox-applicants'),
+                'direct_url': True, 'profile_name': message.family.name,
+                'profile_url': _app.url_for('family_detail', family_id=message.family_id)})
         supporter_replies = _app.db.session.scalars(select(
             SupporterCommunication).where(
             SupporterCommunication.kind == 'sms',

@@ -1117,6 +1117,19 @@ def test_valid_twilio_reply_from_applicant_is_saved_in_family_messages(monkeypat
         assert row.status == 'unread'
         assert row.body == 'Applicant reply'
         assert row.provider_message_id == 'SM' + 'c' * 32
+    inbox = client.get('/communications')
+    assert 'Applicant reply' in inbox.text
+    assert 'Incoming text message' in inbox.text
+    assert 'Text applicant' in inbox.text
+    assert '/families/' + str(family_id) + '/messages' in inbox.text
+    notifications = client.get('/notifications')
+    assert 'Incoming SMS from' in notifications.text
+    assert 'Test family' in notifications.text
+    for language, label in (('he', 'הודעת טקסט נכנסת'),
+                            ('yi', 'אריינקומענדע טעקסט מעסעדזש')):
+        with client.session_transaction() as session:
+            session['language'] = language
+        assert label in client.get('/communications').text
 
 
 def test_unknown_twilio_reply_is_saved_in_general_sms_inbox(monkeypatch):
