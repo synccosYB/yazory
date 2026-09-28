@@ -4,7 +4,7 @@ import hmac
 
 from werkzeug.datastructures import MultiDict
 
-from twilio_service import (account_overview, create_messaging_service,
+from twilio_service import (account_overview, configure_inbound_webhook, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
                             message_status, normalize_phone,
                             validate_webhook_signature)
@@ -19,6 +19,18 @@ def test_validate_twilio_webhook_signature():
 
     assert validate_webhook_signature('secret', url, params, signature)
     assert not validate_webhook_signature('secret', url, params, 'wrong')
+
+
+def test_configure_inbound_webhook(monkeypatch):
+    calls = []
+    monkeypatch.setattr('twilio_service._request',
+                        lambda *args, **kwargs: (calls.append((args, kwargs)) or {}, None))
+    assert configure_inbound_webhook('AC1', 'token', 'MG1',
+                                     'https://yaazory.org/twilio/incoming-message') is None
+    assert calls[0][0][:2] == ('POST', 'https://messaging.twilio.com/v1/Services/MG1')
+    assert calls[0][1]['data'] == {
+        'InboundRequestUrl': 'https://yaazory.org/twilio/incoming-message',
+        'InboundMethod': 'POST'}
 
 
 def test_normalize_us_phone_numbers():

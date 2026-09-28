@@ -1318,6 +1318,9 @@ def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
     monkeypatch.setattr('app.account_overview', lambda *args: (overview, None))
     monkeypatch.setattr('app.find_messaging_service_for_number', lambda *args: None)
     monkeypatch.setattr('app.create_messaging_service', lambda *args: ('MG123', None))
+    configured = []
+    monkeypatch.setattr('app.configure_inbound_webhook',
+                        lambda *args: configured.append(args) or None)
     page = client.get('/twilio-setup')
     assert page.status_code == 200
     assert 'Connect SMS automatically' in page.text
@@ -1328,6 +1331,8 @@ def test_twilio_setup_is_admin_only_and_connects_service(monkeypatch):
         setting = db.session.get(core_module.OrganizationSetting,
                                  'twilio_messaging_service_sid')
         assert setting.value == 'MG123'
+    assert configured[0][2] == 'MG123'
+    assert configured[0][3].endswith('/twilio/incoming-message')
 
 
 def test_twilio_test_message_shows_actual_delivery_status(monkeypatch):

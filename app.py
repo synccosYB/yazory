@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.exceptions import Forbidden
-from twilio_service import (account_overview, create_messaging_service,
+from twilio_service import (account_overview, configure_inbound_webhook, create_messaging_service,
                             deliver_message, find_messaging_service_for_number,
                             message_status, normalize_phone,
                             validate_webhook_signature)
@@ -3305,6 +3305,12 @@ def create_app(test_config=None):
             service_sid, error = create_messaging_service(
                 app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
                 phone_number_sid)
+        if not error:
+            webhook_url = (app.config.get('APP_BASE_URL', '').rstrip('/') or
+                           _app.request.host_url.rstrip('/')) + _app.url_for('twilio_incoming_message')
+            error = configure_inbound_webhook(
+                app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                service_sid, webhook_url)
         if error:
             _app.flash(f'Twilio setup failed: {error}', 'error')
         else:

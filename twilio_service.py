@@ -94,6 +94,15 @@ def create_messaging_service(account_sid, auth_token, phone_number_sid):
     return service_sid, None
 
 
+def configure_inbound_webhook(account_sid, auth_token, service_sid, webhook_url):
+    """Route replies on the Messaging Service to Yazory."""
+    _, error = _request(
+        "POST", f"{TWILIO_SERVICES_API}/{service_sid}", account_sid,
+        auth_token, data={"InboundRequestUrl": webhook_url,
+                          "InboundMethod": "POST"})
+    return error
+
+
 def find_messaging_service_for_number(account_sid, auth_token, services,
                                       phone_number_sid):
     """Return the Messaging Service that already owns a Twilio number."""
