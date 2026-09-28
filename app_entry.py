@@ -53,16 +53,22 @@ def create_app(test_config=None):
         if user is None:
             return {}
         today = datetime.now(ZoneInfo('America/New_York')).date()
-        statement = select(_base.StaffTask).where(
+        open_filter = (
             _base.StaffTask.assigned_to == user.id,
-            _base.StaffTask.status.notin_(('Completed', 'Cancelled')))
-        tasks = _app.db.session.scalars(statement.order_by(
-            _base.StaffTask.due_date.is_(None), _base.StaffTask.due_date,
-            _base.StaffTask.id.desc())).all()
-        return dict(my_tasks=tasks[:4], my_task_count=len(tasks),
-                    my_tasks_due=sum(task.due_date == today for task in tasks),
-                    my_tasks_overdue=sum(bool(task.due_date and task.due_date < today)
-                                         for task in tasks), task_today=today)
+            _base.StaffTask.status.notin_(('Completed', 'Cancelled')),
+        )
+        tasks = _app.db.session.scalars(select(_base.StaffTask).where(
+            *open_filter).order_by(
+                _base.StaffTask.due_date.is_(None), _base.StaffTask.due_date,
+                _base.StaffTask.id.desc()).limit(4)).all()
+        counts = _app.db.session.execute(select(
+            func.count(_base.StaffTask.id),
+            func.count().filter(_base.StaffTask.due_date == today),
+            func.count().filter(_base.StaffTask.due_date < today),
+        ).where(*open_filter)).one()
+        return dict(my_tasks=tasks, my_task_count=counts[0],
+                    my_tasks_due=counts[1], my_tasks_overdue=counts[2],
+                    task_today=today)
 
     @app.cli.command('translations-push')
     def translations_push():
