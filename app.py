@@ -2724,10 +2724,19 @@ def create_app(test_config=None):
                     'source_id': f'general-{message.id}'})
         contact_ids = sms_contact_ids(normalized)
         if contact_ids:
-            communications = _app.db.session.scalars(select(
-                SupporterCommunication).where(
-                    SupporterCommunication.contact_id.in_(contact_ids),
-                    SupporterCommunication.kind == 'sms')).all()
+            supporter_sms_cache = getattr(
+                _app.g, 'sms_supporter_communications_by_contact', None)
+            if supporter_sms_cache is None:
+                communications = _app.db.session.scalars(select(
+                    SupporterCommunication).where(
+                        SupporterCommunication.contact_id.in_(contact_ids),
+                        SupporterCommunication.kind == 'sms')).all()
+            else:
+                communications = [
+                    message
+                    for contact_id in contact_ids
+                    for message in supporter_sms_cache.get(contact_id, ())
+                ]
             for message in communications:
                 rows.append({
                     'direction': message.direction, 'body': message.body,
@@ -2942,11 +2951,29 @@ def create_app(test_config=None):
         sms_threads = {}
         sms_context = {}
         if general_sms_history is not None:
+            phone_values = {}
             for message in general_sms_history:
                 key = sms_phone_key(message.phone) or message.phone
-                sms_identities[key] = sms_person_identity(message.phone)
-                if key not in sms_threads:
-                    sms_threads[key] = sms_conversation(message.phone)
+                phone_values.setdefault(key, message.phone)
+            contact_ids_by_phone = {}
+            all_sms_contact_ids = set()
+            for key, phone in phone_values.items():
+                sms_identities[key] = sms_person_identity(phone)
+                contact_ids_by_phone[key] = sms_contact_ids(phone)
+                all_sms_contact_ids.update(contact_ids_by_phone[key])
+            supporter_sms_by_contact = {}
+            if all_sms_contact_ids:
+                supporter_sms_rows = _app.db.session.scalars(select(
+                    SupporterCommunication).where(
+                        SupporterCommunication.contact_id.in_(all_sms_contact_ids),
+                        SupporterCommunication.kind == 'sms')).all()
+                for row in supporter_sms_rows:
+                    supporter_sms_by_contact.setdefault(row.contact_id, []).append(row)
+            _app.g.sms_supporter_communications_by_contact = supporter_sms_by_contact
+            for key, phone in phone_values.items():
+                sms_threads[key] = sms_conversation(phone)
+            for message in general_sms_history:
+                key = sms_phone_key(message.phone) or message.phone
                 if message.direction == 'inbound':
                     prior = [
                         row for row in sms_threads[key]
@@ -3757,7 +3784,8 @@ def create_app(test_config=None):
                                         available_count=len(available_ids))
         chosen_contacts = [contact for contact in contacts if contact.id in selected_ids]
         ids = [contact.id for contact in chosen_contacts]
-        tasks = _app.db.session.scalars(select(StaffTask).where(
+        tasks = _app.db.session.scalars(select(StaffTask).options(
+            selectinload(StaffTask.subtasks)).where(
             StaffTask.source_contact_id.in_(ids))).all() if ids else []
         task_by_contact = {task.source_contact_id: task for task in tasks}
         callbacks = scheduled_callback_map(tasks)
