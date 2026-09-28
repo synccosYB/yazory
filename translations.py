@@ -466,6 +466,7 @@ _EXTRA = {
     'Send text': {'he': 'שליחת הודעת טקסט', 'yi': 'שיק א טעקסט'},
     'Send SMS': {'he': 'שליחת SMS', 'yi': 'שיק SMS'},
     'Text applicant': {'he': 'שליחת הודעת SMS למבקש', 'yi': 'שיק א טעקסט צום אפליקאנט'},
+    'Email applicant': {'he': 'שליחת אימייל למבקש', 'yi': 'שיק אן אימעיל צום אפליקאנט'},
     'Send WhatsApp': {'he': 'שליחת WhatsApp', 'yi': 'שיק WhatsApp'},
     'Mobile number': {'he': 'מספר נייד', 'yi': 'סעלפאן נומער'},
     'Message': {'he': 'הודעה', 'yi': 'מעסעדזש'},
