@@ -1070,8 +1070,12 @@ def create_app(test_config=None):
     def current_user():
         if app.config['DEMO']:
             return None
+        if hasattr(g, '_yazory_current_user'):
+            return g._yazory_current_user
         user_id = session.get('user_id')
-        return db.session.get(StaffUser, user_id) if user_id else None
+        user = db.session.get(StaffUser, user_id) if user_id else None
+        g._yazory_current_user = user
+        return user
 
     def organization_admin():
         return app.config['DEMO'] or (current_user() and current_user().role == 'organization_admin')
