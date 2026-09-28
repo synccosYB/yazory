@@ -22,7 +22,7 @@
       <label class="mailbox-search"><span class="sr-only">{{ _('Search messages') }}</span><input type="search" placeholder="{{ _('Search messages') }}" data-mailbox-search></label>
     </header>
 
-    <div class="mailbox-compose-panel" data-mailbox-compose-panel {{ '' if external_email or sms_phone else 'hidden' }}>
+    <div class="mailbox-compose-panel" data-mailbox-compose-panel {{ '' if external_email or sms_phone or sms_family else 'hidden' }}>
       <div class="section-heading"><div><h3>{{ _('New message') }}</h3><p>{{ _('Send email or SMS from one place.') }}</p></div><button class="small secondary" type="button" data-mailbox-compose-close>{{ _('Cancel') }}</button></div>
       {% if external_email %}
       <form class="mailbox-external-email" method="post" action="{{ url_for('send_external_email') }}">

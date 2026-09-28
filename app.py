@@ -2847,7 +2847,7 @@ def create_app(test_config=None):
         sms_name = _app.request.args.get('sms_name', '').strip()[:160]
         sms_family_id = _app.request.args.get('family_id', type=int)
         sms_family = None
-        if sms_phone:
+        if sms_phone or sms_family_id is not None:
             if user.role != 'organization_admin':
                 _app.abort(403)
             if sms_family_id is not None:
