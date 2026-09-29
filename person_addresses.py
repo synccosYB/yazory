@@ -74,6 +74,47 @@ def mailing_lines(contact):
                         values.get('unit'), locality, values.get('country')) if v]
 
 
+def save_new_supporter_addresses(app, contact, form):
+    """Save supplied optional addresses in the same creation transaction.
+
+Blank fields on a new case connection never erase an existing person's address.
+"""
+    submitted = {}
+    for prefix in ('home', 'work'):
+        submitted[prefix] = {}
+        for field, limit in FIELDS.items():
+            value = form.get(f'{prefix}_{field}', '').strip()
+            if len(value) > (240 if prefix == 'home' and field == 'street' else limit):
+                abort(400)
+            if value:
+                submitted[prefix][field] = value
+    preference = form.get('mailing_preference', '')
+    if preference not in ('', 'home', 'work'):
+        abort(400)
+    if not any(submitted.values()) and not preference:
+        return
+    identity = app.extensions['supporter_identity']
+    person = identity['attach'](contact)
+    details = address_details('person', person.id)
+    if details is None:
+        details = PersonAddressDetails(person_kind='person', person_id=person.id,
+                                       home={}, work={})
+        db.session.add(details)
+    home = submitted['home']
+    for field, column in (('street', 'home_address'), ('city', 'city'),
+                          ('state', 'state'), ('zip_code', 'zip_code')):
+        if field in home:
+            setattr(person, column, home.pop(field))
+    work = submitted['work']
+    if 'company' in work:
+        person.workplace = work.pop('company')
+    details.home = {**(details.home or {}), **home}
+    details.work = {**(details.work or {}), **work}
+    if preference:
+        details.mailing_preference = preference
+    identity['sync'](person)
+
+
 def install(app, extra_models, directory_access):
     access = app.extensions['person_address_access']
     models = dict(family=core.Family, spouse=core.Family, child=core.Child,

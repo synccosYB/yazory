@@ -2988,6 +2988,8 @@ def create_app(test_config=None):
         identity = app.extensions.get('supporter_identity')
         if identity:
             identity['attach'](contact)
+        from person_addresses import save_new_supporter_addresses
+        save_new_supporter_addresses(app, contact, request.form)
         sync_followup = app.extensions.get('sync_supporter_followup_task')
         if sync_followup:
             sync_followup(contact)

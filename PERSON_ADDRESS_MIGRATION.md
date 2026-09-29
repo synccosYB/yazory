@@ -18,7 +18,10 @@ the same person across roles.
 Use the Home & work addresses action on the applicant, supporter, directory
 profile, askan, staff, child, rabbi or partner contact. Directory affiliations
 also expose the action for their existing person identity. Addresses can be
-entered after creating a profile; profile creation never requires an address.
+entered after creating a profile. The Add a new person form on the supporter
+list and applicant case also accepts home/work addresses and mailing preference
+with the initial save. Blank fields never erase addresses when connecting an
+existing supporter to another case. Profile creation never requires an address.
 
 The receipt-address resolver uses the selected work address, otherwise the
 existing home address. A selected but empty work address remains empty rather

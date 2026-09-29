@@ -35,6 +35,7 @@
 <label>{{ _('Outreach status') }}<select name="status">{% for status in contact_statuses %}<option value="{{ status }}">{{ _(status) }}</option>{% endfor %}</select>
 </label>
 </div>
+{% include '_new_supporter_addresses.html' %}
 <button {% if not families %}disabled{% endif %}>{{ _('Add supporter') }}</button>
 </form>
 </details>

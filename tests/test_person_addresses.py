@@ -49,6 +49,38 @@ def test_shared_supporter_address_and_mailing_preference(app):
     assert b'Apt 2' in response.data and b'20 Work Road' in response.data
 
 
+def test_new_supporter_saves_addresses_with_profile_and_blank_reconnect_preserves(app):
+    client = app.test_client()
+    with app.app_context():
+        family = Family(name='New supporter case')
+        second = Family(name='Second connection')
+        db.session.add_all([family, second])
+        db.session.commit()
+        fid, second_id = family.id, second.id
+    data = {'name': 'New donor', 'cell_phone': '3475558877',
+            'relationship': 'Friend', 'status': 'To contact', 'monthly': '0'}
+    assert post(client, f'/families/{fid}/contacts', {
+        **data, 'home_street': '12 Home Road', 'home_unit': 'Apartment 3',
+        'home_zip_code': '00123', 'work_street': '45 Office Lane',
+        'work_company': 'Donor Company', 'mailing_preference': 'work'}).status_code == 302
+    assert post(client, f'/families/{second_id}/contacts', {
+        **data, 'home_street': '', 'work_street': '', 'mailing_preference': ''}).status_code == 302
+    with app.app_context():
+        rows = db.session.scalars(db.select(Contact).where(Contact.name == 'New donor')).all()
+        assert len(rows) == 2
+        for contact in rows:
+            assert contact.home_address == '12 Home Road'
+            assert contact.zip_code == '00123'
+            assert mailing_lines(contact) == ['Donor Company', '45 Office Lane']
+        details = db.session.query(PersonAddressDetails).one()
+        assert details.home['unit'] == 'Apartment 3'
+    for path in ('/supporters', f'/families/{fid}'):
+        page = client.get(path).get_data(as_text=True)
+        assert 'name="home_street"' in page
+        assert 'name="work_street"' in page
+        assert 'name="home_street" required' not in page
+
+
 @pytest.mark.parametrize('kind,model', [('family', Family), ('askan', Askan), ('staff', StaffUser)])
 def test_addresses_optional_for_existing_profiles(app, kind, model):
     with app.app_context():

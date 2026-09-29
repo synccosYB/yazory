@@ -1,0 +1,18 @@
+<details class="intake-more">
+  <summary>{{ _('Home & work addresses') }}</summary>
+  <div class="form-grid">
+    {% for prefix, heading in [('home', 'Home address'), ('work', 'Work address')] %}
+    <fieldset><legend>{{ _(heading) }}</legend><div class="form-grid">
+      {% if prefix == 'work' %}<label>{{ _('Company name') }}<input name="work_company" maxlength="160" autocomplete="organization" dir="auto"></label>{% endif %}
+      {% for field, label, limit in [('street','Street address',240 if prefix == 'home' else 300),('unit','Apartment / suite',80),('city','City',120),('state','State / province',80),('zip_code','ZIP / postal code',20),('country','Country',80)] %}
+      <label>{{ _(label) }}<input name="{{ prefix }}_{{ field }}" maxlength="{{ limit }}" dir="auto"></label>
+      {% endfor %}
+    </div></fieldset>
+    {% endfor %}
+  </div>
+  <label>{{ _('Preferred mailing address') }}<select name="mailing_preference">
+    <option value="">{{ _('Not selected') }}</option>
+    <option value="home">{{ _('Home address') }}</option>
+    <option value="work">{{ _('Work address') }}</option>
+  </select></label>
+</details>
