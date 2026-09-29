@@ -14,7 +14,7 @@
         {% set profile_phones=family_phone_values(family) %}<span class="profile-contact-phones">{% if profile_phones %}<bdi dir="ltr">{{ profile_phones[0] }}</bdi>{{ pencil(family.id, 'phone', 'Phone') }}{% if profile_phones|length > 1 %}<details class="profile-extra-phones"><summary aria-label="{{ _('Phone') }}">+{{ profile_phones|length - 1 }}</summary><div>{% for phone in profile_phones[1:] %}<a href="tel:{{ phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"><bdi dir="ltr">{{ phone }}</bdi></a>{% endfor %}</div></details>{% endif %}{% else %}{{ _('Phone not entered') }} {{ pencil(family.id, 'phone', 'Phone') }}{% endif %}</span>
       </div>
     </div>
-    <div class="profile-record-actions">
+    <div class="profile-record-actions">{% if can_manage_household %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='family', person_id=family.id) }}">{{ _('Home & work addresses') }}</a>{% endif %}
       <a class="button secondary" href="{{ url_for('staff_applicant_messages', family_id=family.id) }}">{{ _('Applicant messages') }}</a>
       {% if is_org_admin or (family.email and current_staff.role in ('family_admin', 'fundraiser')) %}<a class="button secondary" href="{{ url_for('communications', recipient_email=family.email if family.email else None, sms_phone=(profile_phones[0] if profile_phones else '') if is_org_admin else None, sms_name=family.name if is_org_admin else None, family_id=family.id if is_org_admin else None, _anchor='mailbox-inbox') }}">{{ _('Message applicant') }}</a>{% endif %}
       <a class="button" href="/families/{{ family.id }}/edit">{{ _("Edit profile") }}</a>

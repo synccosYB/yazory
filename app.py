@@ -11,6 +11,7 @@ from io import BytesIO, StringIO
 from zoneinfo import ZoneInfo
 
 import app_original as _app
+from person_addresses import install as install_person_addresses
 
 from flask import Response, current_app, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
@@ -4957,6 +4958,11 @@ def create_app(test_config=None):
                    'success' if message.status == 'sent' else 'error')
         return _app.redirect(_app.url_for('supporter_detail', contact_id=contact.id))
 
+    from partner_network import PartnerContact
+    install_person_addresses(app, dict(
+        profile=SupporterProfile, rabbi=RabbiPerson, helper=HelperPerson,
+        gabbai=ShulGabbaiDirectory, partner_contact=PartnerContact),
+        require_supporter_directory_access)
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)

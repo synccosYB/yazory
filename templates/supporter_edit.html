@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import token with context %}
-{% block content %}
+{% block content %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='supporter', person_id=contact.id) }}">{{ _('Home & work addresses') }}</a>
 <div class="page-heading"><div><div class="eyebrow">{{ _('EDIT SUPPORTER') }}</div><h1>{{ contact.name }}</h1><p>{{ contact.family.name }}</p></div><a class="button secondary" href="{{ url_for('supporter_detail', contact_id=contact.id) }}">{{ _('Cancel') }}</a></div>
 <form class="card padded" method="post">
 {{ token(csrf) }}

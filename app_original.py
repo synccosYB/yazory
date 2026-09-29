@@ -1517,6 +1517,11 @@ def create_app(test_config=None):
             abort(403, 'You are not assigned to this family.')
         return db.get_or_404(Family, family_id)
 
+    app.extensions['person_address_access'] = dict(
+        current_user=current_user, organization_admin=organization_admin,
+        can_access_family=can_access_family, can_manage_household=can_manage_household,
+        can_manage_supporters=can_manage_supporters)
+
     @app.template_filter('eastern_time')
     def eastern_time(value, format_string='%m/%d/%Y %I:%M %p %Z'):
         """Render UTC database timestamps in the organization's Eastern timezone."""

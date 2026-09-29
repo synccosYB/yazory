@@ -5,6 +5,21 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Back to profile': {'he': 'חזרה לפרופיל', 'yi': 'צוריק צום פראפיל'},
+    'Home & work addresses': {'he': 'כתובת הבית והעבודה', 'yi': 'היים און ארבעט אדרעסן'},
+    'Work address': {'he': 'כתובת העבודה', 'yi': 'ארבעט אדרעס'},
+    'Street address': {'he': 'רחוב ומספר בית', 'yi': 'גאס און הויז נומער'},
+    'Apartment / suite': {'he': 'דירה / משרד', 'yi': 'דירה אדער אפיס'},
+    'State / province': {'he': 'מדינה / מחוז', 'yi': 'סטעיט אדער פראווינץ'},
+    'ZIP / postal code': {'he': 'מיקוד', 'yi': 'זיפ קאוד'},
+    'Country': {'he': 'ארץ', 'yi': 'לאנד'},
+    'Company name': {'he': 'שם החברה', 'yi': 'נאמען פון דער פירמע'},
+    'Preferred mailing address': {'he': 'כתובת מועדפת לדואר', 'yi': 'אדרעס פאר פאסט'},
+    'Not selected': {'he': 'לא נבחר', 'yi': 'נישט אויסגעקליבן'},
+    'Save addresses': {'he': 'שמירת כתובות', 'yi': 'היט אפ די אדרעסן'},
+    'Addresses saved.': {'he': 'הכתובות נשמרו.', 'yi': 'די אדרעסן זענען אפגעהיטן.'},
+    'All address fields are optional. You can save with either address blank.': {'he': 'כל שדות הכתובת הם רשות. ניתן לשמור גם ללא כתובות.', 'yi': 'אלע אדרעס פעלדער זענען פרייוויליג. מען קען אפהיטן אויך אן קיין אדרעס.'},
+
     'Choose helpers': {'he': 'בחירת מסייעים', 'yi': 'קלויב אויס העלפער'},
     'Choose the people for this work roster. Your selection stays in place as you work.': {'he': 'בחרו את האנשים לרשימת העבודה. הבחירה תישמר בזמן העבודה.', 'yi': 'קלויב אויס מיט וועמען דו ווילסט יעצט ארבעטן. די אויסוואל בלייבט בשעת דו ארבעטסט.'},
     'Back to work roster': {'he': 'חזרה לרשימת העבודה', 'yi': 'צוריק צום ארבעטס ליסטע'},

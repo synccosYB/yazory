@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='profile', person_id=profile.id) }}">{{ _('Home & work addresses') }}</a>
 <div class="page-heading">
   <div>
     <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
