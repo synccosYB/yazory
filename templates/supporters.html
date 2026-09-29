@@ -56,7 +56,7 @@
 {{ token(csrf) }}
 <input type="hidden" name="from_supporters" value="1">
 <div class="supporter-quick-fields">
-<label>{{ _('Name *') }}<input name="name" value="{{ c.name }}" required maxlength="160"></label>
+<input type="hidden" name="name" value="{{ c.name }}" maxlength="160">{{ bilingual_name_fields('supporter', c, 'name') }}
 <label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship == c.relationship }}>{{ _(relationship) }}</option>{% endfor %}{% if c.relationship not in relationships %}<option value="{{ c.relationship }}" selected>{{ _(c.relationship) }}</option>{% endif %}</select></label>
 <label>{{ _('Phone') }}<input name="phone" value="{{ c.phone or '' }}" maxlength="80" type="tel"></label>
 <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ c.cell_phone or '' }}" maxlength="80" type="tel" autocomplete="tel"></label>
@@ -74,8 +74,8 @@
 <details class="supporter-family add-child-panel no-print">
 <summary>{{ _('Add another child') }}</summary>
 <form method="post" action="{{ url_for('add_contact_child', contact_id=c.id) }}">{{ token(csrf) }}<div class="supporter-child-form">
-<label>{{ _('Child name *') }}<input name="name" required maxlength="160"></label>
-<label>{{ _('Spouse name') }}<input name="spouse_name" maxlength="160"></label>
+<input type="hidden" name="name" maxlength="160">{{ bilingual_name_fields('supporter', none, 'name') }}
+<input type="hidden" name="spouse_name" maxlength="160">{{ bilingual_name_fields('supporter_child', none, 'spouse_name') }}
 <label>{{ _('What is he to that supporter?') }}<select name="parent_connection"><option value="Son">{{ _('Son') }}</option><option value="Son-in-law">{{ _('Son-in-law') }}</option></select></label>
 <label>{{ _('Phone') }}<input name="phone" maxlength="80"></label>
 <button class="small">{{ _('Add another child') }}</button>

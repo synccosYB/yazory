@@ -12,7 +12,7 @@
   <form method="post">
     {{ token(csrf) }}
     <div class="form-grid">
-      <label>{{ _('Name') }} *<input name="name" value="{{ person.name }}" maxlength="160" required></label>
+      <input type="hidden" name="name" value="{{ person.name }}" maxlength="160">{{ bilingual_name_fields('profile', profile, 'name') }}
       <label>{{ _('Phone') }}<input name="phone" value="{{ person.phone }}" maxlength="80"></label>
       <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ person.cell_phone }}" maxlength="80"></label>
       <label>{{ _('Home phone') }}<input name="home_phone" value="{{ person.home_phone }}" maxlength="80"></label>
@@ -51,7 +51,7 @@
   </tbody></table></div>
 </section>
 
-<section class="card padded">
+<section class="card padded" id="people-relationships">
   <div class="section-heading"><div><h2>{{ _('Connections to other people') }}</h2><p>{{ _('These connections belong to the person and do not depend on a case or institution.') }}</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>{{ _('Person') }}</th><th>{{ _('Connection') }}</th><th>{{ _('Notes') }}</th><th>{{ _('Actions') }}</th></tr></thead><tbody>
     {% for connection, other in person_relationships %}<tr><td><strong>{{ other.name }}</strong>{% if other.phone %}<small><bdi dir="ltr">{{ other.phone|phone }}</bdi></small>{% endif %}</td><td>{{ _(connection.relationship) }}</td><td>{{ connection.notes or '—' }}</td><td><form method="post" action="{{ url_for('delete_person_relationship', profile_id=profile.id, relationship_id=connection.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Remove') }}</button></form></td></tr>{% else %}<tr><td colspan="4" class="empty">{{ _('No direct person connections entered.') }}</td></tr>{% endfor %}

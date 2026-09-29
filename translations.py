@@ -933,3 +933,15 @@ def translate(text):
     if extra:
         return extra.get(session.get('language', 'en'), text)
     return _translate(text)
+
+_EXTRA.update({
+    'English name': {'he': 'שם באנגלית', 'yi': 'נאמען אויף ענגליש'},
+    'Yiddish name': {'he': 'שם באידיש', 'yi': 'נאמען אויף אידיש'},
+    'Import destination': {'he': 'יעד הייבוא', 'yi': 'וואו אריינצולייגן די מענטשן'},
+    'General people directory': {'he': 'רשימת האנשים הכללית', 'yi': 'אלגעמיינע מענטשן ליסטע'},
+    'Connected to case': {'he': 'קושרו לתיק', 'yi': 'פארבונדן מיטן תיק'},
+    'Existing profiles updated': {'he': 'פרטים קיימים הושלמו', 'yi': 'עקזיסטירנדע פרטים אויסגעפילט'},
+    'Upload names in English and Yiddish, phone numbers, emails, and home or work addresses. Choose a case or keep people in the general directory. Connect relationships from each person’s profile.': {'he': 'העלו שמות באנגלית ובאידיש, טלפונים, כתובות דוא״ל וכתובות בית או עבודה. בחרו תיק או שמרו ברשימה הכללית. קשרו בין אנשים מתוך הפרופיל שלהם.', 'yi': 'לאדט אריין נעמען אויף ענגליש און אידיש, טעלעפאנען, אימעילס, און אדרעסן פון שטוב אדער ארבעט. וועלט אויס א תיק אדער האלט די מענטשן אין דער אלגעמיינער ליסטע. פארבינדט די קרובים פון יעדן מענטשנס פראפיל.'},
+})
+
+_EXTRA.update({'Names, addresses & relationships': {'he': 'שמות, כתובות וקשרים', 'yi': 'נעמען, אדרעסן און קרובים'}})

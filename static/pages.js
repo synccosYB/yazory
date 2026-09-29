@@ -287,7 +287,7 @@ const setupImportedSupporterPicker=(form,profiles,labels,select=null)=>{
     search.type='search';search.placeholder=labels.search;search.autocomplete='off';
     select=document.createElement('select');select.name='supporter_profile_id';
     label.append(hint,search,select);
-    name.closest('label').before(label);
+    (name.closest('label')||form.querySelector('[name="name_english"]')?.closest('label')||name).before(label);
     search.addEventListener('input',()=>{
       const query=search.value.trim().toLocaleLowerCase();
       [...select.options].forEach((option,index)=>{option.hidden=index>0&&query&&!option.textContent.toLocaleLowerCase().includes(query);});
@@ -295,13 +295,17 @@ const setupImportedSupporterPicker=(form,profiles,labels,select=null)=>{
   }
   select.replaceChildren(new Option(labels.new,''),...profiles.map(profile=>{
     const option=new Option([profile.name,profile.phone,profile.email].filter(Boolean).join(' · '),String(profile.id));
+    option.dataset.englishName=profile.english_name||'';option.dataset.yiddishName=profile.yiddish_name||'';
     option.dataset.name=profile.name;option.dataset.phone=profile.phone;option.dataset.email=profile.email;
     return option;
   }));
   select.addEventListener('change',()=>{
     const option=select.selectedOptions[0];
     if(!option?.value)return;
-    name.value=option.dataset.name||'';phone.value=option.dataset.phone||'';
+    name.value=option.dataset.name||'';
+    const english=form.querySelector('[name="name_english"]'),yiddish=form.querySelector('[name="name_yiddish"]');
+    if(english)english.value=option.dataset.englishName||'';if(yiddish)yiddish.value=option.dataset.yiddishName||'';
+    phone.value=option.dataset.phone||'';
     const email=form.querySelector('[name="email"]');if(email)email.value=option.dataset.email||'';
   });
 };

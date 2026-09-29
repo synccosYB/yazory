@@ -9,7 +9,7 @@
   <h2>{{ _('Invite a staff member') }}</h2>
   <form method="post">{{ token(csrf) }}
     <div class="form-grid">
-      <label>{{ _('Name') }}<input name="name" maxlength="160" autocomplete="name"></label>
+      <input type="hidden" name="name" maxlength="160" autocomplete="name">{{ bilingual_name_fields('staff', none, 'name') }}
       <label>{{ _('Job title') }}<input name="job_title" maxlength="120" autocomplete="organization-title"></label>
       <label>{{ _('Email') }}<input type="email" name="email" required maxlength="254" autocomplete="email"></label>
       <label>{{ _('Phone') }}<input type="tel" name="phone" maxlength="80" autocomplete="tel"></label>
@@ -35,7 +35,7 @@
     <details class="staff-edit-panel"><summary class="button small secondary staff-edit-button">✎ {{ _('Edit detailed information') }}</summary>
       <form method="post" action="{{ url_for('staff_details', user_id=user.id) }}">{{ token(csrf) }}
         <div class="form-grid">
-          <label>{{ _('Name') }}<input name="name" value="{{ user.name }}" maxlength="160" autocomplete="name"></label>
+          <input type="hidden" name="name" value="{{ user.name }}" maxlength="160" autocomplete="name">{{ bilingual_name_fields('staff', user, 'name') }}
           <label>{{ _('Job title') }}<input name="job_title" value="{{ user.job_title }}" maxlength="120"></label>
           <label>{{ _('Email') }}<input type="email" name="email" value="{{ user.email }}" required maxlength="254" autocomplete="email" {{ 'readonly' if user.id == owner_user_id }}></label>
           <label>{{ _('Phone') }}<input type="tel" name="phone" value="{{ user.phone }}" maxlength="80" autocomplete="tel"></label>

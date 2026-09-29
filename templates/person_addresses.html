@@ -6,7 +6,7 @@
   <p><strong>{{ display_name }}</strong></p>
   <p>{{ _('All address fields are optional. You can save with either address blank.') }}</p>
   <form method="post">{{ token(csrf) }}
-    <div class="form-grid">
+    <div class="form-grid">{{ bilingual_name_fields(name_kind, person, name_field, display_name) }}
       <fieldset><legend>{{ _('Home address') }}</legend><div class="form-grid">
         {% for field, label, limit in [('street','Street address',300),('unit','Apartment / suite',80),('city','City',120),('state','State / province',80),('zip_code','ZIP / postal code',20),('country','Country',80)] %}
         <label>{{ _(label) }}<input name="home_{{ field }}" value="{{ home.get(field, '') }}" maxlength="{{ limit }}" dir="auto"></label>

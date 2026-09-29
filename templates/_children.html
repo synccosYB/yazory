@@ -9,7 +9,7 @@
     <a class="button small secondary" href="{{ url_for('person_addresses', kind='child', person_id=c.id) }}">{{ _('Home & work addresses') }}</a>{% if c.spouse_name %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='child_spouse', person_id=c.id) }}">{{ _('Home & work addresses') }}</a>{% endif %}<form method="post" action="/children/{{ c.id }}">
       {{ token(csrf) }}
       <div class="form-grid">
-        <label>{{ _("Child name *") }}<input name="name" required maxlength="160" value="{{ c.name }}"></label>
+        <input type="hidden" name="name" maxlength="160" value="{{ c.name }}">{{ bilingual_name_fields('child', c, 'name') }}
         <label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required value="{{ c.age }}"></label>
         <label>{{ _("Grade") }}<input name="grade" maxlength="80" value="{{ c.grade }}"></label>
         <label>{{ _("School") }}<input name="school" maxlength="160" value="{{ c.school }}"></label>
@@ -17,7 +17,7 @@
         <label>{{ _("Home phone") }}<input name="home_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr" value="{{ c.home_phone }}"></label>
         <label>{{ _("Cell phone") }}<input name="cell_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr" value="{{ c.cell_phone }}"></label>
         <label>{{ _("Married?") }}<select name="married"><option value="no" {{ 'selected' if not c.married }}>{{ _('No') }}</option><option value="yes" {{ 'selected' if c.married }}>{{ _('Yes') }}</option></select></label>
-        <label>{{ _("Spouse name") }}<input name="spouse_name" maxlength="160" value="{{ c.spouse_name }}"></label>
+        <input type="hidden" name="spouse_name" maxlength="160" value="{{ c.spouse_name }}">{{ bilingual_name_fields('child', c, 'spouse_name') }}
       </div>
       <button>{{ _("Save child") }}</button>
     </form>
@@ -26,7 +26,7 @@
   </div>
   <details class="add-child-record"><summary>{{ _("+ Add child") }}</summary><form method="post" action="/families/{{ family.id }}/children">{{ token(csrf) }}
     <div class="form-grid">
-      <label>{{ _("Child name *") }}<input name="name" required maxlength="160"></label><label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required></label><label>{{ _("Grade") }}<input name="grade" maxlength="80"></label><label>{{ _("School") }}<input name="school" maxlength="160"></label><label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300"></label><label>{{ _("Home phone") }}<input name="home_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label><label>{{ _("Cell phone") }}<input name="cell_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label>
-      <label>{{ _("Married?") }}<select name="married"><option value="no">{{ _('No') }}</option><option value="yes">{{ _('Yes') }}</option></select></label><label>{{ _("Spouse name") }}<input name="spouse_name" maxlength="160"></label>
+      <input type="hidden" name="name" maxlength="160">{{ bilingual_name_fields('child', none, 'name') }}<label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required></label><label>{{ _("Grade") }}<input name="grade" maxlength="80"></label><label>{{ _("School") }}<input name="school" maxlength="160"></label><label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300"></label><label>{{ _("Home phone") }}<input name="home_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label><label>{{ _("Cell phone") }}<input name="cell_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label>
+      <label>{{ _("Married?") }}<select name="married"><option value="no">{{ _('No') }}</option><option value="yes">{{ _('Yes') }}</option></select></label><input type="hidden" name="spouse_name" maxlength="160">{{ bilingual_name_fields('child', none, 'spouse_name') }}
     </div><button>{{ _("Add child") }}</button></form></details>
 </section>

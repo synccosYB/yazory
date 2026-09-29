@@ -543,6 +543,8 @@ def install(app):
         askan = db.get_or_404(core.Askan, askan_id)
         profile = askan.network_profile or AskanNetworkProfile(askan=askan)
         if core.request.method == 'POST':
+            if 'name_english' in core.request.form:
+                askan.name = value('name', 160, True)
             profile.community = value('community', 160)
             profile.shul = value('shul', 160)
             profile.expertise = value('expertise', 500)

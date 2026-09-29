@@ -70,7 +70,7 @@
         search.value = '';
         close();
         select.closest('[data-person-picker]')
-          ?.querySelector('[data-new-person] [name="askan_name"]')?.focus();
+          ?.querySelector('[data-new-person] [name="askan_name_english"]')?.focus();
       });
 
     const selected = select.selectedOptions[0];

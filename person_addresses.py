@@ -196,7 +196,12 @@ def install(app, extra_models, directory_access):
             back_url = core.url_for('partner_organization_detail', organization_id=person.organization_id)
         else:
             back_url = core.url_for('community_directories', kind='Shul')
+        name_kind = ({'spouse': 'family', 'child_spouse': 'child', 'supporter_child_spouse': 'supporter_child'}.get(owner_kind, owner_kind))
+        name_field = ('spouse' if kind == 'spouse' else 'spouse_name' if kind in ('child_spouse', 'supporter_child_spouse') and owner_kind != 'person' else 'name')
         if request.method == 'POST':
+            if name_field + '_english' in request.form or name_field + '_yiddish' in request.form:
+                from person_names import save_names
+                save_names(name_kind, person.id, request.form.get(name_field + '_english', '').strip(), request.form.get(name_field + '_yiddish', '').strip(), name_field)
             preference = request.form.get('mailing_preference', '')
             if preference not in ('', 'home', 'work'):
                 abort(400)
@@ -246,6 +251,6 @@ def install(app, extra_models, directory_access):
         return render_template('person_addresses.html', title='Home & work addresses',
                                person=person, home=home, work=work,
                                preference=preference, kind=kind, display_name=display_name,
-                               back_url=back_url)
+                               back_url=back_url, name_kind=name_kind, name_field=name_field)
 
     app.extensions['person_addresses'] = dict(mailing_lines=mailing_lines)

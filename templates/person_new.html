@@ -2,7 +2,7 @@
 {% block content %}
 <div class="page-heading"><div><div class="eyebrow">{{ _('PEOPLE DIRECTORY') }}</div><h1>{{ _('Add person') }}</h1><p>{{ _('Create the person once. The same name can later be used as an applicant, askan, supporter, rabbi, helper, staff member, or community connection.') }}</p></div></div>
 <section class="card padded"><form method="post">{{ token(csrf) }}<input type="hidden" name="next" value="{{ return_to }}"><div class="form-grid">
-<label>{{ _('Name *') }}<input name="name" maxlength="160" value="{{ request.form.get('name','') }}" required autofocus></label>
+<input type="hidden" name="name" maxlength="160" value="{{ request.form.get('name','') }}">{{ bilingual_name_fields('profile', none, 'name') }}
 <label>{{ _('Phone') }}<input name="phone" maxlength="80" value="{{ request.form.get('phone','') }}" dir="ltr"></label>
 <label>{{ _('Cell phone') }}<input name="cell_phone" maxlength="80" value="{{ request.form.get('cell_phone','') }}" dir="ltr"></label>
 <label>{{ _('Home phone') }}<input name="home_phone" maxlength="80" value="{{ request.form.get('home_phone','') }}" dir="ltr"></label>

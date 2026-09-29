@@ -68,6 +68,11 @@ def _data_from_form(existing):
     for key in keys:
         if key in request.form:
             data[key] = request.form.get(key, '').strip()[:5000]
+    for key in ('preparer_name', 'applicant_name', 'spouse_name', 'father', 'father_in_law', 'family_rav', 'rav_gabbai', 'weekday_shul_rav', 'weekday_shul_gabbai', 'shabbos_shul_rav', 'shabbos_shul_gabbai'):
+        for language in ('english', 'yiddish'):
+            field = key + '_' + language
+            if field in request.form:
+                data[field] = request.form.get(field, '').strip()[:160]
     data['same_shul'] = request.form.get('same_shul') == 'yes'
     if data['same_shul']:
         data['shabbos_shul'] = data.get('weekday_shul', '')

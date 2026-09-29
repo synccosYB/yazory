@@ -8,8 +8,7 @@
 </label>
 <label>{{ _('Choose from imported people') }}<span class="field-hint">{{ _('Search by name, phone, or email') }}</span><input type="search" class="select-search" data-select-filter="imported-supporter-profile" placeholder="{{ _('Search people') }}" autocomplete="off"><select name="supporter_profile_id" id="imported-supporter-profile"><option value="">{{ _('Enter a new person below') }}</option>{% for profile in imported_profiles %}<option value="{{ profile.id }}">{{ profile.name }} · {{ profile.phone|phone }}{% if profile.email %} · {{ profile.email }}{% endif %}</option>{% endfor %}</select>
 </label>
-<label>{{ _('Name *') }}<input name="name" required maxlength="160">
-</label>
+<input type="hidden" name="name" maxlength="160">{{ bilingual_name_fields('supporter', none, 'name') }}
 <label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}"{% if (relationship_group|default('') == 'siblings' and relationship == 'Sibling') or (relationship_group|default('') == 'nephews' and relationship == 'Nephew') %} selected{% endif %}>{{ _(relationship) }}</option>{% endfor %}</select>
 </label>
 <label>{{ _('Whose son or son-in-law is he?') }}<input type="search" class="select-search" data-select-filter="new-parent-contact" placeholder="{{ _('Search names') }}" autocomplete="off">

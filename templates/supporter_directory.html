@@ -11,12 +11,14 @@
 
 <section class="card padded no-print">
   <h2>{{ _('Upload contacts') }}</h2>
-  <p>{{ _('Upload a CSV or Excel contact sheet. The system recognizes Name or English and Yiddish/Hebrew Name, Phone 1–3, and Email 1–2. A name and at least one phone number are required.') }}</p>
+  <p>{{ _('Upload names in English and Yiddish, phone numbers, emails, and home or work addresses. Choose a case or keep people in the general directory. Connect relationships from each person’s profile.') }}</p>
   <form method="post" enctype="multipart/form-data" class="compact-form">
     {{ token(csrf) }}
     <label>{{ _('CSV or Excel file') }}
       <input type="file" name="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
     </label>
+    <label>{{ _('Import destination') }}<select name="family_id"><option value="">{{ _('General people directory') }}</option>{% for family in families %}<option value="{{ family.id }}">YZ-{{ '%04d'|format(family.id) }} · {{ family.name }}</option>{% endfor %}</select></label>
+    <label>{{ _('Relationship to applicant') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship == 'Other' }}>{{ _(relationship) }}</option>{% endfor %}</select></label>
     <button type="submit">{{ _('Upload and check duplicates') }}</button>
   </form>
 </section>
@@ -25,9 +27,10 @@
 <section class="card padded">
   <h2>{{ _('Import result') }}</h2>
   <div class="stats-grid">
+    <div><strong>{{ import_result.linked }}</strong><small>{{ _('Connected to case') }}</small></div>
     <div><strong>{{ import_result.created }}</strong><small>{{ _('New profiles') }}</small></div>
     <div><strong>{{ import_result.duplicates }}</strong><small>{{ _('Duplicates found') }}</small></div>
-    <div><strong>{{ import_result.updated }}</strong><small>{{ _('Blank emails filled') }}</small></div>
+    <div><strong>{{ import_result.updated }}</strong><small>{{ _('Existing profiles updated') }}</small></div>
     <div><strong>{{ import_result.skipped }}</strong><small>{{ _('Rows skipped') }}</small></div>
   </div>
   {% if import_result.errors %}<details><summary>{{ _('See skipped and duplicate rows') }}</summary>
@@ -67,7 +70,7 @@
             <label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}</select></label>
             <button class="small">{{ _('Connect') }}</button>
           </form>{% endif %}
-          <a class="button small secondary" href="{{ url_for('edit_supporter_profile', profile_id=profile.id) }}">{{ _('Edit') }}</a>
+          <a class="button small secondary" href="{{ url_for('edit_supporter_profile', profile_id=profile.id) }}">{{ _('Names, addresses & relationships') }}</a>
         </div>
       </div>
     </details>{% else %}<p class="empty">{{ _('No people have been imported yet.') }}</p>{% endfor %}

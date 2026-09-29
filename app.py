@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import app_original as _app
 from person_addresses import install as install_person_addresses
+from person_names import install as install_person_names
 
 from flask import Response, current_app, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
@@ -115,6 +116,21 @@ def imported_contact_rows(upload):
         'email': ('email 1', 'email1', 'email', 'email address', 'e-mail',
                   'email 2', 'email2'),
     }
+    aliases.update({
+        'english_name': ('english name', 'name english', 'name en'),
+        'yiddish_name': ('yiddish name', 'yiddish/hebrew name', 'hebrew name', 'name yi'),
+        'home_street': ('home address', 'street address', 'address', 'street'),
+        'home_unit': ('apartment', 'unit', 'apt', 'suite'),
+        'home_city': ('city', 'town'),
+        'home_state': ('state', 'province'),
+        'home_zip_code': ('zip', 'zip code', 'postal code', 'zipcode'),
+        'home_country': ('country',),
+        'work_company': ('company', 'workplace', 'work company'),
+        'work_street': ('work address', 'work street'),
+        'work_city': ('work city',), 'work_state': ('work state',),
+        'work_zip_code': ('work zip', 'work zip code'),
+        'work_country': ('work country',),
+    })
     rows = []
     for number, source in enumerate(source_rows, start=2):
         cleaned = {
@@ -124,6 +140,7 @@ def imported_contact_rows(upload):
         row = {'row': number}
         for field, choices in aliases.items():
             row[field] = next((cleaned[key] for key in choices if cleaned.get(key)), '')
+        row['name'] = row['name'] or row['english_name'] or row['yiddish_name']
         rows.append(row)
     return rows
 
@@ -1146,10 +1163,16 @@ def create_app(test_config=None):
     def supporter_directory_options():
         supporter_directory_families()
         profiles = imported_supporter_profiles()
+        from person_names import PersonNames, detected_names
+        names = {row.owner_id: row for row in _app.db.session.scalars(select(PersonNames).where(
+            PersonNames.owner_kind == 'person', PersonNames.field == 'name',
+            PersonNames.owner_id.in_([p.person_id for p in profiles if p.person_id]))).all()}
         return jsonify({
             'profiles': [{
                 'id': profile.id, 'name': profile.name,
                 'phone': profile.phone, 'email': profile.email,
+                'english_name': names[profile.person_id].english_name if profile.person_id in names else detected_names(profile.name)[0],
+                'yiddish_name': names[profile.person_id].yiddish_name if profile.person_id in names else detected_names(profile.name)[1],
             } for profile in profiles],
             'labels': {
                 'choose': _app.translate('Choose from imported people'),
@@ -1259,6 +1282,8 @@ def create_app(test_config=None):
             _app.db.session.flush()
             person = canonical_person_for_profile(profile)
             person.name = name
+            from person_names import link_name_owner
+            link_name_owner('family', family.id, field_name, person)
             if field_name == 'name':
                 person.phone = (family.phone or '')[:80]
                 person.cell_phone = (family.phone or '')[:80]
@@ -1302,6 +1327,8 @@ def create_app(test_config=None):
         _app.db.session.flush()
         person = canonical_person_for_profile(profile)
         person.name = askan.name
+        from person_names import link_name_owner
+        link_name_owner('askan', askan.id, 'name', person)
         person.phone = askan.phone or ''
         person.cell_phone = askan.cell_phone or person.cell_phone or ''
         person.email = askan.email or ''
@@ -1721,6 +1748,12 @@ def create_app(test_config=None):
         families = supporter_directory_families()
         import_result = None
         if _app.request.method == 'POST':
+            family_id = _app.request.form.get('family_id', type=int)
+            if _app.request.form.get('family_id') and family_id not in {f.id for f in families}:
+                _app.abort(403, 'Choose a case you can access.')
+            import_relationship = _app.request.form.get('relationship', 'Other')
+            if import_relationship not in set(_app.RELATIONSHIPS) | _app.LEGACY_RELATIONSHIPS:
+                _app.abort(400, 'Choose a valid relationship.')
             upload = _app.request.files.get('file')
             if upload is None or not upload.filename:
                 _app.abort(400, 'Choose a CSV or Excel file.')
@@ -1754,6 +1787,7 @@ def create_app(test_config=None):
                     SupporterProfile.normalized_phone.in_(
                         [phone for _, phone in candidates]))).all()
             } if candidates else {}
+            imported_profiles = []
             for row, phone in candidates:
                 profile = existing_profiles.get(phone)
                 if profile:
@@ -1769,18 +1803,56 @@ def create_app(test_config=None):
                         changed = True
                     updated += int(changed)
                 else:
-                    _app.db.session.add(SupporterProfile(
+                    profile = SupporterProfile(
                         name=row['name'][:160], phone=row['phone'][:80],
-                        normalized_phone=phone, email=row['email'][:254]))
+                        normalized_phone=phone, email=row['email'][:254])
+                    _app.db.session.add(profile)
                     created += 1
+                imported_profiles.append((profile, row))
+            _app.db.session.flush()
+            canonicalize_unlinked_profiles()
+            from person_names import save_names
+            from person_addresses import save_new_supporter_addresses
+            imported_people = {p.id: p for p in _app.db.session.scalars(select(SupporterPerson).where(
+                SupporterPerson.id.in_([profile.person_id for profile, _ in imported_profiles]))).all()}
+            imported_contacts = {}
+            for contact in _app.db.session.scalars(select(_app.Contact).where(
+                    _app.Contact.person_id.in_(imported_people))).all():
+                imported_contacts.setdefault(contact.person_id, []).append(contact)
+            linked = 0
+            for profile, row in imported_profiles:
+                person = imported_people[profile.person_id]
+                save_names('person', person.id, row['english_name'], row['yiddish_name'], fill_only=True, legacy=person.name)
+                # Fill missing address components without replacing established data.
+                address_row = dict(row)
+                from person_addresses import address_details, home_values
+                details = address_details('person', person.id)
+                home = home_values(person, details)
+                work = dict(details.work or {}) if details else {}
+                for prefix, current in (('home', home), ('work', work)):
+                    for field in ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'):
+                        if current.get(field) or (prefix == 'work' and field == 'company' and person.workplace):
+                            address_row.pop(prefix + '_' + field, None)
+                target = _app.Contact(person_id=person.id)
+                save_new_supporter_addresses(app, target, address_row)
+                for contact in imported_contacts.get(person.id, []):
+                    for field in personal_fields:
+                        setattr(contact, field, getattr(person, field) or '')
+                if family_id is not None:
+                    linked += int(connect_profile_to_case(profile, family_id, import_relationship) is not None)
             _app.db.session.commit()
-            import_result = dict(created=created, updated=updated, duplicates=duplicates,
+            import_result = dict(linked=linked, created=created, updated=updated, duplicates=duplicates,
                                  skipped=skipped, errors=errors[:20])
 
         query = _app.request.args.get('q', '').strip()[:160]
         statement = select(SupporterProfile).order_by(SupporterProfile.name)
         if query:
+            from person_names import PersonNames
+            named_people = select(PersonNames.owner_id).where(PersonNames.owner_kind == 'person',
+                _app.or_(PersonNames.english_name.icontains(query, autoescape=True),
+                         PersonNames.yiddish_name.icontains(query, autoescape=True)))
             statement = statement.where(_app.or_(
+                SupporterProfile.person_id.in_(named_people),
                 SupporterProfile.name.icontains(query, autoescape=True),
                 SupporterProfile.phone.icontains(query, autoescape=True),
                 SupporterProfile.email.icontains(query, autoescape=True)))
@@ -1795,30 +1867,14 @@ def create_app(test_config=None):
             families=families, import_result=import_result, query=query,
             case_counts=case_counts)
 
-    @app.post('/supporter-directory/<int:profile_id>/connect')
-    def connect_supporter_profile(profile_id):
-        user = require_supporter_directory_access()
-        family_id = _app.request.form.get('family_id', type=int)
-        allowed = family_id is not None and (
-            user is None or user.role == 'organization_admin' or
-            _app.db.session.scalar(select(_app.FamilyAssignment.id).where(
-                _app.FamilyAssignment.staff_user_id == user.id,
-                _app.FamilyAssignment.family_id == family_id)) is not None)
-        if not allowed:
-            _app.abort(403, 'Choose a case you can access.')
-        profile = _app.db.get_or_404(SupporterProfile, profile_id)
-        relationship = _app.request.form.get('relationship', 'Other').strip()
-        if relationship not in set(_app.RELATIONSHIPS) | _app.LEGACY_RELATIONSHIPS:
-            _app.abort(400, 'Choose a valid relationship.')
-        key = 'phone:' + profile.normalized_phone
+    def connect_profile_to_case(profile, family_id, relationship):
+        person = canonical_person_for_profile(profile)
+        key = person.identity_key
         duplicate = _app.db.session.scalar(select(_app.Contact.id).where(
             _app.Contact.family_id == family_id,
             _app.Contact.supporter_key == key))
         if duplicate:
-            _app.flash('This person is already connected to that case.')
-            return _app.redirect(_app.url_for('supporter_directory'))
-        existing = _app.db.session.scalar(select(_app.Contact).where(
-            _app.Contact.supporter_key == key).order_by(_app.Contact.id))
+            return None
         contact = _app.Contact(
             family_id=family_id, name=profile.name, phone=profile.phone,
             cell_phone=profile.phone, email=profile.email,
@@ -1826,7 +1882,9 @@ def create_app(test_config=None):
             monthly_cents=0, pledge_frequency='Monthly', status='To contact')
         _app.db.session.add(contact)
         _app.db.session.flush()
-        attach_supporter_person(contact, source=existing)
+        person = canonical_person_for_profile(profile)
+        contact.person_id = person.id
+        sync_person_snapshots(person)
 
         # The case's current Circle of Support is backed by both Contact and
         # SupporterLink.  Imports used to create only the legacy Contact row,
@@ -1846,6 +1904,27 @@ def create_app(test_config=None):
         sync_followup = app.extensions.get('sync_supporter_followup_task')
         if sync_followup:
             sync_followup(contact)
+        return contact
+
+    @app.post('/supporter-directory/<int:profile_id>/connect')
+    def connect_supporter_profile(profile_id):
+        user = require_supporter_directory_access()
+        family_id = _app.request.form.get('family_id', type=int)
+        allowed = family_id is not None and (
+            user is None or user.role == 'organization_admin' or
+            _app.db.session.scalar(select(_app.FamilyAssignment.id).where(
+                _app.FamilyAssignment.staff_user_id == user.id,
+                _app.FamilyAssignment.family_id == family_id)) is not None)
+        if not allowed:
+            _app.abort(403, 'Choose a case you can access.')
+        profile = _app.db.get_or_404(SupporterProfile, profile_id)
+        relationship = _app.request.form.get('relationship', 'Other').strip()
+        if relationship not in set(_app.RELATIONSHIPS) | _app.LEGACY_RELATIONSHIPS:
+            _app.abort(400, 'Choose a valid relationship.')
+        contact = connect_profile_to_case(profile, family_id, relationship)
+        if contact is None:
+            _app.flash('This person is already connected to that case.')
+            return _app.redirect(_app.url_for('supporter_directory'))
         _app.db.session.commit()
         _app.flash('Person connected to the case. You can now complete the profile.')
         return _app.redirect(_app.url_for('edit_contact', contact_id=contact.id))
@@ -2004,6 +2083,26 @@ def create_app(test_config=None):
         return _app.render_template(
             'supporter_profile_edit.html', title='Edit imported person',
             **edit_context())
+
+    @app.post('/supporters/<int:contact_id>/people-relationships')
+    def supporter_people_relationships(contact_id):
+        access = app.extensions['person_address_access']
+        contact = _app.db.get_or_404(_app.Contact, contact_id)
+        if not (access['can_manage_supporters']() and access['can_access_family'](contact.family_id)):
+            _app.abort(403)
+        if app.extensions['workflows']['enforced']():
+            app.extensions['workflows']['contact_allowed'](contact, edit=True)
+        require_supporter_directory_access()
+        person = attach_supporter_person(contact)
+        profile = _app.db.session.scalar(select(SupporterProfile).where(SupporterProfile.person_id == person.id))
+        if profile is None:
+            # Reuse the canonical identity even when this person has no phone.
+            profile = SupporterProfile(person_id=person.id, name=person.name,
+                phone=person.phone, email=person.email,
+                normalized_phone=normalized_profile_phone(person.phone) or f'person:{person.id}')
+            _app.db.session.add(profile)
+            _app.db.session.commit()
+        return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id, _anchor='people-relationships'))
 
     @app.post('/supporter-directory/<int:profile_id>/relationships')
     def add_person_relationship(profile_id):
@@ -4971,6 +5070,8 @@ def create_app(test_config=None):
         profile=SupporterProfile, rabbi=RabbiPerson, helper=HelperPerson,
         gabbai=ShulGabbaiDirectory, partner_contact=PartnerContact),
         require_supporter_directory_access)
+    install_person_names(app, dict(profile=SupporterProfile, rabbi=RabbiPerson, helper=HelperPerson,
+        gabbai=ShulGabbaiDirectory, partner_contact=PartnerContact))
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)
