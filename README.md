@@ -1,5 +1,18 @@
 # Yazory
 
+## Server responsiveness
+
+Gunicorn automatically loads `gunicorn.conf.py` from the project root for both
+Replit Run and publishing. Two workers with four request threads each let pages
+and health checks continue while email, SMS or ABCharity requests wait for their
+providers. Workers restart periodically to bound memory growth.
+
+After pulling this change, republish the Replit application to apply it to the
+live site. No database migration is required. This removes server-wide request
+serialization; a slow provider or expensive individual page can still take time.
+Use the existing `Slow request` log entries and `Server-Timing` response header
+to identify remaining delays by endpoint and database time.
+
 ## Task completion verdict schema
 
 After pulling the version that adds task completion verdicts into Replit, run
