@@ -143,3 +143,38 @@ def test_supporter_relationship_action_uses_existing_canonical_identity(app):
     response=client.post(f'/supporters/{contact_id}/people-relationships',data={'csrf':token(client)})
     assert response.status_code==302 and f'/supporter-directory/{profile_id}/edit' in response.location
     assert client.get(response.location).status_code==200
+
+
+@pytest.mark.parametrize('language', ['en', 'he', 'yi'])
+def test_supporter_names_do_not_repeat_page_context_or_queries(app, language):
+    from sqlalchemy import event
+    calls = []
+    @app.context_processor
+    def count_page_context():
+        calls.append(True)
+        return {}
+    with app.app_context():
+        for number in range(100):
+            person = SupporterPerson(identity_key=f'perf:{number}', name=f'Performance {number}')
+            db.session.add(person)
+            db.session.flush()
+            db.session.add(Contact(family_id=1, person_id=person.id,
+                name=person.name, relationship='Friend', supporter_key=person.identity_key))
+        db.session.commit()
+        engine = db.engine
+    queries = []
+    def count_query(*args):
+        queries.append(True)
+    event.listen(engine, 'before_cursor_execute', count_query)
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['language'] = language
+    try:
+        response = client.get('/supporters')
+    finally:
+        event.remove(engine, 'before_cursor_execute', count_query)
+    assert response.status_code == 200
+    assert response.text.count('name="name_english"') >= 100
+    assert 'Performance 99' in response.text
+    assert len(calls) == 1
+    assert len(queries) < 40, len(queries)

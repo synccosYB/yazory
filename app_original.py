@@ -3660,6 +3660,9 @@ def create_app(test_config=None):
                 CharityDonor.contact_id.in_(contact_ids)
             ).group_by(CharityDonor.contact_id)).all():
                 totals[contact_id] = totals.get(contact_id, 0) + total
+        from person_names import preload_names
+        preload_names(('person' if contact.person_id else 'supporter',
+                       contact.person_id or contact.id, 'name') for contact in contacts)
         return render_template('supporters.html', title='Supporters', contacts=contacts,
                                received=totals, query=query, families=families,
                                selected_family_id=family_id, possible_parents=possible_parents,

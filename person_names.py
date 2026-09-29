@@ -6,8 +6,8 @@ Case contact and import profile names share the canonical person's name row.
 import re
 from markupsafe import Markup
 import app_original as core
-from flask import abort, current_app, has_request_context, request, render_template
-from sqlalchemy import UniqueConstraint, event, select
+from flask import abort, current_app, g, has_request_context, request
+from sqlalchemy import UniqueConstraint, event, select, tuple_
 
 DB = core.db
 
@@ -66,9 +66,33 @@ def detected_names(legacy):
 
 
 def names_row(kind, ident, field='name'):
+    if has_request_context() and request.method == 'GET':
+        cache = getattr(g, '_bilingual_name_rows', {})
+        if (kind, ident, field) in cache:
+            return cache[(kind, ident, field)]
     kind, ident, field = resolve_name_owner(kind, ident, field)
     return DB.session.scalar(select(PersonNames).where(
         PersonNames.owner_kind == kind, PersonNames.owner_id == ident, PersonNames.field == field))
+
+
+def preload_names(keys):
+    """Batch template lookups, including absent names and role aliases."""
+    keys = set(keys)
+    if not keys:
+        return
+    aliases = DB.session.scalars(select(PersonNameOwner).where(tuple_(
+        PersonNameOwner.owner_kind, PersonNameOwner.owner_id,
+        PersonNameOwner.field).in_([key for key in keys if key[0] != 'person']))).all() if any(key[0] != 'person' for key in keys) else []
+    resolved = {key: key for key in keys}
+    for alias in aliases:
+        resolved[(alias.owner_kind, alias.owner_id, alias.field)] = ('person', alias.person_id, 'name')
+    rows = DB.session.scalars(select(PersonNames).where(tuple_(
+        PersonNames.owner_kind, PersonNames.owner_id, PersonNames.field
+    ).in_(set(resolved.values())))).all()
+    by_key = {(row.owner_kind, row.owner_id, row.field): row for row in rows}
+    cache = getattr(g, '_bilingual_name_rows', {})
+    cache.update({key: by_key.get(target) for key, target in resolved.items()})
+    g._bilingual_name_rows = cache
 
 
 def save_names(kind, ident, english, yiddish, field='name', fill_only=False, legacy=''):
@@ -115,7 +139,11 @@ def install(app, extras):
     def input_fields(kind, obj=None, field='name', legacy=''):
         vals = values(kind, obj, field, legacy)
         label = {'name': {'family': 'Applicant', 'askan': 'Askan', 'child': 'Child', 'staff': 'Staff member', 'partner_contact': 'Contact', 'profile': 'Name', 'supporter': 'Name'}.get(kind, 'Name'), 'spouse': 'Spouse', 'spouse_name': 'Spouse', 'father': 'Father', 'inlaws': 'Father-in-law', 'rabbi': 'Rabbi'}.get(field, field.replace('_', ' ').capitalize())
-        return Markup(render_template('_bilingual_name_fields.html', name_field=field, name_values=vals, name_label=label))
+        # A field fragment must not rerun all page context processors. They
+        # query navigation badges, sponsors and settings on every invocation.
+        return Markup(current_app.jinja_env.get_template(
+            '_bilingual_name_fields.html').render(
+                name_field=field, name_values=vals, name_label=label, request=request))
 
     app.jinja_env.globals['bilingual_name_fields'] = input_fields
     app.jinja_env.globals['person_name_values'] = values
