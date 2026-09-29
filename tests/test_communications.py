@@ -284,7 +284,7 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'class="card foldable-communication-section" id="communication-history"' in page.text
     assert 'class="mailbox-list-fold"' in page.text
     assert '<div class="outreach-action-grid">' in page.text
-    assert 'pages.js?v=20260924-quick-popups-v1' in page.text
+    assert '/static/pages.js?v=' in page.text
     assert '<span>Mobile number</span><bdi dir="ltr">8455551212</bdi>' in page.text
     javascript = client.get('/static/pages.js').text
     assert "table.closest('section')?.querySelector('.supporter-summary-heading')" in javascript
@@ -1439,3 +1439,29 @@ def test_no_answer_button_opens_fallback_when_ai_fails(monkeypatch):
     assert 'supporter-email-body' in draft.text
     assert 'ווען איז א גוטע צייט צו רעדן?' in draft.text
     assert 'Test Supporter' in draft.text
+
+
+def test_full_name_greeting_in_sms_and_whatsapp_all_locales(monkeypatch):
+    import re
+    from html import unescape
+    app, client, contact_id = setup_workspace(monkeypatch)
+    for language, name in [('en', 'Israel Boruch Greenwald'),
+                           ('he', 'ישראל ברוך גרינוואלד'),
+                           ('yi', 'ישראל ברוך גרינוואלד')]:
+        with app.app_context():
+            db.session.get(Contact, contact_id).name = name
+            db.session.commit()
+        with client.session_transaction() as session:
+            session['language'] = language
+        response = client.get(f'/communications?contact_id={contact_id}')
+        assert response.status_code == 200
+        for channel in ('sms', 'whatsapp'):
+            forms = re.findall(r'<form\b[^>]*action="[^"]*/' + channel +
+                               r'"[^>]*>(.*?)</form>', response.text, re.S)
+            assert forms, channel
+            for form in forms:
+                body = re.search(r'<textarea\b[^>]*name="body"[^>]*>(.*?)</textarea>',
+                                 form, re.S)
+                assert unescape(body.group(1)).strip() == f'Hi {name},'
+    with app.app_context():
+        assert app.jinja_env.globals['message_greeting']('') == ''

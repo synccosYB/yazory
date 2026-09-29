@@ -3165,6 +3165,14 @@ def create_app(test_config=None):
 
     app.jinja_env.globals['supporter_mobile'] = contact_mobile
 
+    def message_greeting(person):
+        # Keep the complete stored name, including multiword given names.
+        name = person if isinstance(person, str) else getattr(person, 'name', '')
+        name = ' '.join((name or '').split())
+        return f'Hi {name},' if name else ''
+
+    app.jinja_env.globals['message_greeting'] = message_greeting
+
     @app.route('/communications/case-broadcast', methods=['GET', 'POST'])
     def case_broadcast():
         user = task_user()
