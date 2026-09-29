@@ -778,6 +778,7 @@ _EXTRA = {
     'Saved securely — leave blank to keep it': {'he': 'נשמר באופן מאובטח — השאירו ריק כדי לשמור אותו', 'yi': 'זיכער אפגעהיטן — לאזט ליידיג עס צו האלטן'},
     'Paste the campaign API key': {'he': 'הדביקו את מפתח ה־API של הקמפיין', 'yi': 'לייגט אריין דעם API שליסל פונעם קאמפיין'},
     'Save and test connection': {'he': 'שמירה ובדיקת החיבור', 'yi': 'אפהיטן און פרובירן דעם פארבינדונג'},
+    'Campaign settings saved. Donations could not be imported; check the error below and retry.': {'he': 'פרטי הקמפיין נשמרו. לא ניתן לייבא את התרומות; בדקו את השגיאה למטה ונסו שוב.', 'yi': 'די קאמפיין פרטים זענען אפגעהיטן. די נדבות האבן זיך נישט אריינגעברענגט; קוקט דעם טעות אונטן און פרובירט נאכאמאל.'},
     'An encrypted API key is saved for this family.': {'he': 'מפתח API מוצפן שמור עבור משפחה זו.', 'yi': 'א פארשלאסענער API שליסל איז אפגעהיטן פאר דער משפחה.'},
     'Enter the ABCharity API key for this campaign.': {'he': 'הזינו את מפתח ה־API של ABCharity לקמפיין זה.', 'yi': 'לייגט אריין דעם ABCharity API שליסל פאר דעם קאמפיין.'},
     'ABCharity could not be synced. Check the campaign ID and API response.': {'he': 'לא ניתן לסנכרן את ABCharity. בדקו את מזהה הקמפיין ואת תגובת ה־API.', 'yi': 'ABCharity האט זיך נישט אפדעיטעד. קוקט איבער דעם קאמפיין נומער און דעם API ענטפער.'},

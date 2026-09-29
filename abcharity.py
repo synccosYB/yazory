@@ -236,7 +236,7 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
                 or not public_url):
             abort(400, 'Enter a valid campaign ID, name, public ABCharity link and currency.')
         campaign = db.session.scalar(select(Campaign).where(Campaign.family_id == family_id))
-        if campaign and (campaign.external_id != external_id or campaign.currency != currency):
+        if campaign and campaign.last_sync and (campaign.external_id != external_id or campaign.currency != currency):
             abort(400, 'The linked campaign ID and currency cannot be changed.')
         if campaign is None:
             if not api_key:
@@ -246,18 +246,20 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
             db.session.add(campaign)
         campaign.label = label
         campaign.public_url = public_url
+        campaign.external_id = external_id
+        campaign.currency = currency
         if api_key:
             if len(api_key) > 2000:
                 abort(400, INVALID_KEY)
             campaign.api_key_encrypted = encrypt_api_key(api_key, app.config['SECRET_KEY'])
-        try:
-            # Validate credentials and campaign membership before saving anything.
-            sync(campaign)
-        except (ValueError, IntegrityError, OperationalError) as exc:
-            db.session.rollback()
-            flash(str(exc) if isinstance(exc, ValueError) else ERROR, 'error')
-        else:
+        # Save configuration independently of the network/import transaction.
+        # Receipt validation remains atomic inside sync; failed imports retain
+        # the encrypted settings and a visible error for retrying.
+        db.session.commit()
+        if run_sync(campaign):
             flash('Campaign connected and donations imported.')
+        else:
+            flash('Campaign settings saved. Donations could not be imported; check the error below and retry.', 'error')
         return redirect(url_for('charity_donations', family_id=family_id))
 
     @app.post('/families/<int:family_id>/donations/sync')

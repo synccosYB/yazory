@@ -90,6 +90,52 @@ def test_profile_accepts_and_masks_campaign_key(setup):
     assert 'name="key_env"' not in body
     assert 'secret-test-value' not in body
 
+def test_empty_campaign_keeps_settings_after_reload(setup, monkeypatch):
+    app, client = setup
+    monkeypatch.setattr('abcharity.fetch_donations', lambda key: [])
+    assert connect(client).status_code == 302
+    with app.app_context():
+        campaign = CharityCampaign.query.one()
+        assert campaign.external_id == '55'
+        assert campaign.last_sync
+        assert campaign.last_error is None
+        assert CharityDonation.query.count() == 0
+        assert decrypt_api_key(campaign.api_key_encrypted, 'test') == 'secret-test-value'
+    for _ in range(2):
+        body = client.get('/families/1/donations').text
+        assert 'Family campaign' in body
+        assert 'No campaign connected to this family.' not in body
+        assert 'No donations imported yet.' in body
+
+def test_failed_initial_import_keeps_settings_and_allows_correction(setup, monkeypatch):
+    app, client = setup
+    monkeypatch.setattr('abcharity.fetch_donations', lambda key: [{**ROW, 'campaign_id': 99}])
+    assert connect(client).status_code == 302
+    with app.app_context():
+        campaign = CharityCampaign.query.one()
+        assert campaign.label == 'Family campaign'
+        assert campaign.last_error == ERROR
+        assert campaign.last_sync is None
+        assert CharityDonation.query.count() == 0
+        assert decrypt_api_key(campaign.api_key_encrypted, 'test') == 'secret-test-value'
+    for lang in ('en', 'he', 'yi'):
+        with client.session_transaction() as s:
+            s['language'] = lang
+        body = client.get('/families/1/donations').text
+        assert 'Family campaign' in body
+        assert 'secret-test-value' not in body
+        assert 'value="55" readonly' not in body
+        assert (ERROR if lang == 'en' else CATALOG[ERROR][lang]) in body
+    monkeypatch.setattr('abcharity.fetch_donations', lambda key: [])
+    assert post(client, '/families/1/campaign', dict(campaign_id='99',
+        label='Corrected', currency='USD', api_key='',
+        public_url='https://abcharity.org/campaign.php?id=99')).status_code == 302
+    with app.app_context():
+        campaign = CharityCampaign.query.one()
+        assert campaign.external_id == '99'
+        assert campaign.last_sync
+        assert campaign.last_error is None
+
 def test_public_campaign_link_is_saved_displayed_and_restricted(setup):
     app,client=setup
     assert connect(client).status_code == 302
