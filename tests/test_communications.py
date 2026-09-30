@@ -599,6 +599,52 @@ def test_home_only_number_is_not_treated_as_mobile(monkeypatch):
             SupporterCommunication.kind == 'sms')) is None
 
 
+def test_communications_get_eager_loads_reply_relationships_without_writes(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        original = db.session.get(Contact, contact_id)
+        for number in range(80):
+            db.session.add(Contact(
+                family_id=original.family_id, name=f'Alpha supporter {number:03}',
+                relationship='Friend', phone=f'845555{number:04}',
+                status='To contact'))
+        for number in range(4):
+            family = Family(name=f'Reply family {number}')
+            db.session.add(family)
+            db.session.flush()
+            contact = Contact(
+                family_id=family.id, name=f'Zulu supporter {number}',
+                relationship='Friend', phone=f'84555512{number:02d}',
+                email=f'reply{number}@example.test', status='To contact')
+            db.session.add(contact)
+            db.session.flush()
+            db.session.add(SupporterCommunication(
+                contact_id=contact.id, family_id=family.id, kind='email_reply',
+                direction='inbound', subject='Reply', body='Please call.',
+                status='received'))
+        db.session.commit()
+
+    statements = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement.lower())
+
+    event.listen(db.engine, 'before_cursor_execute', record_statement)
+    try:
+        response = client.get('/communications')
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', record_statement)
+
+    assert response.status_code == 200
+    assert 'Zulu supporter 3' in response.text
+    # These exact selects are lazy relationship loads. The list view should
+    # resolve every reply's contact and family in its single reply query.
+    assert not any('from contact where contact.id =' in sql for sql in statements)
+    assert not any('from family where family.id =' in sql for sql in statements)
+    assert not any(sql.lstrip().startswith(('insert ', 'update ', 'delete '))
+                   for sql in statements)
+
+
 def test_unread_reply_is_visible_beyond_first_supporter_page(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     with app.app_context():

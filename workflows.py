@@ -37,17 +37,16 @@ def install_workflows(app, db, entities, helpers):
         return render_template('error.html',title='Unable to complete request',message='This record changed or the reference already exists. Reload and review before trying again.'),409
 
     def active_user(user):
-        if not user:
-            return False
-        cache = getattr(g, '_workflow_active_users', None)
-        if cache is None:
-            cache = g._workflow_active_users = {}
-        if user.id not in cache:
-            status = db.session.get(Access, user.id)
-            cache[user.id] = bool(
-                getattr(user, 'status', 'active') == 'active'
-                and (not status or status.active))
-        return cache[user.id]
+        if not user:return False
+        cache=getattr(g,'workflow_active_users',None)
+        if cache is None:cache=g.workflow_active_users={}
+        transaction=db.session.get_transaction()
+        entry=cache.get(user.id)
+        if entry is None or entry[0] is not transaction:
+            status=db.session.get(Access,user.id)
+            cache[user.id]=(db.session.get_transaction(),
+                bool(getattr(user, 'status', 'active') == 'active' and (not status or status.active)))
+        return cache[user.id][1]
 
     def actor():
         user=current_user()
@@ -55,23 +54,28 @@ def install_workflows(app, db, entities, helpers):
         return user
 
     def roles(user=None):
-        user = user or current_user()
-        if not active_user(user):
-            return set()
-        cache = getattr(g, '_workflow_roles', None)
-        if cache is None:
-            cache = g._workflow_roles = {}
-        transaction = db.session().get_transaction()
-        cached = cache.get(user.id)
-        if cached is None or cached[0] is not transaction:
-            value = frozenset(db.session.scalars(
-                select(Grant.role).where(Grant.user_id == user.id)))
-            cache[user.id] = (db.session().get_transaction(), value)
+        user=user or current_user()
+        if not active_user(user): return set()
+        cache=getattr(g,'workflow_roles',None)
+        if cache is None:cache=g.workflow_roles={}
+        transaction=db.session.get_transaction()
+        entry=cache.get(user.id)
+        if entry is None or entry[0] is not transaction:
+            value=set(db.session.scalars(select(Grant.role).where(Grant.user_id==user.id)))
+            cache[user.id]=(db.session.get_transaction(),value)
         return cache[user.id][1]
 
     def scope(user,fid):
-        return user.role=='organization_admin' or bool(fid and db.session.scalar(select(Assignment.id).where(
-            Assignment.staff_user_id==user.id,Assignment.family_id==fid)))
+        if user.role=='organization_admin':return True
+        if not fid:return False
+        cache=getattr(g,'workflow_scopes',None)
+        if cache is None:cache=g.workflow_scopes={}
+        transaction=db.session.get_transaction()
+        entry=cache.get(user.id)
+        if entry is None or entry[0] is not transaction:
+            value=set(db.session.scalars(select(Assignment.family_id).where(Assignment.staff_user_id==user.id)))
+            cache[user.id]=(db.session.get_transaction(),value)
+        return fid in cache[user.id][1]
 
     def status(item):
         if item.disposition not in ('Open','Complete'): return item.disposition
@@ -99,7 +103,8 @@ def install_workflows(app, db, entities, helpers):
         if user.role=='office_employee' and item.kind not in {'referral','intake','verification','assessment','case_approval','support_plan','review','task','document','expense'}: return False
         if user.role=='fundraiser':
             if item.kind not in FUNDRAISER_KINDS or item.owner_id!=user.id: return False
-            contact=db.session.get(Link,item.data.get('contact_id'))
+            cached=getattr(g,'workflow_supporter_links',None)
+            contact=cached.get(item.data.get('contact_id')) if cached is not None else db.session.get(Link,item.data.get('contact_id'))
             return bool(contact and contact.assigned_to==user.id)
         return True
 
@@ -235,6 +240,8 @@ def install_workflows(app, db, entities, helpers):
 
     def financials(fid):
         entries=db.session.scalars(select(Ledger).where(Ledger.family_id==fid)).all()
+        matched_ledger_ids=set(db.session.scalars(select(Match.ledger_id).where(
+            Match.ledger_id.in_([e.id for e in entries])))) if entries else set()
         # Checks and direct Stripe payouts are real case disbursements even
         # when they were created outside the Operations expense workflow.
         # The family profile has always deducted every non-voided payout; the
@@ -273,7 +280,7 @@ def install_workflows(app, db, entities, helpers):
                     overhead=-sum(e.amount_cents for e in entries if e.entry_type in ('Organization expense','Processing fee','Processing fee adjustment'))+(imported_gross-imported_net),
                     refunds=-sum(e.amount_cents for e in entries if e.entry_type=='Refund'),
                     imported_pending=len(imported),imported_pending_gross=imported_gross,imported_pending_net=imported_net,
-                    unmatched=sum(1 for e in entries if e.entry_type not in ('Transfer in','Transfer out') and not db.session.scalar(select(Match.id).where(Match.ledger_id==e.id))))
+            unmatched=sum(1 for e in entries if e.entry_type not in ('Transfer in','Transfer out') and e.id not in matched_ledger_ids))
 
     def report_snapshot(fid,period):
         totals=financials(fid)
@@ -294,9 +301,15 @@ def install_workflows(app, db, entities, helpers):
         return not app.config['DEMO'] and bool(app.config.get('WORKFLOW_ENFORCEMENT') or policy())
 
     def conflict(item,uid):
-        for c in db.session.scalars(select(Work).where(Work.kind=='conflict',Work.family_id==item.family_id,Work.disposition.notin_(['Rejected','Canceled']))):
-            if c.data.get('conflict_user')==uid: return True
-        return False
+        cache=getattr(g,'workflow_conflicts',None)
+        if cache is None:
+            cache=g.workflow_conflicts=set()
+            g.workflow_conflict_families=set()
+        if item.family_id not in g.workflow_conflict_families:
+            cache.update((c.family_id,c.data.get('conflict_user')) for c in db.session.scalars(select(Work).where(
+                Work.kind=='conflict',Work.family_id==item.family_id,Work.disposition.notin_(['Rejected','Canceled']))))
+            g.workflow_conflict_families.add(item.family_id)
+        return (item.family_id,uid) in cache
 
     def required_role(item):
         return CATALOG[item.kind]['steps'][item.stage][1]
@@ -309,7 +322,13 @@ def install_workflows(app, db, entities, helpers):
         if role=='owner': return item.owner_id==user.id
         if role not in roles() or conflict(item,user.id): return False
         if item.created_by==user.id or item.data.get('_submitted_by')==user.id: return False
-        decisions=db.session.scalars(select(Decision).where(Decision.item_id==item.id,Decision.revision==item.revision,Decision.action=='Approve')).all()
+        cache=getattr(g,'workflow_approvals',None)
+        if cache is None:cache=g.workflow_approvals={}
+        key=(item.id,item.revision)
+        if key not in cache:
+            cache[key]=list(db.session.scalars(select(Decision).where(
+                Decision.item_id==item.id,Decision.revision==item.revision,Decision.action=='Approve')))
+        decisions=cache[key]
         if any(d.actor_id==user.id and d.stage==item.stage for d in decisions): return False
         if item.kind in FINANCIAL or item.kind=='case_approval':
             if any(d.actor_id==user.id and d.role!=role for d in decisions): return False
@@ -534,16 +553,21 @@ def install_workflows(app, db, entities, helpers):
         query=select(Work).where(Work.kind=='pledge',Work.disposition=='Complete')
         if fid is not None:query=query.where(Work.family_id==fid)
         if family_ids is not None:query=query.where(Work.family_id.in_(family_ids))
-        for w in db.session.scalars(query.order_by(Work.id)):
+        pledges=list(db.session.scalars(query.order_by(Work.id)))
+        contact_ids={w.data.get('contact_id') for w in pledges if w.data.get('contact_id')}
+        contacts={c.id:c for c in db.session.scalars(select(Contact).where(Contact.id.in_(contact_ids)))} if contact_ids else {}
+        links=({link.id:link for link in db.session.scalars(select(Link).where(Link.id.in_(contact_ids)))}
+               if user and user.role=='fundraiser' and contact_ids else {})
+        for w in pledges:
             frequency=w.data.get('frequency')
             if frequency not in ('Monthly','Weekly'):continue
             start=w.data.get('start') or ''
             end=w.data.get('end') or ''
             if start and today<start:continue
             if end and today>end:continue
-            link=db.session.get(Link,w.data.get('contact_id'))
+            link=links.get(w.data.get('contact_id')) if user and user.role=='fundraiser' else None
             if user and user.role=='fundraiser' and (not link or link.assigned_to!=user.id):continue
-            contact=db.session.get(Contact,w.data.get('contact_id'))
+            contact=contacts.get(w.data.get('contact_id'))
             if not contact or contact.family_id!=w.family_id:continue
             identity=(w.family_id,contact.id)
             amount=w.data.get('amount',0)
@@ -648,14 +672,44 @@ def install_workflows(app, db, entities, helpers):
             access=db.session.get(Access,data['user_id']) or Access(user_id=data['user_id']);access.active=True;db.session.add(access)
 
     def choices_for(item):
-        users=[u for u in db.session.scalars(select(StaffUser).order_by(StaffUser.email)) if active_user(u) and (not item.family_id or scope(u,item.family_id))]
+        all_users=list(db.session.scalars(select(StaffUser).order_by(StaffUser.email)))
+        access={a.user_id:a.active for a in db.session.scalars(select(Access).where(
+            Access.user_id.in_([u.id for u in all_users])))} if all_users else {}
+        active_cache=getattr(g,'workflow_active_users',None)
+        if active_cache is None:active_cache=g.workflow_active_users={}
+        for u in all_users:active_cache[u.id]=(db.session.get_transaction(),
+            bool(getattr(u,'status','active')=='active' and access.get(u.id,True)))
+        if item.family_id:
+            scope_cache=getattr(g,'workflow_scopes',None)
+            if scope_cache is None:scope_cache=g.workflow_scopes={}
+            transaction=db.session.get_transaction()
+            missing_ids=[u.id for u in all_users if u.role!='organization_admin' and
+                (u.id not in scope_cache or scope_cache[u.id][0] is not transaction)]
+            if missing_ids:
+                grouped={uid:set() for uid in missing_ids}
+                for staff_id,family_id in db.session.execute(select(Assignment.staff_user_id,Assignment.family_id).where(
+                    Assignment.staff_user_id.in_(missing_ids))):
+                    grouped[staff_id].add(family_id)
+                transaction=db.session.get_transaction()
+                scope_cache.update({uid:(transaction,families) for uid,families in grouped.items()})
+        users=[u for u in all_users if active_user(u) and (not item.family_id or scope(u,item.family_id))]
         contacts=db.session.scalars(select(Contact).where(Contact.family_id==item.family_id)).all() if item.family_id else []
-        if actor().role=='fundraiser': contacts=[c for c in contacts if (link:=db.session.get(Link,c.id)) and link.assigned_to==actor().id]
+        if actor().role=='fundraiser':
+            cached=getattr(g,'workflow_supporter_links',None)
+            if cached is None:cached=g.workflow_supporter_links={}
+            if not cached:
+                cached.update({link.id:link for link in db.session.scalars(select(Link).where(Link.assigned_to==actor().id))})
+            contacts=[c for c in contacts if c.id in cached]
         records=[w for w in db.session.scalars(select(Work).order_by(Work.id.desc())) if w.id!=item.id and readable(w) and (w.family_id==item.family_id or w.kind=='vendor')]
         documents=[]
         if item.family_id and actor().role!='fundraiser':
-            documents=[d for d in db.session.scalars(select(Document).where(Document.family_id==item.family_id)) if document_allowed(d)]
-        return dict(users=users,all_users=list(db.session.scalars(select(StaffUser).order_by(StaffUser.email))),contacts=contacts,records=records,documents=documents,
+            document_rows=db.session.scalars(select(Document).where(Document.family_id==item.family_id)).all()
+            controls={c.document_id:c for c in db.session.scalars(select(Control).where(
+                Control.document_id.in_([d.id for d in document_rows])))} if document_rows else {}
+            g.workflow_document_controls=controls
+            g.workflow_document_ids={d.id for d in document_rows}
+            documents=[d for d in document_rows if document_allowed(d)]
+        return dict(users=users,all_users=all_users,contacts=contacts,records=records,documents=documents,
                     families=[f for f in db.session.scalars(select(Family).order_by(Family.name)) if scope(actor(),f.id)])
 
     @app.context_processor
@@ -672,9 +726,27 @@ def install_workflows(app, db, entities, helpers):
         query=select(Work).order_by(Work.due,Work.id)
         if kind:query=query.where(Work.kind==kind)
         if fid:query=query.where(Work.family_id==fid)
-        items=[w for w in db.session.scalars(query) if readable(w)]
+        items=list(db.session.scalars(query))
+        if user.role=='fundraiser':
+            contact_ids={w.data.get('contact_id') for w in items if w.data.get('contact_id')}
+            g.workflow_supporter_links={link.id:link for link in db.session.scalars(select(Link).where(
+                Link.id.in_(contact_ids)))} if contact_ids else {}
+        items=[w for w in items if readable(w)]
         items=[w for w in items if not (w.kind=='collection' and w.data.get('abcharity_donation_id')
             and (not app.extensions['workflows'].get('import_consistent') or app.extensions['workflows']['import_consistent'](w)))]
+        item_ids=[w.id for w in items]
+        if item_ids:
+            approval_cache=getattr(g,'workflow_approvals',None)
+            if approval_cache is None:approval_cache=g.workflow_approvals={}
+            for listed_item in items:approval_cache.setdefault((listed_item.id,listed_item.revision),[])
+            for decision in db.session.scalars(select(Decision).where(
+                Decision.item_id.in_(item_ids),Decision.action=='Approve')):
+                approval_cache.setdefault((decision.item_id,decision.revision),[]).append(decision)
+            family_ids={w.family_id for w in items if w.family_id}
+            if family_ids:
+                g.workflow_conflicts={(c.family_id,c.data.get('conflict_user')) for c in db.session.scalars(select(Work).where(
+                    Work.kind=='conflict',Work.family_id.in_(family_ids),Work.disposition.notin_(['Rejected','Canceled'])))}
+                g.workflow_conflict_families=set(family_ids)
         all_items=items
         actionable=lambda w: (w.disposition=='Open' and (
             w.owner_id==user.id or can_sign(w) or
@@ -686,7 +758,10 @@ def install_workflows(app, db, entities, helpers):
         elif view!='all':abort(400)
         page=max(1,request.args.get('page',1,type=int));pages=max(1,(len(items)+7)//8);page=min(page,pages)
         accessible_families=[f for f in db.session.scalars(select(Family).order_by(Family.name)) if scope(user,f.id)]
-        notices=[n for n in db.session.scalars(select(Notice).where(Notice.user_id==user.id,Notice.read_at.is_(None)).order_by(Notice.id.desc()).limit(30)) if readable(db.session.get(Work,n.item_id))]
+        notice_rows=db.session.scalars(select(Notice).where(Notice.user_id==user.id,Notice.read_at.is_(None)).order_by(Notice.id.desc()).limit(30)).all()
+        notice_items={w.id:w for w in db.session.scalars(select(Work).where(Work.id.in_({n.item_id for n in notice_rows})))} if notice_rows else {}
+        notices=[n for n in notice_rows if notice_items.get(n.item_id) and readable(notice_items[n.item_id])]
+        staff_rows=db.session.scalars(select(StaffUser)).all()
         family_names={f.id:f.name for f in accessible_families}
         queue=[]
         for item in items[(page-1)*8:page*8]:
@@ -697,7 +772,7 @@ def install_workflows(app, db, entities, helpers):
                 next_action='Review and approve' if approval else ('Continue' if mine else 'View'),
                 family=family_names.get(item.family_id,'Organization')))
         return render_template('operations.html',title='Operations',catalog=CATALOG,items=items[(page-1)*8:page*8],queue=queue,
-            kind=kind,selected_family=fid,view=view,page=page,pages=pages,staff={u.id:u.email for u in db.session.scalars(select(StaffUser))},
+            kind=kind,selected_family=fid,view=view,page=page,pages=pages,staff={u.id:u.email for u in staff_rows},
             families=accessible_families,today=date.today(),notices=notices,
             counts={'open':sum(actionable(w) for w in all_items),'mine':sum(w.disposition=='Open' and w.owner_id==user.id for w in all_items),
                     'overdue':sum(w.disposition=='Open' and w.due<date.today() for w in all_items),'approvals':sum(can_sign(w) for w in all_items)})
@@ -741,8 +816,6 @@ def install_workflows(app, db, entities, helpers):
             return redirect(url_for('work_detail',item_id=item.id))
         if request.args.get('edit') and item.stage==0 and item.disposition=='Open':
             return render_template('work_form.html',title=spec['title'],item=item,spec=spec,fields=FIELDS,choices=CHOICES,**choices_for(item))
-        for n in db.session.scalars(select(Notice).where(Notice.item_id==item.id,Notice.user_id==actor().id,Notice.read_at.is_(None))):n.read_at=now()
-        db.session.commit()
         return render_template('work_detail.html',title=spec['title'],item=item,spec=spec,fields=FIELDS,
             steps=spec['steps'],files=db.session.scalars(select(File).where(File.item_id==item.id)).all(),
             events=db.session.scalars(select(Event).where(Event.item_id==item.id).order_by(Event.id.desc())).all(),
@@ -814,8 +887,19 @@ def install_workflows(app, db, entities, helpers):
 
     @app.get('/operations/files/<int:file_id>')
     def work_file_download(file_id):
-        file=db.get_or_404(File,file_id);item=get_item(file.item_id);emit(item,'Evidence downloaded',{'file_id':file.id});save()
+        file=db.get_or_404(File,file_id);get_item(file.item_id)
         return send_file(BytesIO(file.data),mimetype=file.content_type,as_attachment=True,download_name=file.filename,max_age=0)
+
+    @app.post('/operations/notices/<int:notice_id>/read')
+    def workflow_notice_read(notice_id):
+        user=actor()
+        notice=db.session.get(Notice,notice_id)
+        if not notice or notice.user_id!=user.id:abort(404)
+        get_item(notice.item_id)
+        if notice.read_at is None:
+            notice.read_at=now()
+            save()
+        return redirect(url_for('operations'))
 
     @app.get('/operations/reports')
     def operating_reports():
@@ -873,7 +957,9 @@ def install_workflows(app, db, entities, helpers):
             missing_roles=missing_roles)
 
     def document_allowed(document):
-        control=db.session.get(Control,document.id)
+        controls=getattr(g,'workflow_document_controls',None)
+        control=(controls.get(document.id) if controls is not None and document.id in getattr(g,'workflow_document_ids',set())
+                 else db.session.get(Control,document.id))
         if not control:return True
         required={'Medical':{'medical'},'Finance':{'finance','auditor'},'Restricted':{'compliance','executive'}}.get(control.privacy)
         return not required or bool(roles().intersection(required))

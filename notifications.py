@@ -71,29 +71,35 @@ def install(app):
                 last_seen_at=user.last_login_at or user.activated_at or _now())
         return user, cursor
 
-    def visible_family_ids(user):
-        if user.role == 'organization_admin':
-            return None
-        return select(core.FamilyAssignment.family_id).where(
-            core.FamilyAssignment.staff_user_id == user.id)
-
-    def audit_statement(user, since):
-        statement = select(core.Audit).where(
+    def audit_filters(user, since):
+        filters = [
             core.Audit.at > since,
             ~select(StaffActivityRead.audit_id).where(
                 StaffActivityRead.staff_user_id == user.id,
-                StaffActivityRead.audit_id == core.Audit.id).exists())
-        family_ids = visible_family_ids(user)
-        if family_ids is not None:
-            statement = statement.where(core.Audit.family_id.in_(family_ids))
-        return statement
+                StaffActivityRead.audit_id == core.Audit.id).exists(),
+        ]
+        if user.role != 'organization_admin':
+            filters.append(select(core.FamilyAssignment.family_id).where(
+                core.FamilyAssignment.staff_user_id == user.id,
+                core.FamilyAssignment.family_id == core.Audit.family_id).exists())
+        return filters
 
-    def unread_count(user, cursor):
+    def audit_statement(user, since):
+        return select(core.Audit).where(*audit_filters(user, since))
+
+    def unread_count(user):
         # Keep the global navigation badge cheap. Provider item builders can
         # resolve identities and load message threads, so they belong on the
         # notifications page itself rather than on every rendered staff page.
-        return core.db.session.scalar(select(func.count()).select_from(
-            audit_statement(user, cursor.last_seen_at).subquery())) or 0
+        # Read the cursor as part of the count query rather than issuing a
+        # second per-page SELECT. A missing cursor is treated like the old
+        # lazily-created row but is deliberately not persisted on a GET.
+        last_seen = select(StaffActivityCursor.last_seen_at).where(
+            StaffActivityCursor.staff_user_id == user.id).scalar_subquery()
+        since = func.coalesce(
+            last_seen, user.last_login_at or user.activated_at or _now())
+        return core.db.session.scalar(select(func.count(core.Audit.id)).where(
+            *audit_filters(user, since))) or 0
 
     def activity_kind(action):
         lowered = action.lower()
@@ -139,14 +145,16 @@ def install(app):
     def notification_context():
         if not session.get('user_id'):
             return {'new_activity_count': 0}
-        cached = getattr(g, 'notification_badge', None)
-        if cached is not None:
-            return {'new_activity_count': cached}
-        user, cursor = user_and_cursor()
-        if not user or app.config.get('DEMO'):
+        if app.config.get('DEMO'):
             return {'new_activity_count': 0}
-        g.notification_badge = unread_count(user, cursor)
-        return {'new_activity_count': g.notification_badge}
+        if hasattr(g, '_yazory_unread_activity_count'):
+            return {'new_activity_count': g._yazory_unread_activity_count}
+        user = core.db.session.get(core.StaffUser, session.get('user_id'))
+        if not user:
+            return {'new_activity_count': 0}
+        count = unread_count(user)
+        g._yazory_unread_activity_count = count
+        return {'new_activity_count': count}
 
     @app.get('/notifications')
     def notifications():
@@ -175,9 +183,10 @@ def install(app):
         if not user:
             abort(403)
         statement = select(core.Audit).where(core.Audit.id == audit_id)
-        family_ids = visible_family_ids(user)
-        if family_ids is not None:
-            statement = statement.where(core.Audit.family_id.in_(family_ids))
+        if user.role != 'organization_admin':
+            statement = statement.where(select(core.FamilyAssignment.family_id).where(
+                core.FamilyAssignment.staff_user_id == user.id,
+                core.FamilyAssignment.family_id == core.Audit.family_id).exists())
         row = core.db.session.scalar(statement)
         if row is None:
             abort(404)
@@ -196,5 +205,8 @@ def install(app):
         if cursor not in core.db.session:
             core.db.session.add(cursor)
         cursor.last_seen_at = _now()
+        # This write belongs to the explicit POST action; ordinary page views
+        # never create the missing cursor as a side effect.
+        core.db.session.add(cursor)
         core.db.session.commit()
         return redirect(url_for('notifications'))

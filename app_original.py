@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, Response, abort, flash, g, has_request_context, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import case, select, func, or_, UniqueConstraint, inspect, text, event
+from sqlalchemy import case, select, func, or_, UniqueConstraint, Index, inspect, text, event
 from sqlalchemy.orm import selectinload
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -476,6 +476,10 @@ class CharityDonation(db.Model):
     notes = db.Column(db.Text, nullable=False)
 
 class Audit(db.Model):
+    __table_args__ = (
+        Index('ix_audit_at_id', 'at', 'id'),
+        Index('ix_audit_family_at_id', 'family_id', 'at', 'id'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     actor = db.Column(db.String(160), nullable=False)
@@ -826,6 +830,13 @@ def create_app(test_config=None):
     def ensure_schema(run_data_migrations=False):
         """Create missing tables and apply the additive legacy-schema upgrades."""
         db.create_all()
+        # Keep existing installations aligned with the audit indexes declared
+        # on the model; IF NOT EXISTS makes this safe across repeated startups.
+        db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_audit_at_id ON audit (at, id)'))
+        db.session.execute(text(
+            'CREATE INDEX IF NOT EXISTS ix_audit_family_at_id '
+            'ON audit (family_id, at, id)'))
         askan_columns = {column['name'] for column in inspect(db.engine).get_columns('askan')}
         if 'cell_phone' not in askan_columns:
             db.session.execute(text("ALTER TABLE askan ADD COLUMN cell_phone VARCHAR(80) NOT NULL DEFAULT ''"))

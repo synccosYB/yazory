@@ -156,6 +156,62 @@ def test_action_queue_only_shows_actionable_work_and_notices_are_deduplicated(en
         assert len(owner_notices)==1
 
 
+def test_operations_query_count_is_not_per_work_item(env):
+    from sqlalchemy import event
+    Work=env.M['WorkItem']
+    with env.app.app_context():
+        db.session.add(Work(kind='task',family_id=env.fid,title='Queue task 0',
+            owner_id=env.ids['owner'],created_by=env.ids['owner'],due=env.today,
+            priority='Normal',stage=0,disposition='Open',revision=1,data={}))
+        db.session.commit()
+    def measure():
+        queries=[]
+        with env.app.app_context():
+            engine=db.engine
+            def count(*args):queries.append(1)
+            event.listen(engine,'before_cursor_execute',count)
+        try:
+            response=env.client().get('/operations?view=all')
+            assert response.status_code==200
+        finally:
+            with env.app.app_context():event.remove(engine,'before_cursor_execute',count)
+        return len(queries)
+    baseline=measure()
+    with env.app.app_context():
+        for i in range(1,16):
+            db.session.add(Work(kind='task',family_id=env.fid,title=f'Queue task {i}',
+                owner_id=env.ids['owner'],created_by=env.ids['owner'],due=env.today,
+                priority='Normal',stage=0,disposition='Open',revision=1,data={}))
+        db.session.commit()
+    expanded=measure()
+    assert expanded-baseline <= 2, (baseline,expanded)
+
+
+def test_workflow_detail_get_does_not_write_notice_or_activity(env):
+    from sqlalchemy import select, func
+    Work=env.M['WorkItem'];Notice=env.M['WorkflowNotice'];Event=env.M['WorkflowEvent'];File=env.M['WorkflowFile']
+    with env.app.app_context():
+        item=Work(kind='task',family_id=env.fid,title='Read-only detail',owner_id=env.ids['owner'],
+            created_by=env.ids['owner'],due=env.today,priority='Normal',stage=0,
+            disposition='Open',revision=1,data={})
+        db.session.add(item);db.session.flush()
+        notice=Notice(item_id=item.id,user_id=env.ids['owner'],message='New assignment')
+        file=File(item_id=item.id,filename='proof.pdf',content_type='application/pdf',data=b'%PDF-proof',
+            actor_id=env.ids['owner'],purpose='Supporting evidence',revision=1,stage=0)
+        db.session.add_all([notice,file]);db.session.commit();item_id=item.id;notice_id=notice.id;file_id=file.id
+        before=db.session.scalar(select(func.count()).select_from(Event).where(Event.item_id==item_id))
+    response=env.client().get(f'/operations/{item_id}')
+    assert response.status_code==200
+    download=env.client().get(f'/operations/files/{file_id}')
+    assert download.status_code==200
+    with env.app.app_context():
+        assert db.session.get(Notice,notice_id).read_at is None
+        assert db.session.scalar(select(func.count()).select_from(Event).where(Event.item_id==item_id))==before
+    marked=env.client().post(f'/operations/notices/{notice_id}/read',data={'csrf':'test'})
+    assert marked.status_code==302
+    with env.app.app_context():assert db.session.get(Notice,notice_id).read_at is not None
+
+
 def test_no_budget_or_funds_cannot_pay_and_legacy_cannot_bypass(env):
     r=env.client().post(f'/families/{env.fid}/status',data={'csrf':'test','status':'Active'})
     assert r.status_code==302 and '/operations' in r.location

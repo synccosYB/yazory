@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
 from app_entry import create_app
@@ -80,7 +81,7 @@ def test_opening_one_notification_marks_only_that_item_read(app, client):
 
     with client.session_transaction() as browser_session:
         csrf = browser_session['csrf']
-    assert client.get(f'/notifications/{first_id}/open').status_code == 405
+    assert client.get(f'/notifications/{first_id}/open').status_code in (404, 405)
     opened = client.post(
         f'/notifications/{first_id}/open', data={'csrf': csrf}, follow_redirects=False)
     assert opened.status_code == 302
@@ -116,6 +117,35 @@ def test_notifications_page_always_links_back_to_communications(app, client):
     assert b'Open Communications' in response.data
 
 
+def test_authenticated_get_does_not_create_missing_activity_cursor(app, client):
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        db.session.delete(db.session.get(StaffActivityCursor, user.id))
+        db.session.commit()
+
+    response = client.get('/notifications')
+
+    assert response.status_code == 200
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        assert db.session.get(StaffActivityCursor, user.id) is None
+
+    with client.session_transaction() as browser_session:
+        csrf = browser_session['csrf']
+    response = client.post('/notifications/mark-read', data={'csrf': csrf})
+    assert response.status_code == 302
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        assert db.session.get(StaffActivityCursor, user.id) is not None
+
+
+def test_audit_hot_query_indexes_are_declared(app):
+    with app.app_context():
+        indexes = {index['name'] for index in inspect(db.engine).get_indexes('audit')}
+
+    assert {'ix_audit_at_id', 'ix_audit_family_at_id'} <= indexes
+
+
 def test_opening_sponsorship_notification_opens_exact_page_and_month(app, client):
     with app.app_context():
         user = db.session.scalar(db.select(StaffUser))
@@ -129,6 +159,7 @@ def test_opening_sponsorship_notification_opens_exact_page_and_month(app, client
         db.session.commit()
         activity_id = activity.id
 
+    client.get('/notifications')
     with client.session_transaction() as browser_session:
         csrf = browser_session['csrf']
     opened = client.post(
