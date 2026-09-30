@@ -5,6 +5,8 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'On this page': {'he': 'בעמוד זה', 'yi': 'אויף דעם בלאט'},
+    'People directory pages': {'he': 'עמודי ספריית האנשים', 'yi': 'בלעטער פון דער מענטשן ליסטע'},
     'Child-in-law': {'he': 'חתן או כלה', 'yi': 'איידעם אדער שנור'},
     'Optional book reference': {'he': 'הפניה לספר (רשות)', 'yi': 'רעפערענץ צום ספר (פרייוויליג)'},
     'Book source': {'he': 'ספר המקור', 'yi': 'פון וועלכן ספר'},

@@ -1895,7 +1895,7 @@ def create_app(test_config=None):
             _app.session['people_import_result'] = import_result
 
         query = _app.request.args.get('q', '').strip()[:160]
-        statement = select(SupporterProfile).order_by(SupporterProfile.name)
+        statement = select(SupporterProfile).order_by(SupporterProfile.name, SupporterProfile.id)
         if query:
             from person_names import PersonNames
             named_people = select(PersonNames.owner_id).where(PersonNames.owner_kind == 'person',
@@ -1908,7 +1908,16 @@ def create_app(test_config=None):
                 SupporterProfile.name.icontains(query, autoescape=True),
                 SupporterProfile.phone.icontains(query, autoescape=True),
                 SupporterProfile.email.icontains(query, autoescape=True)))
-        profiles = _app.db.session.scalars(statement).all()
+        # Keep both the HTML and the related book/case queries bounded. A
+        # collapsed <details> still renders every person's forms server-side.
+        page = max(1, _app.request.args.get('page', 1, type=int))
+        page_size = 50
+        total_profiles = _app.db.session.scalar(select(_app.func.count()).select_from(
+            statement.order_by(None).subquery()))
+        last_page = max(1, (total_profiles + page_size - 1) // page_size)
+        page = min(page, last_page)
+        profiles = _app.db.session.scalars(
+            statement.limit(page_size).offset((page - 1) * page_size)).all()
         book_records = {}
         if profiles:
             for record in _app.db.session.scalars(select(PersonBookRecord).where(
@@ -1922,7 +1931,8 @@ def create_app(test_config=None):
         return _app.render_template(
             'supporter_directory.html', title='People import', profiles=profiles,
             families=families, import_result=import_result, query=query,
-            case_counts=case_counts, book_records=book_records)
+            case_counts=case_counts, book_records=book_records,
+            page=page, has_next=page < last_page, total_profiles=total_profiles)
 
     def connect_profile_to_case(profile, family_id, relationship):
         person = canonical_person_for_profile(profile)

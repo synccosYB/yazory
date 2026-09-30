@@ -258,7 +258,11 @@ def test_large_import_checks_existing_profiles_in_bulk(app, client):
             event.remove(db.engine, 'before_cursor_execute', count_profile_selects)
 
     assert response.status_code == 200
-    assert len(profile_selects) <= 3
+    # Pagination adds one count, while profile lookups remain batched.
+    counts = [sql for sql in profile_selects if 'count(' in sql.lower()]
+    assert len(counts) == 1
+    assert len(profile_selects) - len(counts) <= 3
+    assert 'LIMIT' in profile_selects[-1]
 
 
 

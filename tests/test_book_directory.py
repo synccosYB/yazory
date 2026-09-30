@@ -40,6 +40,39 @@ def entry(ident='00157', **extra):
         'Review': 'Check spelling', **extra}
 
 
+@pytest.mark.parametrize('lang', ['en', 'he', 'yi'])
+def test_directory_pages_bound_large_import_and_search_all_records(app, lang):
+    client = app.test_client()
+    client.get('/')
+    with app.app_context():
+        db.session.add_all([SupporterProfile(
+            name=f'PagingFixture {i:04d}', phone='',
+            normalized_phone=f'pagination-test:{i}') for i in range(105)])
+        db.session.commit()
+    with client.session_transaction() as session:
+        session['language'] = lang
+    def page(number=1, query='PagingFixture'):
+        response = client.get('/supporter-directory', query_string={'q':query, 'page':number})
+        assert response.status_code == 200
+        return response.get_data(as_text=True)
+    first = page()
+    assert first.count('class="supporter-accordion-item"') == 50
+    assert 'PagingFixture 0000' in first and 'PagingFixture 0050' not in first
+    assert 'page=2' in first and 'q=PagingFixture' in first
+    second = page(2)
+    assert second.count('class="supporter-accordion-item"') == 50
+    assert 'PagingFixture 0050' in second and 'PagingFixture 0000' not in second
+    last = page(999999999999999999999)
+    assert last.count('class="supporter-accordion-item"') == 5
+    assert 'PagingFixture 0104' in last
+    assert 'PagingFixture 0000' in page(-1)
+    assert 'PagingFixture 0000' in page('invalid')
+    searched = page(query='PagingFixture 0104')
+    assert searched.count('class="supporter-accordion-item"') == 1
+    assert 'PagingFixture 0104' in searched
+    assert page(query='NoMatchingDirectoryPerson').count('class="supporter-accordion-item"') == 0
+
+
 def test_reference_details_persist_and_repeat_does_not_duplicate(app):
     client = app.test_client()
     assert upload(client, [entry()], family_id='1').status_code == 200
