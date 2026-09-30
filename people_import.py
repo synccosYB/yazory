@@ -65,6 +65,9 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         profiles = {p.normalized_phone: p for p in db.session.scalars(select(profile_model).where(
             profile_model.normalized_phone.in_(unique))).all()}
     linked = 0
+    from book_directory import save_family_names
+    for key, row in unique.items():
+        save_family_names(profiles[key].person_id, row)
     if family_id is not None:
         person_ids = [p.person_id for p in profiles.values()]
         existing = set(db.session.scalars(select(core.Contact.person_id).where(

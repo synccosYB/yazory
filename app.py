@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 import app_original as _app
 from person_addresses import install as install_person_addresses
 from person_names import install as install_person_names
+from book_directory import (PersonBookRecord, import_book_rows, book_context,
+                            family_context, save_family_names, install as install_book_directory)
 
 from flask import Response, current_app, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
@@ -132,6 +134,16 @@ def imported_contact_rows(upload):
         'work_country': ('work country',),
         'source_ref': ('source rows',),
         'notes': ('original notes', 'notes'),
+        'book_id': ('book id', 'directory id'),
+        'book_source': ('book source', 'directory source'),
+        'first_name': ('yiddish first name', 'first name'),
+        'last_name': ('yiddish last name', 'last name'),
+        'father_name': ('father name',),
+        'father_inlaw_name': ('father-in-law name', 'father in law name'),
+        'father_book_id': ('father book id',),
+        'father_inlaw_book_id': ('father-in-law book id', 'father in law book id'),
+        'relationship_text': ('original relationship line',),
+        'review': ('review',),
     })
     rows = []
     for number, source in enumerate(source_rows, start=2):
@@ -1766,6 +1778,13 @@ def create_app(test_config=None):
             except ValueError as exc:
                 _app.abort(400, str(exc))
             created = updated = duplicates = skipped = 0
+            book_rows = [row for row in rows if row['book_id']]
+            rows = [row for row in rows if not row['book_id']]
+            book_result = import_book_rows(
+                app, SupporterProfile, book_rows,
+                _app.request.form.get('book_source', '').strip() or 'directory',
+                family_id, import_relationship, connect_profile_to_case,
+                normalized_profile_phone, canonical_person_for_profile)
             seen = set()
             errors = []
             candidates = []
@@ -1830,6 +1849,9 @@ def create_app(test_config=None):
             linked = 0
             for profile, row in imported_profiles:
                 person = imported_people[profile.person_id]
+                save_family_names(person.id, row)
+                if not person.notes and row['notes']:
+                    person.notes = row['notes'][:5000]
                 save_names('person', person.id, row['english_name'], row['yiddish_name'], fill_only=True, legacy=person.name)
                 # Fill missing address components without replacing established data.
                 address_row = dict(row)
@@ -1859,6 +1881,12 @@ def create_app(test_config=None):
                 created += extra_created
                 duplicates += extra_duplicates
                 linked += extra_linked
+            created += book_result['created']
+            updated += book_result['updated']
+            duplicates += book_result['duplicates']
+            skipped += book_result['skipped']
+            linked += book_result['linked']
+            errors.extend(book_result['errors'])
             _app.db.session.commit()
             import_result = dict(linked=linked, created=created, updated=updated, duplicates=duplicates,
                                  skipped=skipped, errors=errors[:20], family_id=family_id,
@@ -1874,11 +1902,18 @@ def create_app(test_config=None):
                 _app.or_(PersonNames.english_name.icontains(query, autoescape=True),
                          PersonNames.yiddish_name.icontains(query, autoescape=True)))
             statement = statement.where(_app.or_(
+                SupporterProfile.person_id.in_(select(PersonBookRecord.person_id).where(
+                    PersonBookRecord.book_id == query)),
                 SupporterProfile.person_id.in_(named_people),
                 SupporterProfile.name.icontains(query, autoescape=True),
                 SupporterProfile.phone.icontains(query, autoescape=True),
                 SupporterProfile.email.icontains(query, autoescape=True)))
         profiles = _app.db.session.scalars(statement).all()
+        book_records = {}
+        if profiles:
+            for record in _app.db.session.scalars(select(PersonBookRecord).where(
+                    PersonBookRecord.person_id.in_([p.person_id for p in profiles]))).all():
+                book_records.setdefault(record.person_id, []).append(record)
         case_counts = dict(_app.db.session.execute(select(
             _app.Contact.supporter_key, _app.func.count(_app.Contact.id)
         ).where(_app.Contact.supporter_key.in_([
@@ -1887,7 +1922,7 @@ def create_app(test_config=None):
         return _app.render_template(
             'supporter_directory.html', title='People import', profiles=profiles,
             families=families, import_result=import_result, query=query,
-            case_counts=case_counts)
+            case_counts=case_counts, book_records=book_records)
 
     def connect_profile_to_case(profile, family_id, relationship):
         person = canonical_person_for_profile(profile)
@@ -2022,12 +2057,16 @@ def create_app(test_config=None):
                              SupporterTicket.supporter_key == person.identity_key)
                 ).order_by(SupporterTicket.created_at.desc(),
                            SupporterTicket.id.desc())).all()
+            available_people = _app.db.session.scalars(
+                available_statement.order_by(SupporterPerson.name)).all()
             return dict(
                 profile=profile, person=person,
+                book_entries=book_context(person.id, SupporterProfile),
+                **family_context(person.id, SupporterProfile),
                 person_relationships=related_people,
                 relationship_types=PERSON_RELATIONSHIPS,
-                available_people=_app.db.session.scalars(
-                    available_statement.order_by(SupporterPerson.name)).all(),
+                available_people=available_people,
+                family_people=sorted(available_people + list(people_by_id.values()), key=lambda p: p.name),
                 affiliations=affiliations,
                 institutions=_app.db.session.scalars(
                     institution_statement.order_by(
@@ -5133,6 +5172,7 @@ def create_app(test_config=None):
         require_supporter_directory_access)
     install_person_names(app, dict(profile=SupporterProfile, rabbi=RabbiPerson, helper=HelperPerson,
         gabbai=ShulGabbaiDirectory, partner_contact=PartnerContact))
+    install_book_directory(app, SupporterProfile, require_supporter_directory_access)
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)
