@@ -1497,11 +1497,13 @@ def test_communications_get_eager_loads_replies_and_performs_no_writes(monkeypat
     def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
         statements.append(statement.lower())
 
-    event.listen(db.engine, 'before_cursor_execute', record_statement)
+    with app.app_context():
+        engine = db.engine
+        event.listen(engine, 'before_cursor_execute', record_statement)
     try:
         response = client.get('/communications')
     finally:
-        event.remove(db.engine, 'before_cursor_execute', record_statement)
+        event.remove(engine, 'before_cursor_execute', record_statement)
 
     assert response.status_code == 200
     assert 'Zulu supporter 3' in response.text

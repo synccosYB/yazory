@@ -2,7 +2,7 @@
 import re
 from datetime import datetime, timezone
 
-from flask import abort, redirect, render_template, session, url_for
+from flask import abort, g, redirect, render_template, session, url_for
 from sqlalchemy import func, select, text
 
 import app_original as core
@@ -64,18 +64,18 @@ def install(app):
             return None, None
         cursor = core.db.session.get(StaffActivityCursor, user.id)
         if cursor is None:
+            # A missing cursor is a read-only fallback on page navigation.
+            # The explicit mark-read POST persists it when the user acts.
             cursor = StaffActivityCursor(
                 staff_user_id=user.id,
                 last_seen_at=user.last_login_at or user.activated_at or _now())
-            core.db.session.add(cursor)
-            core.db.session.commit()
         return user, cursor
 
     def visible_family_ids(user):
         if user.role == 'organization_admin':
             return None
-        return list(core.db.session.scalars(select(core.FamilyAssignment.family_id).where(
-            core.FamilyAssignment.staff_user_id == user.id)))
+        return select(core.FamilyAssignment.family_id).where(
+            core.FamilyAssignment.staff_user_id == user.id)
 
     def audit_statement(user, since):
         statement = select(core.Audit).where(
@@ -139,10 +139,14 @@ def install(app):
     def notification_context():
         if not session.get('user_id'):
             return {'new_activity_count': 0}
+        cached = getattr(g, 'notification_badge', None)
+        if cached is not None:
+            return {'new_activity_count': cached}
         user, cursor = user_and_cursor()
         if not user or app.config.get('DEMO'):
             return {'new_activity_count': 0}
-        return {'new_activity_count': unread_count(user, cursor)}
+        g.notification_badge = unread_count(user, cursor)
+        return {'new_activity_count': g.notification_badge}
 
     @app.get('/notifications')
     def notifications():
@@ -165,7 +169,7 @@ def install(app):
         return render_template('notifications.html', title='What’s new', items=items,
                                unread_count=len(items), since=cursor.last_seen_at)
 
-    @app.get('/notifications/<int:audit_id>/open')
+    @app.post('/notifications/<int:audit_id>/open')
     def notification_open(audit_id):
         user, cursor = user_and_cursor()
         if not user:
@@ -189,6 +193,8 @@ def install(app):
         user, cursor = user_and_cursor()
         if not user:
             abort(403)
+        if cursor not in core.db.session:
+            core.db.session.add(cursor)
         cursor.last_seen_at = _now()
         core.db.session.commit()
         return redirect(url_for('notifications'))

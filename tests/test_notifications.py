@@ -78,8 +78,11 @@ def test_opening_one_notification_marks_only_that_item_read(app, client):
     assert page.data.count(b'class="notification-item"') == 2
     assert b'>2</b>' in page.data
 
-    opened = client.get(
-        f'/notifications/{first_id}/open', follow_redirects=False)
+    with client.session_transaction() as browser_session:
+        csrf = browser_session['csrf']
+    assert client.get(f'/notifications/{first_id}/open').status_code == 405
+    opened = client.post(
+        f'/notifications/{first_id}/open', data={'csrf': csrf}, follow_redirects=False)
     assert opened.status_code == 302
     assert opened.location.endswith('/communications#general-inbox')
 
@@ -91,7 +94,7 @@ def test_opening_one_notification_marks_only_that_item_read(app, client):
 
 
     # A saved link or a second click still opens the activity after it is read.
-    opened_again = client.get(f'/notifications/{first_id}/open')
+    opened_again = client.post(f'/notifications/{first_id}/open', data={'csrf': csrf})
     assert opened_again.status_code == 302
     assert opened_again.location.endswith('/communications#general-inbox')
 
@@ -100,7 +103,8 @@ def test_opening_one_notification_marks_only_that_item_read(app, client):
         db.session.get(StaffActivityCursor, user.id).last_seen_at = (
             datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=1))
         db.session.commit()
-    opened_after_clear = client.get(f'/notifications/{first_id}/open')
+    opened_after_clear = client.post(
+        f'/notifications/{first_id}/open', data={'csrf': csrf})
     assert opened_after_clear.status_code == 302
     assert opened_after_clear.location.endswith('/communications#general-inbox')
 
@@ -125,8 +129,10 @@ def test_opening_sponsorship_notification_opens_exact_page_and_month(app, client
         db.session.commit()
         activity_id = activity.id
 
-    opened = client.get(
-        f'/notifications/{activity_id}/open', follow_redirects=False)
+    with client.session_transaction() as browser_session:
+        csrf = browser_session['csrf']
+    opened = client.post(
+        f'/notifications/{activity_id}/open', data={'csrf': csrf}, follow_redirects=False)
 
     assert opened.status_code == 302
     assert opened.location.endswith('/sponsorships/overview?month=2026-09')
