@@ -52,6 +52,28 @@ def test_general_import_and_cross_case_people_relationship(app):
         row=db.session.scalar(db.select(PersonRelationship).where(PersonRelationship.person_one_id==min(person_id,other_id),PersonRelationship.person_two_id==max(person_id,other_id)))
         assert row.relationship=='Cousins'
 
+def test_import_result_stays_visible_after_refresh_and_navigation(app):
+    from html.parser import HTMLParser
+    class Tags(HTMLParser):
+        def __init__(self, html):
+            super().__init__()
+            self.tags = []
+            self.feed(html)
+        def handle_starttag(self, tag, attrs):
+            self.tags.append((tag, dict(attrs)))
+    client = app.test_client()
+    response = upload(client, family_id='1')
+    for page in (response, client.get('/supporter-directory'),
+                 client.get('/supporter-directory?q=Test')):
+        tags = Tags(page.text).tags
+        result = next(attrs for tag, attrs in tags if attrs.get('id') == 'people-import-result')
+        assert 'data-panel-exclude' in result
+        assert 'YZ-0001' in page.text
+        assert any(tag == 'a' and attrs.get('href') == '/families/1' for tag, attrs in tags)
+        assert any(tag == 'option' and attrs.get('value') == '1' and 'selected' in attrs for tag, attrs in tags)
+    with client.session_transaction() as session:
+        assert session['people_import_result']['linked'] == 1
+
 def test_manual_person_can_be_entered_in_yiddish_only(app):
     client=app.test_client()
     response=client.post('/people/new',data={'csrf':token(client),'name_english':'','name_yiddish':'משה כהן','phone':'8455559992'})

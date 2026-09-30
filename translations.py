@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Back to case': {'he': 'חזרה לתיק', 'yi': 'צוריק צו דער משפחה'},
     'Back to profile': {'he': 'חזרה לפרופיל', 'yi': 'צוריק צום פראפיל'},
     'Home & work addresses': {'he': 'כתובת הבית והעבודה', 'yi': 'היים און ארבעט אדרעסן'},
     'Work address': {'he': 'כתובת העבודה', 'yi': 'ארבעט אדרעס'},

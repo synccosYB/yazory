@@ -1746,7 +1746,9 @@ def create_app(test_config=None):
     @app.route('/supporter-directory', methods=['GET', 'POST'])
     def supporter_directory():
         families = supporter_directory_families()
-        import_result = None
+        import_result = _app.session.get('people_import_result')
+        if import_result and import_result.get('family_id') is not None and import_result['family_id'] not in {f.id for f in families}:
+            import_result = None
         if _app.request.method == 'POST':
             family_id = _app.request.form.get('family_id', type=int)
             if _app.request.form.get('family_id') and family_id not in {f.id for f in families}:
@@ -1842,7 +1844,10 @@ def create_app(test_config=None):
                     linked += int(connect_profile_to_case(profile, family_id, import_relationship) is not None)
             _app.db.session.commit()
             import_result = dict(linked=linked, created=created, updated=updated, duplicates=duplicates,
-                                 skipped=skipped, errors=errors[:20])
+                                 skipped=skipped, errors=errors[:20], family_id=family_id,
+                                 relationship=import_relationship)
+            # Keep the latest outcome available after refresh or navigation.
+            _app.session['people_import_result'] = import_result
 
         query = _app.request.args.get('q', '').strip()[:160]
         statement = select(SupporterProfile).order_by(SupporterProfile.name)
