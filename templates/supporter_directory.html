@@ -19,6 +19,7 @@
     </label>
     <label>{{ _('Import destination') }}<select name="family_id"><option value="">{{ _('General people directory') }}</option>{% for family in families %}<option value="{{ family.id }}" {{ 'selected' if import_result and import_result.family_id == family.id }}>YZ-{{ '%04d'|format(family.id) }} · {{ family.name }}</option>{% endfor %}</select></label>
     <label>{{ _('Relationship to applicant') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship == 'Other' }}>{{ _(relationship) }}</option>{% endfor %}</select></label>
+    <details><summary>{{ _('Optional book reference') }}</summary><label>{{ _('Book source') }}<input name="book_source" maxlength="120" placeholder="{{ _('Book name or edition') }}"></label><p>{{ _('Book IDs are optional references. People and connections can be entered without a book.') }}</p></details>
     <button type="submit">{{ _('Upload and check duplicates') }}</button>
   </form>
 </section>
@@ -42,7 +43,7 @@
 
 <section class="card list-filter-card no-print">
   <form method="get" class="list-filter-form">
-    <label>{{ _('Search people') }}<input type="search" name="q" value="{{ query }}" placeholder="{{ _('Name, phone, or email') }}"></label>
+    <label>{{ _('Search people') }}<input type="search" name="q" value="{{ query }}" placeholder="{{ _('Name, phone, email, or book reference') }}"></label>
     <div class="list-filter-actions"><button>{{ _('Search') }}</button>{% if query %}<a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Clear') }}</a>{% endif %}</div>
   </form>
 </section>
@@ -64,6 +65,7 @@
           <div><small>{{ _('Email address') }}</small><bdi dir="ltr">{{ profile.email or '—' }}</bdi></div>
           <div><small>{{ _('Cases') }}</small><strong>{{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</strong></div>
         </div>
+        {% if book_records.get(profile.person_id) %}<details><summary>{{ _('Optional book reference') }}</summary>{% for record in book_records[profile.person_id] %}<p>{{ record.source }}: <bdi dir="ltr">{{ record.book_id }}</bdi></p>{% endfor %}</details>{% endif %}
         <div class="supporter-directory-tools">
           {% if families %}<form method="post" action="{{ url_for('connect_supporter_profile', profile_id=profile.id) }}" class="compact-form supporter-directory-connect">
         {{ token(csrf) }}

@@ -32,6 +32,46 @@
   </form>
 </section>
 
+<section class="card padded" id="family-connections">
+  <h2>{{ _('Family connections') }}</h2>
+  <p>{{ _('These connections belong to the person, with or without a book or case.') }}</p>
+  {% for label, connection in [('Father', father_connection), ('Father-in-law', father_inlaw_connection)] %}{% if connection %}<p>{{ _(label) }}: {% if connection.profile %}<a href="{{ url_for('edit_supporter_profile', profile_id=connection.profile.id) }}">{{ connection.person.name }}</a>{% else %}{{ connection.person.name }}{% endif %}</p>{% endif %}{% endfor %}
+  {% if family_connection and family_connection.father_name and not father_connection %}<p>{{ _('Father') }}: {{ family_connection.father_name }}</p>{% endif %}
+  {% if family_connection and family_connection.father_inlaw_name and not father_inlaw_connection %}<p>{{ _('Father-in-law') }}: {{ family_connection.father_inlaw_name }}</p>{% endif %}
+  {% for connection in family_dependents %}<p>{% if connection.child %}{{ _('Child') }}{% endif %}{% if connection.child and connection.child_inlaw %}, {% endif %}{% if connection.child_inlaw %}{{ _('Child-in-law') }}{% endif %}: {% if connection.profile %}<a href="{{ url_for('edit_supporter_profile', profile_id=connection.profile.id) }}">{{ connection.person.name }}</a>{% else %}{{ connection.person.name }}{% endif %}</p>{% endfor %}
+  <details><summary>{{ _('Edit family connections') }}</summary>
+    <form method="post" action="{{ url_for('edit_person_family_connections', profile_id=profile.id) }}">{{ token(csrf) }}
+      <div class="form-grid">
+      {% for kind, label in [('father', 'Father'), ('father_inlaw', 'Father-in-law')] %}
+        <label>{{ _(label) }}<input type="search" class="select-search" data-select-filter="family-{{ kind }}" placeholder="{{ _('Search people') }}"><select id="family-{{ kind }}" name="{{ kind }}_person_id"><option value="">{{ _('Not selected') }}</option>{% for other in family_people %}<option value="{{ other.id }}" {{ 'selected' if family_connection and family_connection[kind + '_person_id'] == other.id }}>{{ other.name }}{% if other.phone %} · {{ other.phone|phone }}{% endif %}</option>{% endfor %}</select></label>
+        <label>{{ _('Name if not connected yet') }}<input name="{{ kind }}_name" value="{{ family_connection[kind + '_name'] if family_connection else '' }}" maxlength="240" dir="auto"></label>
+      {% endfor %}
+      </div><button>{{ _('Save family connections') }}</button>
+    </form>
+  </details>
+</section>
+
+{% if book_entries %}<details class="card padded" id="book-details"><summary>{{ _('Optional book reference') }}</summary>
+  <p>{{ _('Book IDs are optional references. People and connections can be entered without a book.') }}</p>
+  {% for entry in book_entries %}{% set record = entry.record %}
+    <h3>{{ record.source }}: <bdi dir="ltr">{{ record.book_id }}</bdi></h3>
+    <form method="post" action="{{ url_for('edit_person_book', profile_id=profile.id, record_id=record.id) }}">{{ token(csrf) }}
+      <div class="form-grid">
+        <label>{{ _('First name in source') }}<input name="first_name" value="{{ record.first_name }}" maxlength="160" dir="auto"></label>
+        <label>{{ _('Last name in source') }}<input name="last_name" value="{{ record.last_name }}" maxlength="160" dir="auto"></label>
+        {% for kind, label in [('father', 'Father'), ('father_inlaw', 'Father-in-law')] %}
+          <label>{{ _(label) }}<input name="{{ kind }}_name" value="{{ record[kind + '_name'] }}" maxlength="240" dir="auto"></label>
+          <label>{{ _(label) }}: {{ _('Book ID') }}<input name="{{ kind }}_book_id" value="{{ record[kind + '_book_id'] }}" maxlength="80" dir="ltr">{% if record[kind + '_book_id'] and not entry[kind] %}<small>{{ _('Referenced person not imported yet') }}</small>{% endif %}</label>
+        {% endfor %}
+        <label class="full-width">{{ _('Original relationship line') }}<input name="relationship_text" value="{{ record.relationship_text }}" maxlength="1000" dir="auto"></label>
+        <label>{{ _('Source reference') }}<input name="source_ref" value="{{ record.source_ref }}" maxlength="500"></label>
+        <label>{{ _('Needs review') }}<input name="review" value="{{ record.review }}" maxlength="1000" dir="auto"></label>
+        <label class="full-width">{{ _('Source notes') }}<textarea name="notes" maxlength="5000" rows="2">{{ record.notes }}</textarea></label>
+      </div><button>{{ _('Save book details') }}</button>
+    </form>
+  {% endfor %}
+</details>{% endif %}
+
 <section class="card padded">
   <div class="section-heading"><div><h2>{{ _('Activity') }}</h2><p>{{ _('All communication and supporter activity across every case connected to this person.') }}</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>{{ _('Date') }}</th><th>{{ _('Case') }}</th><th>{{ _('Type') }}</th><th>{{ _('Details') }}</th><th>{{ _('Status') }}</th></tr></thead><tbody>
