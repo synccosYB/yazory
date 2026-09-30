@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash
 
 from app_entry import create_app
 from app_original import Contact, Family, db
+from app import StaffTask
 
 
 @pytest.fixture(scope='module')
@@ -162,4 +163,31 @@ def test_supporter_history_query_count_does_not_grow_with_linked_contacts(
 
     grown, _ = profile_get(
         page_app, authenticated_client, f'/supporters/{primary_id}')
+    assert grown <= baseline + 2
+
+
+def test_tasks_query_count_does_not_grow_with_parent_tasks(
+        page_app, authenticated_client):
+    with page_app.app_context():
+        from app_original import StaffUser
+        user = db.session.scalar(db.select(StaffUser))
+        parents = []
+        for number in range(20):
+            parent = StaffTask(title=f'Parent {number}', assigned_to=user.id,
+                               created_by=user.id)
+            db.session.add(parent)
+            db.session.flush()
+            parents.append(parent.id)
+        db.session.add(StaffTask(title='Child 0', parent_id=parents[0],
+                                 assigned_to=user.id, created_by=user.id))
+        db.session.commit()
+        user_id = user.id
+    baseline, _ = profile_get(page_app, authenticated_client, '/tasks')
+    with page_app.app_context():
+        db.session.add_all(StaffTask(
+            title=f'Child {number}', parent_id=parent_id,
+            assigned_to=user_id, created_by=user_id)
+            for number, parent_id in enumerate(parents[1:], start=1))
+        db.session.commit()
+    grown, _ = profile_get(page_app, authenticated_client, '/tasks')
     assert grown <= baseline + 2

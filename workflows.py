@@ -40,11 +40,11 @@ def install_workflows(app, db, entities, helpers):
         if not user:return False
         cache=getattr(g,'workflow_active_users',None)
         if cache is None:cache=g.workflow_active_users={}
-        transaction=db.session.get_transaction()
+        transaction=db.session().get_transaction()
         entry=cache.get(user.id)
         if entry is None or entry[0] is not transaction:
             status=db.session.get(Access,user.id)
-            cache[user.id]=(db.session.get_transaction(),
+            cache[user.id]=(db.session().get_transaction(),
                 bool(getattr(user, 'status', 'active') == 'active' and (not status or status.active)))
         return cache[user.id][1]
 
@@ -58,11 +58,11 @@ def install_workflows(app, db, entities, helpers):
         if not active_user(user): return set()
         cache=getattr(g,'workflow_roles',None)
         if cache is None:cache=g.workflow_roles={}
-        transaction=db.session.get_transaction()
+        transaction=db.session().get_transaction()
         entry=cache.get(user.id)
         if entry is None or entry[0] is not transaction:
             value=set(db.session.scalars(select(Grant.role).where(Grant.user_id==user.id)))
-            cache[user.id]=(db.session.get_transaction(),value)
+            cache[user.id]=(db.session().get_transaction(),value)
         return cache[user.id][1]
 
     def scope(user,fid):
@@ -70,11 +70,11 @@ def install_workflows(app, db, entities, helpers):
         if not fid:return False
         cache=getattr(g,'workflow_scopes',None)
         if cache is None:cache=g.workflow_scopes={}
-        transaction=db.session.get_transaction()
+        transaction=db.session().get_transaction()
         entry=cache.get(user.id)
         if entry is None or entry[0] is not transaction:
             value=set(db.session.scalars(select(Assignment.family_id).where(Assignment.staff_user_id==user.id)))
-            cache[user.id]=(db.session.get_transaction(),value)
+            cache[user.id]=(db.session().get_transaction(),value)
         return fid in cache[user.id][1]
 
     def status(item):
@@ -677,12 +677,12 @@ def install_workflows(app, db, entities, helpers):
             Access.user_id.in_([u.id for u in all_users])))} if all_users else {}
         active_cache=getattr(g,'workflow_active_users',None)
         if active_cache is None:active_cache=g.workflow_active_users={}
-        for u in all_users:active_cache[u.id]=(db.session.get_transaction(),
+        for u in all_users:active_cache[u.id]=(db.session().get_transaction(),
             bool(getattr(u,'status','active')=='active' and access.get(u.id,True)))
         if item.family_id:
             scope_cache=getattr(g,'workflow_scopes',None)
             if scope_cache is None:scope_cache=g.workflow_scopes={}
-            transaction=db.session.get_transaction()
+            transaction=db.session().get_transaction()
             missing_ids=[u.id for u in all_users if u.role!='organization_admin' and
                 (u.id not in scope_cache or scope_cache[u.id][0] is not transaction)]
             if missing_ids:
@@ -690,7 +690,7 @@ def install_workflows(app, db, entities, helpers):
                 for staff_id,family_id in db.session.execute(select(Assignment.staff_user_id,Assignment.family_id).where(
                     Assignment.staff_user_id.in_(missing_ids))):
                     grouped[staff_id].add(family_id)
-                transaction=db.session.get_transaction()
+                transaction=db.session().get_transaction()
                 scope_cache.update({uid:(transaction,families) for uid,families in grouped.items()})
         users=[u for u in all_users if active_user(u) and (not item.family_id or scope(u,item.family_id))]
         contacts=db.session.scalars(select(Contact).where(Contact.family_id==item.family_id)).all() if item.family_id else []

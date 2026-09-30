@@ -4793,7 +4793,8 @@ def create_app(test_config=None):
 
         statement = select(StaffTask).options(
             joinedload(StaffTask.assignee), joinedload(StaffTask.family),
-            joinedload(StaffTask.source_contact), selectinload(StaffTask.subtasks))
+            joinedload(StaffTask.source_contact), joinedload(StaffTask.parent),
+            selectinload(StaffTask.subtasks))
         if not task_is_admin(user):
             statement = statement.where(StaffTask.assigned_to == (user.id if user else -1))
         selected_status = _app.request.args.get('status', '').strip()
