@@ -2960,7 +2960,7 @@ def create_app(test_config=None):
                 abort(400, 'Choose whether this person is a son or son-in-law of the selected supporter.')
         else:
             parent_connection = ''
-        name = field('name', True)
+        name = field('name', not request.form.get('supporter_profile_id'))
         cell_phone = field('cell_phone', limit=80)
         home_phone = field('home_phone', limit=80)
         # Keep the legacy phone field as the primary contact number for
@@ -2970,7 +2970,7 @@ def create_app(test_config=None):
         profile_model = app.extensions.get('supporter_profile_model')
         selected_profile_id = request.form.get('supporter_profile_id', type=int)
         imported_profile = None
-        if selected_profile_id:
+        if request.form.get('supporter_profile_id'):
             imported_profile = db.session.get(profile_model, selected_profile_id) if profile_model else None
             if imported_profile is None:
                 abort(400, 'Choose a valid imported person.')
@@ -2984,16 +2984,22 @@ def create_app(test_config=None):
             if imported_profile is None and email:
                 imported_profile = db.session.scalar(select(profile_model).where(
                     func.lower(profile_model.email) == email.lower()).order_by(profile_model.id))
+        imported_person = None
         if imported_profile:
             # Imported directory data is authoritative. This prevents a second
             # spelling of the same person from being created by hand.
             name = imported_profile.name
             phone = imported_profile.phone
             email = imported_profile.email or email
-        key = supporter_key(name, phone)
+            identity = app.extensions.get('supporter_identity')
+            if identity:
+                imported_person = identity['profile_person'](imported_profile)
+                name, phone, email = imported_person.name, imported_person.phone, imported_person.email
+                cell_phone, home_phone = imported_person.cell_phone, imported_person.home_phone
+        key = imported_person.identity_key if imported_person else supporter_key(name, phone)
         existing = db.session.scalar(select(Contact).where(Contact.supporter_key == key).order_by(Contact.id))
         duplicate_case = db.session.scalar(select(Contact.id).where(
-            Contact.family_id == family_id, Contact.supporter_key == key)) if key.startswith('phone:') else None
+            Contact.family_id == family_id, Contact.supporter_key == key)) if imported_person or key.startswith('phone:') else None
         if duplicate_case:
             abort(400, 'This supporter is already connected to this case.')
         if existing and key.startswith('phone:'):
@@ -3001,7 +3007,7 @@ def create_app(test_config=None):
                 phone = existing.phone
             if not email:
                 email = existing.email
-        contact = Contact(family_id=family_id, name=name, relationship=relationship, phone=phone,
+        contact = Contact(family_id=family_id, person_id=imported_person.id if imported_person else None, name=name, relationship=relationship, phone=phone,
                           cell_phone=cell_phone, home_phone=home_phone,
                           email=email, supporter_key=key, parent_contact_id=parent_contact_id,
                           parent_connection=parent_connection, monthly_cents=pledge,
@@ -3013,7 +3019,8 @@ def create_app(test_config=None):
         if identity:
             identity['attach'](contact)
         from person_addresses import save_new_supporter_addresses
-        save_new_supporter_addresses(app, contact, request.form)
+        if not selected_profile_id:
+            save_new_supporter_addresses(app, contact, request.form)
         sync_followup = app.extensions.get('sync_supporter_followup_task')
         if sync_followup:
             sync_followup(contact)

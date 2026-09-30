@@ -1181,13 +1181,36 @@ def create_app(test_config=None):
         names = {row.owner_id: row for row in _app.db.session.scalars(select(PersonNames).where(
             PersonNames.owner_kind == 'person', PersonNames.field == 'name',
             PersonNames.owner_id.in_([p.person_id for p in profiles if p.person_id]))).all()}
+        from person_addresses import PersonAddressDetails, home_values
+        person_ids = [p.person_id for p in profiles if p.person_id]
+        people = {p.id: p for p in _app.db.session.scalars(select(SupporterPerson).where(
+            SupporterPerson.id.in_(person_ids))).all()}
+        addresses = {row.person_id: row for row in _app.db.session.scalars(
+            select(PersonAddressDetails).where(
+                PersonAddressDetails.person_kind == 'person',
+                PersonAddressDetails.person_id.in_(person_ids))).all()}
+        payload = []
+        for profile in profiles:
+            person = people.get(profile.person_id)
+            details = addresses.get(profile.person_id)
+            name = person.name if person else profile.name
+            work = dict(details.work or {}) if details else {}
+            if person:
+                work['company'] = person.workplace or ''
+            payload.append({
+                'id': profile.id, 'name': name,
+                'phone': person.phone if person else profile.phone,
+                'cell_phone': person.cell_phone if person else profile.phone,
+                'home_phone': person.home_phone if person else '',
+                'email': person.email if person else profile.email,
+                'english_name': names[profile.person_id].english_name if profile.person_id in names else detected_names(name)[0],
+                'yiddish_name': names[profile.person_id].yiddish_name if profile.person_id in names else detected_names(name)[1],
+                'home': home_values(person, details) if person else {},
+                'work': work,
+                'mailing_preference': details.mailing_preference if details else '',
+            })
         return jsonify({
-            'profiles': [{
-                'id': profile.id, 'name': profile.name,
-                'phone': profile.phone, 'email': profile.email,
-                'english_name': names[profile.person_id].english_name if profile.person_id in names else detected_names(profile.name)[0],
-                'yiddish_name': names[profile.person_id].yiddish_name if profile.person_id in names else detected_names(profile.name)[1],
-            } for profile in profiles],
+            'profiles': payload,
             'labels': {
                 'choose': _app.translate('Choose from imported people'),
                 'hint': _app.translate('Search by name, phone, or email'),

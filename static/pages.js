@@ -14,7 +14,7 @@ document.querySelectorAll('form[data-auto-submit-filters]').forEach(form=>form.q
 if(supporterFamily&&supporterParent){const filterParents=()=>{supporterFamily.form.action=`/families/${supporterFamily.value}/contacts`;for(const option of supporterParent.options){if(option.dataset.familyId)option.hidden=option.dataset.familyId!==supporterFamily.value}if(supporterParent.selectedOptions[0]?.hidden)supporterParent.value='';};supporterFamily.addEventListener('change',filterParents);filterParents();}
 const connectSupporterFamily=document.getElementById('connect-supporter-family'),connectSupporterParent=document.getElementById('connect-supporter-parent'),connectSupporterInstitution=document.getElementById('connect-supporter-institution');
 if(connectSupporterFamily){const filterConnectOptions=()=>{for(const select of [connectSupporterParent,connectSupporterInstitution]){if(!select)continue;for(const option of select.options){if(option.dataset.familyId)option.hidden=option.dataset.familyId!==connectSupporterFamily.value}if(select.selectedOptions[0]?.hidden)select.value='';}};connectSupporterFamily.addEventListener('change',filterConnectOptions);filterConnectOptions();}
-document.querySelectorAll('[data-select-filter]').forEach(search=>{const select=document.getElementById(search.dataset.selectFilter);if(!select)return;const results=document.createElement('div');results.className='select-search-results';results.hidden=true;search.after(results);select.classList.add('select-search-source');search.setAttribute('role','combobox');search.setAttribute('aria-autocomplete','list');search.setAttribute('aria-expanded','false');const matchingOptions=()=>{const query=search.value.trim().toLocaleLowerCase();return [...select.options].filter(option=>{const wrongFamily=supporterFamily&&select===supporterParent&&option.dataset.familyId&&option.dataset.familyId!==supporterFamily.value;const wrongConnectFamily=connectSupporterFamily&&select===connectSupporterParent&&option.dataset.familyId&&option.dataset.familyId!==connectSupporterFamily.value;return !wrongFamily&&!wrongConnectFamily&&(!query||option.textContent.toLocaleLowerCase().includes(query));});};const close=()=>{results.hidden=true;search.setAttribute('aria-expanded','false');};const render=()=>{const options=matchingOptions();results.replaceChildren(...options.map(option=>{const button=document.createElement('button');button.type='button';button.textContent=option.textContent.trim();button.className=option.value===select.value?'selected':'';button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>{select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));search.value=option.value?option.textContent.trim():'';close();});return button;}));results.hidden=false;search.setAttribute('aria-expanded','true');};search.addEventListener('focus',render);search.addEventListener('input',()=>{select.value='';render();});search.addEventListener('keydown',event=>{if(event.key==='Escape')close();});search.addEventListener('blur',()=>setTimeout(close,120));supporterFamily?.addEventListener('change',()=>{search.value='';select.value='';close();});connectSupporterFamily?.addEventListener('change',()=>{if(select===connectSupporterParent){search.value='';select.value='';close();}});});
+document.querySelectorAll('[data-select-filter]').forEach(search=>{const select=document.getElementById(search.dataset.selectFilter);if(!select)return;const results=document.createElement('div');results.className='select-search-results';results.hidden=true;search.after(results);select.classList.add('select-search-source');search.setAttribute('role','combobox');search.setAttribute('aria-autocomplete','list');search.setAttribute('aria-expanded','false');const matchingOptions=()=>{const query=search.value.trim().toLocaleLowerCase();return [...select.options].filter(option=>{const wrongFamily=supporterFamily&&select===supporterParent&&option.dataset.familyId&&option.dataset.familyId!==supporterFamily.value;const wrongConnectFamily=connectSupporterFamily&&select===connectSupporterParent&&option.dataset.familyId&&option.dataset.familyId!==connectSupporterFamily.value;return !wrongFamily&&!wrongConnectFamily&&(!query||option.textContent.toLocaleLowerCase().includes(query));});};const close=()=>{results.hidden=true;search.setAttribute('aria-expanded','false');};const render=()=>{const options=matchingOptions();results.replaceChildren(...options.map(option=>{const button=document.createElement('button');button.type='button';button.textContent=option.textContent.trim();button.className=option.value===select.value?'selected':'';button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>{select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));search.value=option.value?option.textContent.trim():'';close();});return button;}));results.hidden=false;search.setAttribute('aria-expanded','true');};search.addEventListener('focus',render);search.addEventListener('input',()=>{select.value='';select.dispatchEvent(new Event('change',{bubbles:true}));render();});search.addEventListener('keydown',event=>{if(event.key==='Escape')close();});search.addEventListener('blur',()=>setTimeout(close,120));supporterFamily?.addEventListener('change',()=>{search.value='';select.value='';select.dispatchEvent(new Event('change',{bubbles:true}));close();});connectSupporterFamily?.addEventListener('change',()=>{if(select===connectSupporterParent){search.value='';select.value='';close();}});});
 
 const editParent=document.getElementById('parent-contact');
 const editParentConnection=document.getElementById('parent-connection');
@@ -276,8 +276,7 @@ document.querySelectorAll('[data-single-open]').forEach(group=>group.addEventLis
 // again and remains authoritative for duplicate protection.
 const setupImportedSupporterPicker=(form,profiles,labels,select=null)=>{
   const name=form.querySelector('[name="name"]');
-  const phone=form.querySelector('[name="phone"]');
-  if(!name||!phone)return;
+  if(!name)return;
   if(!select){
     const label=document.createElement('label');
     label.textContent=labels.choose;
@@ -293,21 +292,31 @@ const setupImportedSupporterPicker=(form,profiles,labels,select=null)=>{
       [...select.options].forEach((option,index)=>{option.hidden=index>0&&query&&!option.textContent.toLocaleLowerCase().includes(query);});
     });
   }
-  select.replaceChildren(new Option(labels.new,''),...profiles.map(profile=>{
-    const option=new Option([profile.name,profile.phone,profile.email].filter(Boolean).join(' · '),String(profile.id));
-    option.dataset.englishName=profile.english_name||'';option.dataset.yiddishName=profile.yiddish_name||'';
-    option.dataset.name=profile.name;option.dataset.phone=profile.phone;option.dataset.email=profile.email;
-    return option;
-  }));
-  select.addEventListener('change',()=>{
-    const option=select.selectedOptions[0];
-    if(!option?.value)return;
-    name.value=option.dataset.name||'';
-    const english=form.querySelector('[name="name_english"]'),yiddish=form.querySelector('[name="name_yiddish"]');
-    if(english)english.value=option.dataset.englishName||'';if(yiddish)yiddish.value=option.dataset.yiddishName||'';
-    phone.value=option.dataset.phone||'';
-    const email=form.querySelector('[name="email"]');if(email)email.value=option.dataset.email||'';
-  });
+  const selectedId=select.value;
+  const byId=new Map(profiles.map(profile=>[String(profile.id),profile]));
+  select.replaceChildren(new Option(labels.new,''),...profiles.map(profile=>
+    new Option([profile.name,profile.phone,profile.email].filter(Boolean).join(' · '),String(profile.id))));
+  select.value=byId.has(selectedId)?selectedId:'';
+  const fill=()=>{
+    const profile=byId.get(select.value);
+    const values={
+      name:profile?.name||'',name_english:profile?.english_name||'',
+      name_yiddish:profile?.yiddish_name||'',phone:profile?.phone||'',
+      cell_phone:profile?.cell_phone||'',home_phone:profile?.home_phone||'',
+      email:profile?.email||'',mailing_preference:profile?.mailing_preference||'',
+    };
+    for(const prefix of ['home','work']){
+      for(const field of ['street','unit','city','state','zip_code','country','company']){
+        values[prefix+'_'+field]=profile?.[prefix]?.[field]||'';
+      }
+    }
+    for(const [key,value] of Object.entries(values)){
+      const field=form.querySelector('[name="'+key+'"]');
+      if(field){field.value=value;field.readOnly=!!profile;}
+    }
+  };
+  select.addEventListener('change',fill);
+  if(select.value)fill();
 };
 const importedForms=[...document.querySelectorAll('form[action$="/contacts"]')].filter(form=>form.querySelector('[name="name"]')&&form.querySelector('[name="relationship"]'));
 if(importedForms.length){

@@ -386,3 +386,88 @@ def test_person_can_join_shul_network_before_being_connected_to_case(app, client
     directory = client.get('/community-directories?kind=Shul')
     assert directory.status_code == 200
     assert 'Future Helper' in directory.text
+
+@pytest.mark.parametrize('phone', ['845-555-9876', ''])
+def test_selected_person_needs_only_connection_and_keeps_identity(app, client, phone):
+    from person_addresses import PersonAddressDetails
+    from person_names import save_names, PersonNames
+    with app.app_context():
+        person = SupporterPerson(
+            identity_key='phone:8455559876' if phone else 'directory:no-phone',
+            name='Selected Person', phone=phone, cell_phone=phone,
+            home_phone='845-555-9877', email='selected@example.test',
+            home_address='12 Main St', city='Monroe', workplace='Office')
+        db.session.add(person)
+        db.session.flush()
+        profile = SupporterProfile(person_id=person.id, name=person.name,
+                                   phone=phone, normalized_phone='8455559876' if phone else 'directory:no-phone',
+                                   email=person.email)
+        details = PersonAddressDetails(person_kind='person', person_id=person.id,
+                                       home={'unit': '2'}, work={'street': '20 Work St'},
+                                       mailing_preference='home')
+        db.session.add_all([profile, details])
+        save_names('person', person.id, 'Selected Person', 'משה כהן')
+        db.session.commit()
+        profile_id, person_id = profile.id, person.id
+        family_id = db.session.scalar(db.select(Family.id).order_by(Family.id))
+        person_count = db.session.scalar(db.select(db.func.count()).select_from(SupporterPerson))
+    for language in ('en', 'he', 'yi'):
+        with client.session_transaction() as session:
+            session['language'] = language
+        response = client.get('/supporter-directory/options')
+        assert response.status_code == 200
+        selected = next(p for p in response.json['profiles'] if p['id'] == profile_id)
+        assert selected['english_name'] == 'Selected Person'
+        assert selected['yiddish_name'] == 'משה כהן'
+        assert selected['cell_phone'] == phone
+        assert selected['home_phone'] == '845-555-9877'
+        assert selected['home']['street'] == '12 Main St'
+        assert selected['home']['unit'] == '2'
+        assert selected['work'] == {'street': '20 Work St', 'company': 'Office'}
+    payload = {
+        'csrf': csrf(client), 'supporter_profile_id': str(profile_id),
+        'name': '', 'name_english': '', 'name_yiddish': '',
+        'relationship': 'Friend', 'status': 'To contact',
+        'monthly': '0', 'pledge_frequency': 'Monthly',
+        'cell_phone': '', 'home_phone': '', 'home_street': 'Stale address',
+    }
+    response = client.post(f'/families/{family_id}/contacts', data=payload)
+    assert response.status_code == 302
+    with app.app_context():
+        contact = db.session.scalar(db.select(Contact).where(
+            Contact.family_id == family_id, Contact.person_id == person_id))
+        assert contact is not None
+        assert contact.name == 'Selected Person'
+        assert contact.cell_phone == phone
+        assert contact.home_phone == '845-555-9877'
+        assert contact.home_address == '12 Main St'
+        assert db.session.scalar(db.select(db.func.count()).select_from(SupporterPerson)) == person_count
+        names = db.session.scalar(db.select(PersonNames).where(
+            PersonNames.owner_kind == 'person', PersonNames.owner_id == person_id))
+        assert names.yiddish_name == 'משה כהן'
+    payload['csrf'] = csrf(client)
+    assert client.post(f'/families/{family_id}/contacts', data=payload).status_code == 400
+
+def test_selected_profile_cannot_be_added_to_unassigned_case(app, client):
+    from app_original import StaffUser
+    with app.app_context():
+        staff = StaffUser(email='unassigned@example.test', password_hash='unused',
+                          role='fundraiser', name='Unassigned')
+        profile = SupporterProfile(name='Private selection', phone='8455559988',
+                                   normalized_phone='8455559988')
+        db.session.add_all([staff, profile])
+        db.session.commit()
+        staff_id, profile_id = staff.id, profile.id
+        family_id = db.session.scalar(db.select(Family.id).order_by(Family.id))
+    app.config['DEMO'] = False
+    with client.session_transaction() as session:
+        session['user_id'] = staff_id
+        session['csrf'] = 'test-selection'
+    response = client.post(f'/families/{family_id}/contacts', data={
+        'csrf': 'test-selection', 'supporter_profile_id': str(profile_id),
+        'relationship': 'Friend', 'status': 'To contact', 'monthly': '0',
+    })
+    assert response.status_code == 403
+    with app.app_context():
+        assert db.session.scalar(db.select(Contact.id).where(
+            Contact.family_id == family_id, Contact.phone == '8455559988')) is None
