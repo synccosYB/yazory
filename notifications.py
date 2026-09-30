@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone
 
 from flask import abort, redirect, render_template, session, url_for
-from sqlalchemy import func, select
+from sqlalchemy import Index, func, select
 
 import app_original as core
 
@@ -33,6 +33,12 @@ def install(app):
     def ensure_schema():
         StaffActivityCursor.__table__.create(core.db.engine, checkfirst=True)
         StaffActivityRead.__table__.create(core.db.engine, checkfirst=True)
+        # The unread badge is calculated on every authenticated staff page.
+        # Keep its growing audit scan on indexed columns rather than allowing
+        # navigation latency to increase with the lifetime of the application.
+        Index('ix_audit_at', core.Audit.at).create(core.db.engine, checkfirst=True)
+        Index('ix_audit_family_at', core.Audit.family_id, core.Audit.at).create(
+            core.db.engine, checkfirst=True)
         now = _now()
         for user in core.db.session.scalars(select(core.StaffUser)).all():
             if core.db.session.get(StaffActivityCursor, user.id) is None:
