@@ -191,3 +191,30 @@ def test_tasks_query_count_does_not_grow_with_parent_tasks(
         db.session.commit()
     grown, _ = profile_get(page_app, authenticated_client, '/tasks')
     assert grown <= baseline + 2
+
+
+def test_work_queue_query_count_does_not_grow_with_cases(
+        page_app, authenticated_client):
+    with page_app.app_context():
+        from app_original import StaffUser
+        from datetime import date
+        owner = db.session.scalar(db.select(StaffUser))
+        Work = page_app.extensions['workflows']['models']['WorkItem']
+        family = add_family('Queue case 0')
+        db.session.add(Work(kind='task', family_id=family.id,
+                            title='Queue item 0', owner_id=owner.id,
+                            created_by=owner.id, due=date.today(), data={}))
+        db.session.commit()
+        owner_id = owner.id
+    baseline, _ = profile_get(page_app, authenticated_client,
+                              '/work-queue?view=all')
+    with page_app.app_context():
+        for number in range(1, 20):
+            family = add_family(f'Queue case {number}')
+            db.session.add(Work(kind='task', family_id=family.id,
+                                title=f'Queue item {number}', owner_id=owner_id,
+                                created_by=owner_id, due=date.today(), data={}))
+        db.session.commit()
+    grown, _ = profile_get(page_app, authenticated_client,
+                           '/work-queue?view=all')
+    assert grown <= baseline + 2

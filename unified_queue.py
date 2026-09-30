@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 from flask import abort, render_template, request, session, url_for
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 import app as extended
 import app_original as core
@@ -26,7 +27,10 @@ def install(app):
         if view not in ('mine', 'overdue', 'all') or (view == 'all' and user.role != 'organization_admin'):
             abort(400)
 
-        tasks = core.db.session.scalars(select(extended.StaffTask).where(
+        tasks = core.db.session.scalars(select(extended.StaffTask).options(
+            joinedload(extended.StaffTask.parent),
+            joinedload(extended.StaffTask.family),
+            joinedload(extended.StaffTask.assignee)).where(
             extended.StaffTask.status.notin_(('Completed', 'Cancelled')))).all()
         callbacks = app.extensions['scheduled_callback_map'](tasks)
         records = []
@@ -48,21 +52,31 @@ def install(app):
                                 mine=task.assigned_to == user.id))
 
         Work = workflow['models']['WorkItem']
-        for item in core.db.session.scalars(select(Work).where(
-                Work.disposition == 'Open')).all():
+        items = core.db.session.scalars(select(Work).where(
+            Work.disposition == 'Open')).all()
+        owners = {row.id: row for row in core.db.session.scalars(
+            select(core.StaffUser).where(core.StaffUser.id.in_(
+                {item.owner_id for item in items}))).all()} if items else {}
+        families = {row.id: row for row in core.db.session.scalars(
+            select(core.Family).where(core.Family.id.in_(
+                {item.family_id for item in items if item.family_id}))).all()} if items else {}
+        for item in items:
             if not workflow['readable'](item, user):
                 continue
             if item.kind == 'collection' and item.data.get('abcharity_donation_id'):
                 consistent = workflow.get('import_consistent')
                 if not consistent or consistent(item):
                     continue
-            mine = item.owner_id == user.id or workflow['can_sign'](item)
+            # A draft belongs to its owner; assignment to the same family
+            # does not make another user's draft part of "My work".
+            mine = item.owner_id == user.id or (
+                item.stage > 0 and workflow['can_sign'](item))
             if view != 'all' and not mine:
                 continue
             if view == 'overdue' and item.due >= today:
                 continue
-            owner = core.db.session.get(core.StaffUser, item.owner_id)
-            family = core.db.session.get(core.Family, item.family_id) if item.family_id else None
+            owner = owners.get(item.owner_id)
+            family = families.get(item.family_id)
             records.append(dict(kind='Operations', title=item.title,
                                 parent_title='',
                                 family=family.name if family else '',

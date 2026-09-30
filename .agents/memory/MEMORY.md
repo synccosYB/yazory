@@ -1,1 +1,2 @@
 - [SMS reply association](sms-reply-association.md) — link numbers as aliases and show prior-message context without claiming an unproven reply target.
+- [Request-level SQLAlchemy caching](request-sqlalchemy-caching.md) — scope cached workflow permissions to the real transaction, not only the request.

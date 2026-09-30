@@ -3480,7 +3480,7 @@ def create_app(test_config=None):
         month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
         contacts = db.session.scalars(scoped_contacts_statement()).all()
         family_ids = list({contact.family_id for contact in contacts})
-        if current_user().role != 'fundraiser':
+        if app.config['DEMO'] or current_user().role != 'fundraiser':
             family_scope = select(Family.id)
             if not organization_admin():
                 family_scope = family_scope.where(Family.id.in_(select(FamilyAssignment.family_id).where(
@@ -3495,7 +3495,7 @@ def create_app(test_config=None):
             CharityCampaign.family_id.in_(family_ids),
             CharityDonation.donation_time >= datetime.combine(month_start, datetime.min.time()),
             CharityDonation.donation_time < datetime.combine(month_end, datetime.min.time()))
-        if current_user().role == 'fundraiser':
+        if not app.config['DEMO'] and current_user().role == 'fundraiser':
             charity_statement = charity_statement.join(
                 CharityDonor, CharityDonor.id == CharityDonation.donor_id).where(
                 CharityDonor.contact_id.in_([c.id for c in contacts]))
