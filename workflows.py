@@ -8,7 +8,7 @@ import json
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
-from flask import abort, flash, redirect, render_template, request, send_file, url_for
+from flask import abort, flash, g, redirect, render_template, request, send_file, url_for
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
@@ -37,8 +37,17 @@ def install_workflows(app, db, entities, helpers):
         return render_template('error.html',title='Unable to complete request',message='This record changed or the reference already exists. Reload and review before trying again.'),409
 
     def active_user(user):
-        status=db.session.get(Access,user.id) if user else None
-        return bool(user and getattr(user, 'status', 'active') == 'active' and (not status or status.active))
+        if not user:
+            return False
+        cache = getattr(g, '_workflow_active_users', None)
+        if cache is None:
+            cache = g._workflow_active_users = {}
+        if user.id not in cache:
+            status = db.session.get(Access, user.id)
+            cache[user.id] = bool(
+                getattr(user, 'status', 'active') == 'active'
+                and (not status or status.active))
+        return cache[user.id]
 
     def actor():
         user=current_user()
@@ -46,9 +55,16 @@ def install_workflows(app, db, entities, helpers):
         return user
 
     def roles(user=None):
-        user=user or current_user()
-        if not active_user(user): return set()
-        return set(db.session.scalars(select(Grant.role).where(Grant.user_id==user.id)))
+        user = user or current_user()
+        if not active_user(user):
+            return set()
+        cache = getattr(g, '_workflow_roles', None)
+        if cache is None:
+            cache = g._workflow_roles = {}
+        if user.id not in cache:
+            cache[user.id] = frozenset(db.session.scalars(
+                select(Grant.role).where(Grant.user_id == user.id)))
+        return cache[user.id]
 
     def scope(user,fid):
         return user.role=='organization_admin' or bool(fid and db.session.scalar(select(Assignment.id).where(
