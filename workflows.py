@@ -715,7 +715,7 @@ def install_workflows(app, db, entities, helpers):
     @app.context_processor
     def workflow_context():
         user=current_user()
-        return dict(workflow_roles=ROLES,workflow_user_roles=roles(),workflow_active=active_user(user) and not app.config['DEMO'],workflow_enforced=enforced(),work_status=status,
+        return dict(workflow_roles=ROLES,workflow_user_roles=roles() if user else set(),workflow_active=active_user(user) and not app.config['DEMO'],workflow_enforced=enforced() if user else False,work_status=status,
                     workflow_can_sign=can_sign,workflow_catalog=CATALOG)
 
     @app.get('/operations')

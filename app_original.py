@@ -1623,7 +1623,8 @@ def create_app(test_config=None):
 
     @app.before_request
     def preserve_closed_case():
-        if not app.extensions['workflows']['enforced']() or request.method!='POST':return
+        if request.method != 'POST' or not app.extensions['workflows']['enforced']():
+            return
         if request.endpoint in ('edit_family','family_expense_report','add_child','add_contact','add_document'):
             family_id=(request.view_args or {}).get('family_id')
             if can_access_family(family_id):
@@ -4961,8 +4962,11 @@ def create_app(test_config=None):
                 audit_entry = Audit(actor='System', action='Created fictional demo records', family_id=family.id)
                 db.session.add(audit_entry)
                 db.session.commit()
-        else:
+        elif app.config.get('TESTING'):
             ensure_bootstrap_owner()
+        # Production owner provisioning/rotation belongs to the explicit
+        # init-db release command, not every worker's cold start. A database
+        # connection here can prevent Gunicorn workers from answering probes.
     return app
 
 if __name__ == '__main__':
