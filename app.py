@@ -130,6 +130,8 @@ def imported_contact_rows(upload):
         'work_city': ('work city',), 'work_state': ('work state',),
         'work_zip_code': ('work zip', 'work zip code'),
         'work_country': ('work country',),
+        'source_ref': ('source rows',),
+        'notes': ('original notes', 'notes'),
     })
     rows = []
     for number, source in enumerate(source_rows, start=2):
@@ -1767,11 +1769,15 @@ def create_app(test_config=None):
             seen = set()
             errors = []
             candidates = []
+            without_phones = []
             for row in rows:
                 phone = normalized_profile_phone(row['phone'])
-                if not row['name'] or not phone:
+                if not row['name'] or (row['phone'] and not phone):
                     skipped += 1
                     errors.append(f"Row {row['row']}: name and a valid phone number are required.")
+                    continue
+                if not phone:
+                    without_phones.append(row)
                     continue
                 if phone in seen:
                     duplicates += 1
@@ -1842,6 +1848,17 @@ def create_app(test_config=None):
                         setattr(contact, field, getattr(person, field) or '')
                 if family_id is not None:
                     linked += int(connect_profile_to_case(profile, family_id, import_relationship) is not None)
+            if without_phones:
+                from people_import import import_without_phones
+                actor = require_supporter_directory_access()
+                assignee = (actor if actor and actor.role == 'fundraiser' else
+                            automatic_task_assignee(_app.Contact(id=-1, family_id=family_id))) if family_id else None
+                extra_created, extra_duplicates, extra_linked = import_without_phones(
+                    app, SupporterProfile, StaffTask, without_phones, family_id,
+                    import_relationship, actor, assignee)
+                created += extra_created
+                duplicates += extra_duplicates
+                linked += extra_linked
             _app.db.session.commit()
             import_result = dict(linked=linked, created=created, updated=updated, duplicates=duplicates,
                                  skipped=skipped, errors=errors[:20], family_id=family_id,

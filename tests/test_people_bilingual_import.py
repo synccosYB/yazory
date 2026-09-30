@@ -74,6 +74,76 @@ def test_import_result_stays_visible_after_refresh_and_navigation(app):
     with client.session_transaction() as session:
         assert session['people_import_result']['linked'] == 1
 
+def test_address_only_import_connects_reuses_people_and_keeps_names_distinct(app):
+    client = app.test_client()
+    content = ('Name,English Name,Yiddish Name,Phone,Address,City,ZIP,Source Rows\n'
+               'Same Name,Same Name,, ,12 Main St,Monroe,01001,source 2\n'
+               'Same Name,Same Name,,,14 Main St,Monroe,01002,source 3\n'
+               'Other Person,Other Person,,,,,,source 4\n')
+    def send(family='1'):
+        return client.post('/supporter-directory', data={
+            'csrf': token(client), 'family_id': family,
+            'file': (BytesIO(content.encode()), 'addresses.csv')},
+            content_type='multipart/form-data')
+    assert send().status_code == 200
+    with client.session_transaction() as session:
+        assert session['people_import_result']['created'] == 3
+        assert session['people_import_result']['linked'] == 3
+        assert session['people_import_result']['skipped'] == 0
+    with app.app_context():
+        profiles = db.session.scalars(db.select(SupporterProfile).where(
+            SupporterProfile.normalized_phone.like('sheet:%'))).all()
+        ids = [p.person_id for p in profiles]
+        assert len(set(ids)) == 3
+        people = db.session.scalars(db.select(SupporterPerson).where(SupporterPerson.id.in_(ids))).all()
+        assert sorted(p.home_address for p in people) == ['', '12 Main St', '14 Main St']
+        assert all(not p.phone and not p.cell_phone for p in people)
+        assert db.session.scalar(db.select(db.func.count(PersonNames.id)).where(
+            PersonNames.owner_kind == 'person', PersonNames.owner_id.in_(ids))) == 3
+        contacts = db.session.scalars(db.select(Contact).where(Contact.person_id.in_(ids))).all()
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        assert db.session.scalar(db.select(db.func.count(link_model.contact_id)).where(
+            link_model.contact_id.in_([c.id for c in contacts]))) == 3
+    assert send().status_code == 200
+    with client.session_transaction() as session:
+        assert session['people_import_result']['created'] == 0
+        assert session['people_import_result']['duplicates'] == 3
+        assert session['people_import_result']['linked'] == 0
+    with app.app_context():
+        second = Family(name='Second applicant', status='New referral')
+        db.session.add(second)
+        db.session.commit()
+        second_id = second.id
+    assert send(str(second_id)).status_code == 200
+    with client.session_transaction() as session:
+        assert session['people_import_result']['linked'] == 3
+
+def test_large_address_only_import_batches_database_work(app):
+    from sqlalchemy import event
+    client = app.test_client()
+    csrf = token(client)
+    queries = []
+    def count(*args):
+        queries.append(1)
+    content = 'Name,Phone,Address,City,Source Rows\n' + ''.join(
+        f'Person {i},,{i} Main St,Monroe,source {i}\n' for i in range(2335))
+    with app.app_context():
+        engine = db.engine
+        event.listen(engine, 'before_cursor_execute', count)
+        try:
+            response = client.post('/supporter-directory', data={
+                'csrf': csrf, 'family_id': '1',
+                'file': (BytesIO(content.encode()), 'large.csv')},
+                content_type='multipart/form-data')
+        finally:
+            event.remove(engine, 'before_cursor_execute', count)
+    assert response.status_code == 200
+    assert len(queries) < 100
+    with client.session_transaction() as session:
+        assert session['people_import_result']['created'] == 2335
+        assert session['people_import_result']['linked'] == 2335
+        assert session['people_import_result']['skipped'] == 0
+
 def test_manual_person_can_be_entered_in_yiddish_only(app):
     client=app.test_client()
     response=client.post('/people/new',data={'csrf':token(client),'name_english':'','name_yiddish':'משה כהן','phone':'8455559992'})

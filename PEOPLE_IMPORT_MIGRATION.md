@@ -24,8 +24,11 @@ People directory accepts CSV and XLSX. It recognizes English Name, Yiddish Name
 or Yiddish/Hebrew Name, Name, Phone 1–3, Email 1–2, Address or Home Address,
 Apartment/Unit, City, State, ZIP/Postal Code, Country, Workplace/Company, and
 Work Address/City/State/ZIP/Country. Store ZIP codes as text in spreadsheets to
-preserve leading zeros. A name and valid phone remain required for imports;
-manual entry supports people without a phone. Reimports fill missing details,
+preserve leading zeros. A name is required; phone numbers may be blank.
+Address-only imports reuse an exact source-record fingerprint on repeated uploads,
+never a name-only match. Supplied invalid phone numbers are still rejected.
+These records can be connected to cases and create normal workflow links and tasks.
+No additional schema migration is needed. Reimports fill missing details,
 preserve existing data and do not duplicate the same person/case connection.
 
 Choose General people directory or an accessible case on the upload form.
