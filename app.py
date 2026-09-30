@@ -1390,24 +1390,32 @@ def create_app(test_config=None):
         'home_address', 'city', 'state', 'zip_code', 'workplace',
         'work_phone', 'notes')
 
-    def sync_person_snapshots(person):
+    def sync_people_snapshots(people):
         """Maintain old Contact readers while SupporterPerson is authoritative."""
+        people = {person.id: person for person in people}
+        if not people:
+            return
         contacts = _app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.person_id == person.id)).all()
+            _app.Contact.person_id.in_(people))).all()
         for row in contacts:
+            person = people[row.person_id]
             for field_name in personal_fields:
                 setattr(row, field_name, getattr(person, field_name) or '')
             row.supporter_key = person.identity_key
 
-        profile = _app.db.session.scalar(select(SupporterProfile).where(
-            SupporterProfile.person_id == person.id))
-        if profile is not None:
+        profiles = _app.db.session.scalars(select(SupporterProfile).where(
+            SupporterProfile.person_id.in_(people))).all()
+        for profile in profiles:
+            person = people[profile.person_id]
             profile.name = person.name
             profile.phone = person.phone
             profile.email = person.email
             normalized = normalized_profile_phone(person.phone)
             if normalized:
                 profile.normalized_phone = normalized
+
+    def sync_person_snapshots(person):
+        sync_people_snapshots([person])
 
     def canonical_person_for_profile(profile):
         """Attach an import row to the same authoritative person used by cases."""
@@ -1590,6 +1598,7 @@ def create_app(test_config=None):
         'attach': attach_supporter_person,
         'update': update_supporter_person,
         'sync': sync_person_snapshots,
+        'sync_many': sync_people_snapshots,
         'profile_person': canonical_person_for_profile,
     }
 
@@ -1887,7 +1896,8 @@ def create_app(test_config=None):
                         if current.get(field) or (prefix == 'work' and field == 'company' and person.workplace):
                             address_row.pop(prefix + '_' + field, None)
                 target = _app.Contact(person_id=person.id)
-                save_new_supporter_addresses(app, target, address_row)
+                save_new_supporter_addresses(
+                    app, target, address_row, person=person, details=details, sync=False)
                 for contact in imported_contacts.get(person.id, []):
                     for field in personal_fields:
                         setattr(contact, field, getattr(person, field) or '')

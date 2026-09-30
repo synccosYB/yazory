@@ -74,7 +74,11 @@ def mailing_lines(contact):
                         values.get('unit'), locality, values.get('country')) if v]
 
 
-def save_new_supporter_addresses(app, contact, form):
+_UNLOADED = object()
+
+
+def save_new_supporter_addresses(app, contact, form, *, person=None,
+                                 details=_UNLOADED, sync=True):
     """Save supplied optional addresses in the same creation transaction.
 
 Blank fields on a new case connection never erase an existing person's address.
@@ -94,8 +98,10 @@ Blank fields on a new case connection never erase an existing person's address.
     if not any(submitted.values()) and not preference:
         return
     identity = app.extensions['supporter_identity']
-    person = identity['attach'](contact)
-    details = address_details('person', person.id)
+    if person is None:
+        person = identity['attach'](contact)
+    if details is _UNLOADED:
+        details = address_details('person', person.id)
     if details is None:
         details = PersonAddressDetails(person_kind='person', person_id=person.id,
                                        home={}, work={})
@@ -112,7 +118,8 @@ Blank fields on a new case connection never erase an existing person's address.
     details.work = {**(details.work or {}), **work}
     if preference:
         details.mailing_preference = preference
-    identity['sync'](person)
+    if sync:
+        identity['sync'](person)
 
 
 def install(app, extra_models, directory_access):

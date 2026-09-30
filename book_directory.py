@@ -131,6 +131,7 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
         profile_model.person_id.in_([r.person_id for r in records if (r.source, r.book_id) in keys])))).all()
     by_phone = {p.normalized_phone: p for p in profiles}
     by_person = {p.person_id: p for p in profiles if p.person_id}
+    changed_people = {}
     seen = set()
     for row in rows:
         source, ident = row['book_source'] or default_source, row['book_id']
@@ -160,16 +161,6 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             other_id = owner_ids.get((source, person.id))
             if other_id and other_id != ident:
                 error = 'This phone already belongs to a different book ID in this book.'
-            # An existing phone is sufficient only when its name also agrees.
-            # Conflicts require an explicit review rather than merging families.
-            from person_names import names_row
-            names = names_row('person', person.id)
-            known_names = {person.name, profile.name}
-            if names:
-                known_names.update((names.english_name, names.yiddish_name))
-            submitted = {row['name'], row['english_name'], row['yiddish_name']} - {''}
-            if not (known_names & submitted):
-                error = 'Existing phone has a different name. Check the person before importing.'
         if record and not profile:
             error = 'Book person has no directory profile. Repair the record before importing.'
         if error:
@@ -230,11 +221,13 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
                 if current.get(field) or (prefix == 'work' and field == 'company' and person.workplace):
                     address_row.pop(prefix + '_' + field, None)
         target = core.Contact(person_id=person.id)
-        save_new_supporter_addresses(app, target, address_row)
-        app.extensions['supporter_identity']['sync'](person)
+        save_new_supporter_addresses(
+            app, target, address_row, person=person, details=details, sync=False)
+        changed_people[person.id] = person
         if family_id is not None:
             result['linked'] += int(connect(profile, family_id, relationship) is not None)
         result['updated'] += int(changed and not is_new)
+    app.extensions['supporter_identity']['sync_many'](changed_people.values())
     db.session.flush()
     resolve_family_references(sources)
     return result

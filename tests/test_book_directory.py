@@ -247,3 +247,44 @@ def test_unauthenticated_family_edit_does_not_write(app):
     assert response.status_code in (302,403)
     with app.app_context():
         assert db.session.get(PersonFamilyConnection, person_id).father_name == 'שלמה'
+
+
+def test_phone_match_accepts_different_name_and_preserves_existing_name(app):
+    client = app.test_client()
+    assert upload(client, [{'Name': 'Existing Name', 'Phone': '7185550199'}]).status_code == 200
+    assert upload(client, [entry()]).status_code == 200
+    with client.session_transaction() as session:
+        result = session['people_import_result']
+        assert result['duplicates'] == 1
+        assert result['skipped'] == result['created'] == 0
+    with app.app_context():
+        record = db.session.scalar(db.select(PersonBookRecord))
+        person = db.session.get(SupporterPerson, record.person_id)
+        assert person.name == 'Existing Name'
+        assert person.home_address == '12 Main St.'
+
+
+def test_book_import_batches_contact_snapshot_reads(app):
+    from sqlalchemy import event
+    client = app.test_client()
+    csrf(client)
+    queries = []
+    def record_query(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith('SELECT'):
+            queries.append(statement)
+    with app.app_context():
+        engine = db.engine
+        event.listen(engine, 'before_cursor_execute', record_query)
+    try:
+        assert upload(client, [entry(str(i), **{'Phone 1': f'845555{i:04d}'})
+                               for i in range(10)]).status_code == 200
+    finally:
+        event.remove(engine, 'before_cursor_execute', record_query)
+    snapshot_reads = [q for q in queries if 'FROM contact' in q
+                      and 'contact.person_id' in q.split('WHERE')[-1]]
+    assert len(snapshot_reads) == 1, snapshot_reads
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count(PersonBookRecord.id))) == 10
+        for record in db.session.scalars(db.select(PersonBookRecord)):
+            person = db.session.get(SupporterPerson, record.person_id)
+            assert person.home_address == '12 Main St.'
