@@ -49,7 +49,7 @@
 </section>
 
 <details class="card supporter-list-card foldable-supporter-list">
-  <summary class="supporter-list-summary"><span><strong>{{ _('Search people') }}</strong><small>{{ profiles|length }} {{ _('records') }}</small></span><span>{{ _('Open tools') }}</span></summary>
+  <summary class="supporter-list-summary"><span><strong>{{ _('Search people') }}</strong><small>{{ total_profiles }} {{ _('records') }} · {{ _('On this page') }}: {{ profiles|length }}</small></span><span>{{ _('Open tools') }}</span></summary>
   <div class="supporter-accordion supporter-directory-accordion">
     {% for profile in profiles %}<details class="supporter-accordion-item">
       <summary>
@@ -79,4 +79,9 @@
     </details>{% else %}<p class="empty">{{ _('No people have been imported yet.') }}</p>{% endfor %}
   </div>
 </details>
+{% if page > 1 or has_next %}<nav class="card padded no-print" aria-label="{{ _('People directory pages') }}">
+  {% if page > 1 %}<a class="button secondary" href="{{ url_for('supporter_directory', page=page-1, q=query or None) }}">{{ _('Previous') }}</a>{% endif %}
+  <span>{{ page }}</span>
+  {% if has_next %}<a class="button secondary" href="{{ url_for('supporter_directory', page=page+1, q=query or None) }}">{{ _('Next') }}</a>{% endif %}
+</nav>{% endif %}
 {% endblock %}
