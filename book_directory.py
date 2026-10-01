@@ -268,7 +268,6 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
     resolved_keys = set()
     changed_people = {}
     seen = set()
-    address_people = existing_name_address_map()
     for row in rows:
         source, ident = row['book_source'] or default_source, row['book_id']
         key = source, ident
@@ -305,15 +304,10 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             continue
         is_new = profile is None
         if not profile:
-            address_key = row_name_address_key(row)
-            existing_person = address_people.get(address_key) if address_key else None
-            if existing_person is not None:
-                result['duplicates'] += 1
-                result['skipped'] += 1
-                result['errors'].append(
-                    duplicate_address_message(row['row'], existing_person, book_id=ident)
-                )
-                continue
+            # A book row has an explicit identity: (book source, book ID).
+            # Do not collapse distinct book identities merely because a name/address
+            # matches an existing person; household members and separate books can
+            # legitimately share those values. Phone conflicts are still guarded above.
             digest = hashlib.sha256((source + '\0' + ident).encode()).hexdigest()[:15]
             profile = profile_model(name=row['name'][:160], phone=row['phone'][:80],
                 normalized_phone=phone or 'book:' + digest, email=row['email'][:254])
