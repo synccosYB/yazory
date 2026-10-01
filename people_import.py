@@ -48,7 +48,12 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
             warnings.append(duplicate_address_message(row['row'], existing_person))
             continue
         if address_key and address_key in seen_addresses:
-            pass
+            duplicates += 1
+            warnings.append(
+                f"Row {row['row']}: same name and home address already appeared "
+                f"on row {seen_addresses[address_key]}. Review before importing."
+            )
+            continue
         if key in unique:
             duplicates += 1
         else:
@@ -109,6 +114,9 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         existing = set(db.session.scalars(select(core.Contact.person_id).where(
             core.Contact.family_id == family_id,
             core.Contact.person_id.in_(person_ids))).all())
+        # Existing canonical people are reusable across cases, but importing
+        # them into a case they already belong to is a duplicate, not a new link.
+        duplicates += sum(1 for person_id in person_ids if person_id in existing)
         missing_person_ids = [person_id for person_id in person_ids
                               if person_id not in existing]
         targets_by_id = {p.id: p for p in db.session.scalars(
