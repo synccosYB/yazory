@@ -95,6 +95,64 @@ def test_csv_import_uses_phone_as_unique_identity(app, client):
         assert rows[0].name == 'First Name'
 
 
+
+def test_import_blocks_same_name_and_home_address_with_different_phone(app, client):
+    data = (
+        'Name,Phone,Home address,City,State,Zip code\n'
+        'Same Person,8455553100,10 Main Street,Monroe,NY,10950\n'
+        'Same Person,8455553200,10 Main Street,Monroe,NY,10950\n'
+    ).encode()
+    response = client.post('/supporter-directory', data={
+        'csrf': csrf(client), 'file': (BytesIO(data), 'duplicate-address.csv')},
+        content_type='multipart/form-data')
+    assert response.status_code == 200
+    with client.session_transaction() as session:
+        result = session['people_import_result']
+        assert result['created'] == 1
+        assert result['duplicates'] == 1
+        assert result['skipped'] == 1
+        assert 'same name and home address' in result['errors'][0]
+    with app.app_context():
+        rows = db.session.scalars(db.select(SupporterProfile).where(
+            SupporterProfile.normalized_phone.in_(['8455553100', '8455553200']))).all()
+        assert len(rows) == 1
+
+
+def test_import_allows_same_name_at_different_addresses(app, client):
+    data = (
+        'Name,Phone,Home address,City,State,Zip code\n'
+        'Common Name,8455553300,10 Main Street,Monroe,NY,10950\n'
+        'Common Name,8455553400,20 Main Street,Monroe,NY,10950\n'
+    ).encode()
+    response = client.post('/supporter-directory', data={
+        'csrf': csrf(client), 'file': (BytesIO(data), 'same-name.csv')},
+        content_type='multipart/form-data')
+    assert response.status_code == 200
+    with app.app_context():
+        rows = db.session.scalars(db.select(SupporterProfile).where(
+            SupporterProfile.normalized_phone.in_(['8455553300', '8455553400']))).all()
+        assert len(rows) == 2
+
+
+def test_no_phone_import_blocks_same_name_and_home_address(app, client):
+    data = (
+        'Name,Email,Home address,City,State,Zip code\n'
+        'No Phone Person,first@example.test,15 Forest Road,Monroe,NY,10950\n'
+        'No Phone Person,second@example.test,15 Forest Road,Monroe,NY,10950\n'
+    ).encode()
+    response = client.post('/supporter-directory', data={
+        'csrf': csrf(client), 'file': (BytesIO(data), 'no-phone-duplicates.csv')},
+        content_type='multipart/form-data')
+    assert response.status_code == 200
+    with client.session_transaction() as session:
+        result = session['people_import_result']
+        assert result['created'] == 1
+        assert result['duplicates'] == 1
+        assert result['skipped'] == 1
+        assert 'same name and home address' in result['errors'][0]
+
+
+
 def test_imported_profile_connects_once_to_a_case(app, client):
     with app.app_context():
         profile = SupporterProfile(name='Imported Person', phone='845-555-1300',
