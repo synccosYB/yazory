@@ -269,7 +269,6 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
     changed_people = {}
     seen = set()
     address_people = existing_name_address_map()
-    seen_new_addresses = {}
     for row in rows:
         source, ident = row['book_source'] or default_source, row['book_id']
         key = source, ident
@@ -315,15 +314,6 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
                     duplicate_address_message(row['row'], existing_person, book_id=ident)
                 )
                 continue
-            if address_key and address_key in seen_new_addresses:
-                result['duplicates'] += 1
-                result['skipped'] += 1
-                result['errors'].append(
-                    f"Row {row['row']}, book ID {ident}: same name and home address "
-                    f"already appeared on row {seen_new_addresses[address_key]}. "
-                    "Review before importing."
-                )
-                continue
             digest = hashlib.sha256((source + '\0' + ident).encode()).hexdigest()[:15]
             profile = profile_model(name=row['name'][:160], phone=row['phone'][:80],
                 normalized_phone=phone or 'book:' + digest, email=row['email'][:254])
@@ -338,8 +328,6 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             person = canonical(profile)
             by_phone[profile.normalized_phone] = profile
             by_person[person.id] = profile
-            if address_key:
-                seen_new_addresses[address_key] = row['row']
             result['created'] += 1
         else:
             person = canonical(profile)
