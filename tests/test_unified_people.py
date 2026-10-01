@@ -1,5 +1,14 @@
+import pytest
+from app_entry import create_app
 from app import db, SupporterPerson
 from unified_people import PersonFamilyLink, PersonMatchDecision, _candidates
+
+
+@pytest.fixture
+def app(monkeypatch):
+    for key in ('APP_ENV', 'DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET'):
+        monkeypatch.delenv(key, raising=False)
+    return create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SECRET_KEY': 'test'})
 
 
 def person(name, key, phone='', address=''):
