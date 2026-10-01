@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import app_original as core
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import UniqueConstraint, select
-from person_names import names_row, save_names
+from person_names import PersonNameOwner, names_row, resolve_name_owner, save_names
 
 db = core.db
 
@@ -165,6 +165,9 @@ def install(app, profile_model, relationship_model, access):
         profile = canonical_profile(person.id)
         contacts = db.session.scalars(select(core.Contact).where(
             core.Contact.person_id == person.id).order_by(core.Contact.family_id)).all()
+        aliases = db.session.scalars(select(PersonNameOwner).where(
+            PersonNameOwner.person_id == person.id).order_by(
+            PersonNameOwner.owner_kind, PersonNameOwner.owner_id)).all()
         links = db.session.scalars(select(PersonFamilyLink).where(
             (PersonFamilyLink.person_id == person.id) |
             (PersonFamilyLink.relative_id == person.id)).order_by(PersonFamilyLink.id)).all()
@@ -173,8 +176,16 @@ def install(app, profile_model, relationship_model, access):
         relatives = {p.id: p for p in db.session.scalars(select(core.SupporterPerson).where(
             core.SupporterPerson.id.in_(related_ids))).all()} if related_ids else {}
         return render_template('person_hub.html', title=person.name, person=person,
-                               profile=profile, contacts=contacts, links=links,
-                               relatives=relatives)
+                               profile=profile, contacts=contacts, aliases=aliases,
+                               links=links, relatives=relatives)
+
+    @app.get('/people/from/<kind>/<int:role_id>')
+    def person_role_hub(kind, role_id):
+        access()
+        owner_kind, owner_id, _ = resolve_name_owner(kind, role_id, 'name')
+        if owner_kind != 'person':
+            abort(404, 'This role has not been linked to a canonical person yet.')
+        return redirect(url_for('person_hub', person_id=owner_id))
 
     @app.route('/people/<int:person_id>/edit', methods=['GET', 'POST'])
     def edit_person_hub(person_id):
