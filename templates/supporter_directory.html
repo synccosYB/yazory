@@ -56,7 +56,7 @@
   <div class="supporter-accordion supporter-directory-accordion">
     {% for profile in profiles %}<details class="supporter-accordion-item">
       <summary>
-        <span class="supporter-accordion-name"><strong>{{ profile.name }}</strong><small>{{ _('Cases') }}: {{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</small></span>
+        <span class="supporter-accordion-name"><strong>{{ profile.name }}</strong><small>{{ _('Person ID') }}: <bdi dir="ltr">{{ person_numbers.get(profile.person_id, '') }}</bdi> · {{ _('Cases') }}: {{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</small></span>
         <span><bdi dir="ltr">{{ profile.phone|phone }}</bdi><small>{{ _('Phone') }}</small></span>
         <span><bdi dir="ltr">{{ profile.email or '—' }}</bdi><small>{{ _('Email address') }}</small></span>
         <span class="supporter-accordion-status">{{ _('Actions') }}</span>

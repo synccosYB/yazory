@@ -1,2 +1,3 @@
+{% if public_number %}<small class="field-hint">{{ _('Person ID') }}: <bdi dir="ltr">{{ public_number }}</bdi></small>{% endif %}
 <label>{{ _(name_label) }} · {{ _('English name') }}<input name="{{ name_field }}_english" maxlength="160" value="{{ request.form.get(name_field ~ '_english', name_values.english_name) }}" dir="ltr"></label>
 <label>{{ _(name_label) }} · {{ _('Yiddish name') }}<input name="{{ name_field }}_yiddish" maxlength="160" value="{{ request.form.get(name_field ~ '_yiddish', name_values.yiddish_name) }}" dir="rtl"></label>

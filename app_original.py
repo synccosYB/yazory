@@ -1388,6 +1388,10 @@ def create_app(test_config=None):
             name = (name or '').strip()
             if not name:
                 continue
+            from person_names import resolve_name_owner
+            owner_kind, owner_id, _ = resolve_name_owner(
+                'child', child.id, 'name' if column == 'supporter_contact_id' else 'spouse_name')
+            child_person_id = owner_id if owner_kind == 'person' else None
             contact_id = getattr(child, column)
             contact = db.session.get(Contact, contact_id) if contact_id else None
             if contact is not None and contact.family_id != child.family_id:
@@ -1406,10 +1410,13 @@ def create_app(test_config=None):
                     Child.family_id == child.family_id,
                     Child.spouse_contact_id.is_not(None))).all())
                 candidates = [row for row in candidates if row.id not in claimed]
+                if child_person_id:
+                    candidates = [row for row in candidates if row.person_id == child_person_id]
                 if len(candidates) == 1:
                     contact = candidates[0]
                 else:
                     contact = Contact(
+                        person_id=child_person_id,
                         family_id=child.family_id, name=name,
                         relationship=relationship, phone=phone,
                         cell_phone=cell_phone, home_phone=home_phone,
@@ -2457,6 +2464,9 @@ def create_app(test_config=None):
                 askan = Askan(name=details['name'], phone=details.get('phone', ''),
                               cell_phone=details.get('cell_phone', ''),
                               email=details.get('email', ''))
+                resolver = app.extensions.get('selected_canonical_person')
+                if resolver:
+                    askan._canonical_person_id = resolver(person_type, person_id)
                 db.session.add(askan)
             if 'askan_selected_cell_phone' in request.form:
                 askan.cell_phone = field('askan_selected_cell_phone', limit=80)

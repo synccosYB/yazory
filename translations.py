@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Person ID': {'he': 'מספר אדם', 'yi': 'מענטש נומער'},
     'On this page': {'he': 'בעמוד זה', 'yi': 'אויף דעם בלאט'},
     'People directory pages': {'he': 'עמודי ספריית האנשים', 'yi': 'בלעטער פון דער מענטשן ליסטע'},
     'Child-in-law': {'he': 'חתן או כלה', 'yi': 'איידעם אדער שנור'},
