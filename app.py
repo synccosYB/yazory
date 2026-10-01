@@ -1913,7 +1913,12 @@ def create_app(test_config=None):
     @app.route('/supporter-directory', methods=['GET', 'POST'])
     def supporter_directory():
         families = supporter_directory_families()
-        import_result = _app.session.get('people_import_result')
+        if _app.request.method == 'GET':
+            # Show the most recent import result once, then clear it so an old
+            # upload cannot keep appearing on later visits/uploads.
+            import_result = _app.session.pop('people_import_result', None)
+        else:
+            import_result = None
         if import_result and import_result.get('family_id') is not None and import_result['family_id'] not in {f.id for f in families}:
             import_result = None
         if _app.request.method == 'POST':
