@@ -1915,10 +1915,9 @@ def create_app(test_config=None):
     def supporter_directory():
         families = supporter_directory_families()
         if _app.request.method == 'GET':
-            # Keep the latest import result available while staff refresh,
-            # search, or navigate back to the directory to review it. A later
-            # upload replaces this session value, so results do not accumulate.
-            import_result = _app.session.get('people_import_result')
+            # Show the most recent import result once, then clear it so an old
+            # upload cannot keep appearing on later visits/uploads.
+            import_result = _app.session.pop('people_import_result', None)
         else:
             import_result = None
         if import_result and import_result.get('family_id') is not None and import_result['family_id'] not in {f.id for f in families}:
