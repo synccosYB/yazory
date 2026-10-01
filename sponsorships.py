@@ -284,8 +284,7 @@ def install(app):
             }
             public_sponsors = (current_public_sponsors()
                                if request.endpoint in public_sponsor_endpoints else [])
-            current_sponsor = (None if request.endpoint == 'dashboard'
-                               else current_sponsorship())
+            current_sponsor = current_sponsorship()
             return {'current_sponsor': current_sponsor,
                     'current_case_sponsor': case_sponsor,
                     'public_sponsors': public_sponsors,
