@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import app_original as _app
 from person_addresses import install as install_person_addresses
 from person_names import install as install_person_names
+from person_ids import PersonNumber, install as install_person_ids
 from unified_people import install as install_unified_people
 from book_directory import (PersonBookRecord, import_book_rows, book_context,
                             family_context, save_family_names, install as install_book_directory)
@@ -1305,6 +1306,11 @@ def create_app(test_config=None):
             directory_key = f'family:{family.id}:{key_suffix}'
             profile = _app.db.session.scalar(select(SupporterProfile).where(
                 SupporterProfile.normalized_phone == directory_key))
+            from person_names import resolve_name_owner
+            owner_kind, owner_id, _ = resolve_name_owner('family', family.id, field_name)
+            if owner_kind == 'person':
+                profile = _app.db.session.scalar(select(SupporterProfile).where(
+                    SupporterProfile.person_id == owner_id))
             if profile is None:
                 profile = SupporterProfile(
                     name=name,
@@ -1345,6 +1351,11 @@ def create_app(test_config=None):
         directory_key = f'askan:{askan.id}'
         profile = _app.db.session.scalar(select(SupporterProfile).where(
             SupporterProfile.normalized_phone == directory_key))
+        from person_names import resolve_name_owner
+        owner_kind, owner_id, _ = resolve_name_owner('askan', askan.id)
+        if owner_kind == 'person':
+            profile = _app.db.session.scalar(select(SupporterProfile).where(
+                SupporterProfile.person_id == owner_id))
         if profile is None:
             normalized = normalized_profile_phone(askan.phone)
             if normalized:
@@ -2101,13 +2112,18 @@ def create_app(test_config=None):
             named_people = select(PersonNames.owner_id).where(PersonNames.owner_kind == 'person',
                 _app.or_(PersonNames.english_name.icontains(query, autoescape=True),
                          PersonNames.yiddish_name.icontains(query, autoescape=True)))
-            statement = statement.where(_app.or_(
+            number_match = select(PersonNumber.person_id).where(
+                PersonNumber.id == (int(query) if query.isascii() and query.isdigit() and len(query) < 19 else -1),
+                PersonNumber.person_id.is_not(None))
+            text_match = _app.or_(
                 SupporterProfile.person_id.in_(select(PersonBookRecord.person_id).where(
                     PersonBookRecord.book_id == query)),
                 SupporterProfile.person_id.in_(named_people),
                 SupporterProfile.name.icontains(query, autoescape=True),
                 SupporterProfile.phone.icontains(query, autoescape=True),
-                SupporterProfile.email.icontains(query, autoescape=True)))
+                SupporterProfile.email.icontains(query, autoescape=True))
+            statement = statement.where(
+                SupporterProfile.person_id.in_(number_match) | (~number_match.exists() & text_match))
         # Keep both the HTML and the related book/case queries bounded. A
         # collapsed <details> still renders every person's forms server-side.
         page = max(1, _app.request.args.get('page', 1, type=int))
@@ -2132,6 +2148,9 @@ def create_app(test_config=None):
         ])).group_by(_app.Contact.supporter_key)).all()) if profiles else {}
         return _app.render_template(
             'supporter_directory.html', title='People import', profiles=profiles,
+            person_numbers={row.person_id: f'{row.id:02d}' for row in _app.db.session.scalars(
+                select(PersonNumber).where(PersonNumber.person_id.in_(
+                    [p.person_id for p in profiles]))).all()} if profiles else {},
             families=families, import_result=import_result, query=query,
             case_counts=case_counts, book_records=book_records,
             page=page, has_next=page < last_page, total_profiles=total_profiles)
@@ -5422,6 +5441,7 @@ def create_app(test_config=None):
         require_supporter_directory_access)
     install_person_names(app, dict(profile=SupporterProfile, rabbi=RabbiPerson, helper=HelperPerson,
         gabbai=ShulGabbaiDirectory, partner_contact=PartnerContact))
+    install_person_ids(app, SupporterProfile)
     install_book_directory(app, SupporterProfile, require_supporter_directory_access)
     install_unified_people(app, SupporterProfile, PersonRelationship, require_supporter_directory_access)
     register_supporter_portal(app)

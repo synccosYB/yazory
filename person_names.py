@@ -139,6 +139,9 @@ def preload_names(keys):
     ).in_(set(resolved.values())))).all()
     by_key = {(row.owner_kind, row.owner_id, row.field): row for row in rows}
     cache.update({key: by_key.get(target) for key, target in resolved.items()})
+    if current_app.extensions.get('person_id_role'):
+        from person_ids import preload_numbers
+        preload_numbers(resolved)
 
 
 def save_names(kind, ident, english, yiddish, field='name', fill_only=False,
@@ -172,6 +175,7 @@ def install(app, extras):
     attributes['family'] += ['spouse', 'father', 'inlaws', 'inlaws_maiden_name', 'inlaws_family', 'rabbi']
     attributes['child'] += ['spouse_name']
     attributes['supporter_child'] += ['spouse_name']
+    app.extensions['person_name_models'] = models, attributes
 
     def owner(kind, obj, field='name'):
         if kind in ('supporter', 'profile') and obj.person_id:
@@ -195,7 +199,8 @@ def install(app, extras):
         # query navigation badges, sponsors and settings on every invocation.
         return Markup(current_app.jinja_env.get_template(
             '_bilingual_name_fields.html').render(
-                name_field=field, name_values=vals, name_label=label, request=request))
+                name_field=field, name_values=vals, name_label=label, request=request,
+                public_number=current_app.jinja_env.globals.get('person_number', lambda *a: '')(kind, obj, field)))
 
     app.jinja_env.globals['bilingual_name_fields'] = input_fields
     app.jinja_env.globals['person_name_values'] = values
@@ -236,6 +241,9 @@ def install(app, extras):
                 continue
             legacy = getattr(obj, field, '') or ''
             if not legacy:
+                role_link = current_app.extensions.get('person_id_role')
+                if role_link:
+                    role_link(connection, kind, obj, field)
                 continue
             requested_key = owner(kind, obj, field)
             key = requested_key
@@ -268,6 +276,10 @@ def install(app, extras):
             else:
                 connection.execute(table.insert().values(owner_kind=key[0], owner_id=key[1], field=key[2], english_name=en, yiddish_name=yi))
                 _invalidate_name_cache(requested_key, key)
+
+            role_link = current_app.extensions.get('person_id_role')
+            if role_link:
+                role_link(connection, kind, obj, field)
 
     # Register one handler per model, dispatching to the current app's closure.
     app.extensions['record_person_names'] = record_names

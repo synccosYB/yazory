@@ -341,3 +341,25 @@ APP_ENV=production python -m flask --app 'app:create_app()' send-task-reminders
 The command skips completed and cancelled tasks and records successful sends to
 avoid resending on later runs. Configure one scheduler instance for this command.
 The popup needs the app to be open; email reaches the assignee when it is closed.
+
+### Permanent person numbers
+
+Every canonical person receives one permanent public number, displayed as `01`,
+`02`, ... `99`, `100`. It is shared by their role aliases and case connections.
+These are independent of optional printed book references and internal row IDs.
+A numeric directory search opens the matching person first; when no person number
+exists, the existing name/phone/book search remains available.
+
+After pulling this release in the existing production environment, run:
+
+```sh
+APP_ENV=production python -m flask --app 'app:create_app()' init-db
+```
+
+Then republish. This additive, repeatable release migration preserves existing
+links, backfills numbers, and gives unrepresented roles canonical directory links.
+It does not guess duplicate identities from matching names or household phones.
+Number allocation uses the database sequence (SQLite AUTOINCREMENT in tests).
+Deleting a canonical person retains its issued number with no owner; never delete
+the `person_number` ledger, reset its sequence, or edit issued numbers. Ordinary
+profile edits and role changes cannot edit these numbers.
