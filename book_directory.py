@@ -11,6 +11,8 @@ from sqlalchemy import UniqueConstraint, event, select, tuple_
 import app_original as core
 from person_names import detected_names, save_names
 from person_addresses import save_new_supporter_addresses
+from duplicate_watch import (duplicate_address_message, existing_name_address_map,
+                             row_name_address_key)
 
 db = core.db
 FIELDS = {
@@ -266,6 +268,8 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
     resolved_keys = set()
     changed_people = {}
     seen = set()
+    address_people = existing_name_address_map()
+    seen_new_addresses = {}
     for row in rows:
         source, ident = row['book_source'] or default_source, row['book_id']
         key = source, ident
@@ -302,6 +306,24 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             continue
         is_new = profile is None
         if not profile:
+            address_key = row_name_address_key(row)
+            existing_person = address_people.get(address_key) if address_key else None
+            if existing_person is not None:
+                result['duplicates'] += 1
+                result['skipped'] += 1
+                result['errors'].append(
+                    duplicate_address_message(row['row'], existing_person, book_id=ident)
+                )
+                continue
+            if address_key and address_key in seen_new_addresses:
+                result['duplicates'] += 1
+                result['skipped'] += 1
+                result['errors'].append(
+                    f"Row {row['row']}, book ID {ident}: same name and home address "
+                    f"already appeared on row {seen_new_addresses[address_key]}. "
+                    "Review before importing."
+                )
+                continue
             digest = hashlib.sha256((source + '\0' + ident).encode()).hexdigest()[:15]
             profile = profile_model(name=row['name'][:160], phone=row['phone'][:80],
                 normalized_phone=phone or 'book:' + digest, email=row['email'][:254])
@@ -316,6 +338,8 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             person = canonical(profile)
             by_phone[profile.normalized_phone] = profile
             by_person[person.id] = profile
+            if address_key:
+                seen_new_addresses[address_key] = row['row']
             result['created'] += 1
         else:
             person = canonical(profile)
