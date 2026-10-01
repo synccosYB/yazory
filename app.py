@@ -1975,9 +1975,16 @@ def create_app(test_config=None):
                     SupporterProfile.normalized_phone.in_(
                         [phone for _, phone in candidates]))).all()
             } if candidates else {}
+            from duplicate_watch import (
+                duplicate_address_message, existing_name_address_map,
+                row_name_address_key,
+            )
+            address_people = existing_name_address_map()
+            seen_new_addresses = {}
             imported_profiles = []
             for row, phone in candidates:
                 profile = existing_profiles.get(phone)
+                address_key = row_name_address_key(row)
                 if profile:
                     duplicates += 1
                     # The upload can safely fill blanks, but never silently
@@ -1991,11 +1998,27 @@ def create_app(test_config=None):
                         changed = True
                     updated += int(changed)
                 else:
+                    existing_person = address_people.get(address_key) if address_key else None
+                    if existing_person is not None:
+                        duplicates += 1
+                        skipped += 1
+                        errors.append(duplicate_address_message(row['row'], existing_person))
+                        continue
+                    if address_key and address_key in seen_new_addresses:
+                        duplicates += 1
+                        skipped += 1
+                        errors.append(
+                            f"Row {row['row']}: same name and home address already appeared "
+                            f"on row {seen_new_addresses[address_key]}. Review before importing."
+                        )
+                        continue
                     profile = SupporterProfile(
                         name=row['name'][:160], phone=row['phone'][:80],
                         normalized_phone=phone, email=row['email'][:254])
                     _app.db.session.add(profile)
                     created += 1
+                    if address_key:
+                        seen_new_addresses[address_key] = row['row']
                 imported_profiles.append((profile, row))
             _app.db.session.flush()
             created_people = canonicalize_unlinked_profiles(
@@ -2043,12 +2066,14 @@ def create_app(test_config=None):
                 actor = require_supporter_directory_access()
                 assignee = (actor if actor and actor.role == 'fundraiser' else
                             automatic_task_assignee(_app.Contact(id=-1, family_id=family_id))) if family_id else None
-                extra_created, extra_duplicates, extra_linked = import_without_phones(
+                extra_created, extra_duplicates, extra_linked, extra_warnings = import_without_phones(
                     app, SupporterProfile, StaffTask, without_phones, family_id,
                     import_relationship, actor, assignee)
                 created += extra_created
                 duplicates += extra_duplicates
                 linked += extra_linked
+                skipped += len(extra_warnings)
+                errors.extend(extra_warnings)
             created += book_result['created']
             updated += book_result['updated']
             duplicates += book_result['duplicates']
