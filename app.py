@@ -1874,6 +1874,18 @@ def create_app(test_config=None):
             from person_addresses import save_new_supporter_addresses
             imported_people = {p.id: p for p in _app.db.session.scalars(select(SupporterPerson).where(
                 SupporterPerson.id.in_([profile.person_id for profile, _ in imported_profiles]))).all()}
+            imported_person_ids = list(imported_people)
+            from person_names import preload_names
+            from person_addresses import PersonAddressDetails
+            from book_directory import PersonFamilyConnection
+            preload_names({('person', person_id, 'name') for person_id in imported_person_ids})
+            imported_addresses = {row.person_id: row for row in _app.db.session.scalars(
+                select(PersonAddressDetails).where(
+                    PersonAddressDetails.person_kind == 'person',
+                    PersonAddressDetails.person_id.in_(imported_person_ids))).all()} if imported_person_ids else {}
+            if imported_person_ids:
+                _app.db.session.scalars(select(PersonFamilyConnection).where(
+                    PersonFamilyConnection.person_id.in_(imported_person_ids))).all()
             imported_contacts = {}
             for contact in _app.db.session.scalars(select(_app.Contact).where(
                     _app.Contact.person_id.in_(imported_people))).all():
@@ -1887,8 +1899,8 @@ def create_app(test_config=None):
                 save_names('person', person.id, row['english_name'], row['yiddish_name'], fill_only=True, legacy=person.name)
                 # Fill missing address components without replacing established data.
                 address_row = dict(row)
-                from person_addresses import address_details, home_values
-                details = address_details('person', person.id)
+                from person_addresses import home_values
+                details = imported_addresses.get(person.id)
                 home = home_values(person, details)
                 work = dict(details.work or {}) if details else {}
                 for prefix, current in (('home', home), ('work', work)):
