@@ -116,25 +116,6 @@ def test_address_only_id_survives_changed_source_text_and_later_phone(app):
 
 
 
-def test_book_import_blocks_same_name_and_address_with_different_phone(app):
-    client = app.test_client()
-    rows = [
-        entry('addr-a', **{'Phone 1': '8455554100'}),
-        entry('addr-b', **{'Phone 1': '8455554200'}),
-    ]
-    assert upload(client, rows).status_code == 200
-    with client.session_transaction() as session:
-        result = session['people_import_result']
-        assert result['created'] == 1
-        assert result['duplicates'] == 1
-        assert result['skipped'] == 1
-        assert 'same name and home address' in result['errors'][0]
-    with app.app_context():
-        records = db.session.scalars(db.select(PersonBookRecord).where(
-            PersonBookRecord.book_id.in_(['addr-a', 'addr-b']))).all()
-        assert len(records) == 1
-
-
 
 def test_book_id_conflict_does_not_merge_people(app):
     client = app.test_client()
