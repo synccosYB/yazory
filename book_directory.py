@@ -132,6 +132,16 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
     by_phone = {p.normalized_phone: p for p in profiles}
     by_person = {p.person_id: p for p in profiles if p.person_id}
     changed_people = {}
+    # Existing book identities are known before the row loop. Preload their
+    # optional records in bulk so duplicate-heavy imports stay constant-query.
+    existing_person_ids = {p.person_id for p in profiles if p.person_id}
+    from person_names import preload_names
+    from person_addresses import PersonAddressDetails
+    preload_names({('person', person_id, 'name') for person_id in existing_person_ids})
+    address_rows = db.session.scalars(select(PersonAddressDetails).where(
+        PersonAddressDetails.person_kind == 'person',
+        PersonAddressDetails.person_id.in_(existing_person_ids))).all() if existing_person_ids else []
+    addresses_by_person = {row.person_id: row for row in address_rows}
     seen = set()
     for row in rows:
         source, ident = row['book_source'] or default_source, row['book_id']
@@ -211,8 +221,8 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
         save_names('person', person.id, row['english_name'] or en,
                    row['yiddish_name'] or yi, fill_only=True, legacy=person.name)
         # Same address owner as every other import and case profile.
-        from person_addresses import address_details, home_values
-        details = address_details('person', person.id)
+        from person_addresses import home_values
+        details = addresses_by_person.get(person.id)
         home = home_values(person, details)
         work = dict(details.work or {}) if details else {}
         address_row = dict(row)
