@@ -17,7 +17,7 @@
     <div class="profile-record-actions">{% if can_manage_household %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='family', person_id=family.id) }}">{{ _('Home & work addresses') }}</a>{% endif %}
       <a class="button secondary" href="{{ url_for('staff_applicant_messages', family_id=family.id) }}">{{ _('Applicant messages') }}</a>
       {% if is_org_admin or (family.email and current_staff.role in ('family_admin', 'fundraiser')) %}<a class="button secondary" href="{{ url_for('communications', recipient_email=family.email if family.email else None, sms_phone=(profile_phones[0] if profile_phones else '') if is_org_admin else None, sms_name=family.name if is_org_admin else None, family_id=family.id if is_org_admin else None, _anchor='mailbox-inbox') }}">{{ _('Message applicant') }}</a>{% endif %}
-      <a class="button" href="/families/{{ family.id }}/edit">{{ _("Edit profile") }}</a>
+      <a class="button" href="{{ url_for('person_role_hub', kind='family', role_id=family.id) }}">{{ _('Person profile') }}</a><a class="button secondary" href="/families/{{ family.id }}/edit">{{ _("Case / household details") }}</a>
       <details class="profile-more-actions"><summary class="button secondary">{{ _('More actions') }}</summary><div>
         <a href="{{ url_for('family_print_report',family_id=family.id) }}">{{ _('Print profile / PDF') }}</a>
         <a href="{{ url_for('family_coordination',family_id=family.id) }}">{{ _('Partner coordination') }}</a>
