@@ -252,9 +252,8 @@ def install(app, profile_model, relationship_model, access):
             if relationship not in FAMILY_RELATIONSHIPS:
                 abort(400, 'Choose the confirmed family relationship.')
             existing = db.session.scalar(select(PersonRelationship).where(
-                PersonRelationship.person_one_id == one.id,
-                PersonRelationship.person_two_id == two.id,
-                PersonRelationship.relationship == relationship))
+                PersonRelationship.person_one_id == a,
+                PersonRelationship.person_two_id == b))
             if existing is None:
                 db.session.add(PersonRelationship(
                     person_one_id=a, person_two_id=b, relationship=relationship,
@@ -274,13 +273,13 @@ def install(app, profile_model, relationship_model, access):
         relationship = request.form.get('relationship', '')
         if relationship not in FAMILY_RELATIONSHIPS:
             abort(400)
+        a, b = _pair(person.id, relative.id)
         exists = db.session.scalar(select(PersonRelationship).where(
-            PersonRelationship.person_one_id == person.id,
-            PersonRelationship.person_two_id == relative.id,
-            PersonRelationship.relationship == relationship))
+            PersonRelationship.person_one_id == a,
+            PersonRelationship.person_two_id == b))
         if exists is None:
             db.session.add(PersonRelationship(
-                person_one_id=min(person.id, relative.id), person_two_id=max(person.id, relative.id), relationship=relationship,
+                person_one_id=a, person_two_id=b, relationship=relationship,
                     notes=request.form.get('notes', '')[:500]))
             db.session.commit()
         return redirect(url_for('person_hub', person_id=person.id))
