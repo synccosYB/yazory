@@ -66,7 +66,9 @@ def detected_names(legacy):
 
 
 def names_row(kind, ident, field='name'):
-    if has_request_context() and request.method == 'GET':
+    # Imports explicitly preload canonical name rows. Honor that cache on POST
+    # as well as GET so a spreadsheet does not issue one SELECT per person.
+    if has_request_context():
         cache = getattr(g, '_bilingual_name_rows', {})
         if (kind, ident, field) in cache:
             return cache[(kind, ident, field)]
