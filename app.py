@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import app_original as _app
 from person_addresses import install as install_person_addresses
 from person_names import install as install_person_names
+from unified_people import install as install_unified_people
 from book_directory import (PersonBookRecord, import_book_rows, book_context,
                             family_context, save_family_names, install as install_book_directory)
 
@@ -5422,6 +5423,7 @@ def create_app(test_config=None):
     install_person_names(app, dict(profile=SupporterProfile, rabbi=RabbiPerson, helper=HelperPerson,
         gabbai=ShulGabbaiDirectory, partner_contact=PartnerContact))
     install_book_directory(app, SupporterProfile, require_supporter_directory_access)
+    install_unified_people(app, SupporterProfile, PersonRelationship, require_supporter_directory_access)
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)
