@@ -7,6 +7,7 @@ import app_original as core
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import UniqueConstraint, select
 from person_names import PersonNameOwner, names_row, resolve_name_owner, save_names
+from app import PersonRelationship
 
 db = core.db
 
@@ -46,26 +47,6 @@ class PersonMatchDecision(db.Model):
     reviewed_by = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True)
     reviewed_at = db.Column(db.DateTime, nullable=False,
                             default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-
-
-class PersonFamilyLink(db.Model):
-    """A confirmed directional family edge. Suggestions never create rows here."""
-    __tablename__ = 'person_family_link'
-    __table_args__ = (
-        UniqueConstraint('person_id', 'relative_id', 'relationship',
-                         name='uq_person_family_link'),
-    )
-    id = db.Column(db.Integer, primary_key=True)
-    person_id = db.Column(db.Integer, db.ForeignKey('supporter_person.id'),
-                          nullable=False, index=True)
-    relative_id = db.Column(db.Integer, db.ForeignKey('supporter_person.id'),
-                            nullable=False, index=True)
-    relationship = db.Column(db.String(40), nullable=False)
-    source = db.Column(db.String(30), nullable=False, default='staff_confirmed')
-    notes = db.Column(db.Text, nullable=False, default='')
-    confirmed_by = db.Column(db.Integer, db.ForeignKey('staff_user.id'), nullable=True)
-    confirmed_at = db.Column(db.DateTime, nullable=False,
-                             default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 def _pair(a, b):
@@ -168,10 +149,10 @@ def install(app, profile_model, relationship_model, access):
         aliases = db.session.scalars(select(PersonNameOwner).where(
             PersonNameOwner.person_id == person.id).order_by(
             PersonNameOwner.owner_kind, PersonNameOwner.owner_id)).all()
-        links = db.session.scalars(select(PersonFamilyLink).where(
-            (PersonFamilyLink.person_id == person.id) |
-            (PersonFamilyLink.relative_id == person.id)).order_by(PersonFamilyLink.id)).all()
-        related_ids = {link.relative_id if link.person_id == person.id else link.person_id
+        links = db.session.scalars(select(PersonRelationship).where(
+            (PersonRelationship.person_one_id == person.id) |
+            (PersonRelationship.person_two_id == person.id)).order_by(PersonRelationship.id)).all()
+        related_ids = {link.person_two_id if link.person_one_id == person.id else link.person_one_id
                        for link in links}
         relatives = {p.id: p for p in db.session.scalars(select(core.SupporterPerson).where(
             core.SupporterPerson.id.in_(related_ids))).all()} if related_ids else {}
@@ -270,14 +251,14 @@ def install(app, profile_model, relationship_model, access):
             relationship = request.form.get('relationship', '')
             if relationship not in FAMILY_RELATIONSHIPS:
                 abort(400, 'Choose the confirmed family relationship.')
-            existing = db.session.scalar(select(PersonFamilyLink).where(
-                PersonFamilyLink.person_id == one.id,
-                PersonFamilyLink.relative_id == two.id,
-                PersonFamilyLink.relationship == relationship))
+            existing = db.session.scalar(select(PersonRelationship).where(
+                PersonRelationship.person_one_id == one.id,
+                PersonRelationship.person_two_id == two.id,
+                PersonRelationship.relationship == relationship))
             if existing is None:
-                db.session.add(PersonFamilyLink(
-                    person_id=one.id, relative_id=two.id, relationship=relationship,
-                    confirmed_by=current_user_id(), notes=request.form.get('notes', '')[:2000]))
+                db.session.add(PersonRelationship(
+                    person_one_id=a, person_two_id=b, relationship=relationship,
+                    notes=request.form.get('notes', '')[:500]))
         db.session.commit()
         flash('Review saved.')
         return redirect(url_for('people_matching',
@@ -293,14 +274,14 @@ def install(app, profile_model, relationship_model, access):
         relationship = request.form.get('relationship', '')
         if relationship not in FAMILY_RELATIONSHIPS:
             abort(400)
-        exists = db.session.scalar(select(PersonFamilyLink).where(
-            PersonFamilyLink.person_id == person.id,
-            PersonFamilyLink.relative_id == relative.id,
-            PersonFamilyLink.relationship == relationship))
+        exists = db.session.scalar(select(PersonRelationship).where(
+            PersonRelationship.person_one_id == person.id,
+            PersonRelationship.person_two_id == relative.id,
+            PersonRelationship.relationship == relationship))
         if exists is None:
-            db.session.add(PersonFamilyLink(
-                person_id=person.id, relative_id=relative.id, relationship=relationship,
-                confirmed_by=current_user_id(), notes=request.form.get('notes', '')[:2000]))
+            db.session.add(PersonRelationship(
+                person_one_id=min(person.id, relative.id), person_two_id=max(person.id, relative.id), relationship=relationship,
+                    notes=request.form.get('notes', '')[:500]))
             db.session.commit()
         return redirect(url_for('person_hub', person_id=person.id))
 
