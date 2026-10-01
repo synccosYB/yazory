@@ -96,11 +96,20 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
     for key, row in unique.items():
         save_family_names(profiles[key].person_id, row)
     if family_id is not None:
-        person_ids = [p.person_id for p in profiles.values()]
+        # Preserve every imported profile/person independently. Do not reduce
+        # this through a set before deciding which case-specific rows are
+        # missing; the canonical profile key is the import identity.
+        person_ids = [profile.person_id for profile in profiles.values()]
         existing = set(db.session.scalars(select(core.Contact.person_id).where(
-            core.Contact.family_id == family_id, core.Contact.person_id.in_(person_ids))).all())
-        targets = db.session.scalars(select(core.SupporterPerson).where(
-            core.SupporterPerson.id.in_(set(person_ids) - existing))).all()
+            core.Contact.family_id == family_id,
+            core.Contact.person_id.in_(person_ids))).all())
+        missing_person_ids = [person_id for person_id in person_ids
+                              if person_id not in existing]
+        targets_by_id = {p.id: p for p in db.session.scalars(
+            select(core.SupporterPerson).where(
+                core.SupporterPerson.id.in_(missing_person_ids))).all()}
+        targets = [targets_by_id[person_id] for person_id in missing_person_ids
+                   if person_id in targets_by_id]
         if targets:
             snapshot = ('name', 'phone', 'email', 'home_phone', 'cell_phone',
                         'home_address', 'city', 'state', 'zip_code', 'workplace', 'work_phone', 'notes')
