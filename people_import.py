@@ -108,9 +108,20 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
                 **{f: getattr(p, f) for f in snapshot}, person_id=p.id,
                 family_id=family_id, relationship=relationship, supporter_key=p.identity_key,
                 monthly_cents=0, pledge_frequency='Monthly', status='To contact') for p in targets])
+            target_ids = {p.id for p in targets}
             contacts = db.session.scalars(select(core.Contact).where(
                 core.Contact.family_id == family_id,
-                core.Contact.person_id.in_([p.id for p in targets]))).all()
+                core.Contact.person_id.in_(target_ids))).all()
+            # Bulk inserts bypass the ORM identity map; explicitly verify every
+            # intended canonical person received its case row before creating
+            # workflow links.
+            contact_by_person = {c.person_id: c for c in contacts}
+            missing_ids = target_ids - set(contact_by_person)
+            if missing_ids:
+                raise RuntimeError(
+                    f'Case link insert incomplete for family {family_id}: '
+                    f'missing person ids {sorted(missing_ids)}')
+            contacts = [contact_by_person[person_id] for person_id in target_ids]
             link_model = app.extensions['workflows']['models']['SupporterLink']
             db.session.execute(link_model.__table__.insert(), [dict(
                 contact_id=c.id, side='Community', relationship=relationship,
