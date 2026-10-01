@@ -279,12 +279,14 @@ def install(app):
             # directory pages.  Loading it for every staff screen used to fetch
             # every published sponsor (including its logo BLOB) on every request.
             public_sponsor_endpoints = {
-                'dashboard', 'about', 'public_sponsors_directory',
+                'about', 'public_sponsors_directory',
                 'localized_public_page',
             }
             public_sponsors = (current_public_sponsors()
                                if request.endpoint in public_sponsor_endpoints else [])
-            return {'current_sponsor': current_sponsorship(),
+            current_sponsor = (None if request.endpoint == 'dashboard'
+                               else current_sponsorship())
+            return {'current_sponsor': current_sponsor,
                     'current_case_sponsor': case_sponsor,
                     'public_sponsors': public_sponsors,
                     'sponsorship_page_labels': PAGE_LABELS}

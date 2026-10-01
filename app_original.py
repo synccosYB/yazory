@@ -1567,7 +1567,8 @@ def create_app(test_config=None):
         language=session.get('language', 'en')
         eastern_today=datetime.now(timezone.utc).astimezone(ZoneInfo('America/New_York')).date()
         from jewish_calendar import calendar_line
-        return dict(language=language, languages=LANGUAGES, direction='rtl' if language in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], stripe_enabled=bool(app.config['STRIPE_SECRET_KEY']), categories=expense_categories(), relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, pledge_frequencies=PLEDGE_FREQUENCIES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), hebrew_calendar=calendar_line(eastern_today,language), document_allowed=app.extensions['workflows']['document_allowed'], contact_visible=contact_visible, current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
+        categories = DEFAULT_CATEGORIES if request.endpoint == 'dashboard' and user is None else expense_categories()
+        return dict(language=language, languages=LANGUAGES, direction='rtl' if language in ('he','yi') else 'ltr', csrf=session['csrf'], demo=app.config['DEMO'], stripe_enabled=bool(app.config['STRIPE_SECRET_KEY']), categories=categories, relationships=RELATIONSHIPS, contact_statuses=CONTACT_STATUSES, pledge_frequencies=PLEDGE_FREQUENCIES, family_transitions=FAMILY_TRANSITIONS, expense_transitions=EXPENSE_TRANSITIONS, current_month=datetime.now().strftime('%Y-%m'), hebrew_calendar=calendar_line(eastern_today,language), document_allowed=app.extensions['workflows']['document_allowed'], contact_visible=contact_visible, current_staff=user, is_org_admin=organization_admin(), can_manage_household=can_manage_household(), can_manage_supporters=can_manage_supporters(), is_fundraiser=bool(user and user.role == 'fundraiser'))
 
     @app.before_request
     def start_request_timer():
@@ -1795,7 +1796,6 @@ def create_app(test_config=None):
 
     @app.get('/health')
     def health():
-        db.session.execute(select(1))
         return {'status': 'ok'}
 
     PUBLIC_PAGE_SEO = {
