@@ -65,7 +65,8 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         profiles = {p.normalized_phone: p for p in db.session.scalars(select(profile_model).where(
             profile_model.normalized_phone.in_(unique))).all()}
     linked = 0
-    from book_directory import save_family_names
+    from book_directory import preload_family_connections, save_family_names
+    preload_family_connections(p.person_id for p in profiles.values())
     for key, row in unique.items():
         save_family_names(profiles[key].person_id, row)
     if family_id is not None:

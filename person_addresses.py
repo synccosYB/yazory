@@ -4,8 +4,8 @@ Existing home-address columns remain authoritative. JSON stores only the
 additional home components and work address; it never copies legacy fields.
 """
 import app_original as core
-from flask import abort, flash, render_template, request
-from sqlalchemy import UniqueConstraint, event, select
+from flask import abort, flash, g, has_request_context, render_template, request
+from sqlalchemy import UniqueConstraint, event, select, tuple_
 
 db = core.db
 FIELDS = {'street': 300, 'unit': 80, 'city': 120, 'state': 80,
@@ -25,9 +25,70 @@ class PersonAddressDetails(db.Model):
 
 
 def address_details(kind, person_id):
-    return db.session.scalar(select(PersonAddressDetails).where(
+    key = kind, person_id
+    cache = _request_address_cache()
+    if cache is not None and key in cache:
+        return cache[key]
+    row = db.session.scalar(select(PersonAddressDetails).where(
         PersonAddressDetails.person_kind == kind,
         PersonAddressDetails.person_id == person_id))
+    if cache is not None:
+        cache[key] = row
+    return row
+
+
+def _request_address_cache():
+    if (not has_request_context() or not (
+            getattr(g, '_batch_person_import', False) or
+            getattr(g, '_person_address_preload_enabled', False))):
+        return None
+    transaction = db.session().get_transaction()
+    if transaction is None:
+        db.session().begin()
+        transaction = db.session().get_transaction()
+    cache = getattr(g, '_person_address_cache', None)
+    if cache is None or cache[0] is not transaction:
+        cache = (transaction, {})
+        g._person_address_cache = cache
+    return cache[1]
+
+
+def _invalidate_address_cache(kind, person_id):
+    cache = _request_address_cache()
+    if cache is not None:
+        cache.pop((kind, person_id), None)
+
+
+def _remember_address_row(mapper, connection, row):
+    cache = _request_address_cache()
+    if cache is not None:
+        cache[(row.person_kind, row.person_id)] = row
+
+
+for _event_name in ('after_insert', 'after_update'):
+    if not event.contains(PersonAddressDetails, _event_name, _remember_address_row):
+        event.listen(PersonAddressDetails, _event_name, _remember_address_row)
+
+
+def preload_addresses(keys):
+    """Load only requested address owners, caching both rows and missing rows."""
+    keys = set(keys)
+    if not keys:
+        return
+    if has_request_context():
+        g._person_address_preload_enabled = True
+    cache = _request_address_cache()
+    if cache is None:
+        cache = {}
+    cached = cache
+    missing = keys - cached.keys()
+    if not missing:
+        return
+    rows = db.session.scalars(select(PersonAddressDetails).where(tuple_(
+        PersonAddressDetails.person_kind, PersonAddressDetails.person_id
+    ).in_(missing))).all()
+    by_key = {(row.person_kind, row.person_id): row for row in rows}
+    cache.update({key: by_key.get(key) for key in missing})
 
 
 def delete_owned_addresses(mapper, connection, person):
@@ -43,6 +104,8 @@ def delete_owned_addresses(mapper, connection, person):
         connection.execute(PersonAddressDetails.__table__.delete().where(
             PersonAddressDetails.person_kind.in_(kinds),
             PersonAddressDetails.person_id == person.id))
+        for kind in kinds:
+            _invalidate_address_cache(kind, person.id)
 
 
 def home_values(person, details=None):
@@ -106,6 +169,9 @@ Blank fields on a new case connection never erase an existing person's address.
         details = PersonAddressDetails(person_kind='person', person_id=person.id,
                                        home={}, work={})
         db.session.add(details)
+        cache = _request_address_cache()
+        if cache is not None:
+            cache[('person', person.id)] = details
     home = submitted['home']
     for field, column in (('street', 'home_address'), ('city', 'city'),
                           ('state', 'state'), ('zip_code', 'zip_code')):

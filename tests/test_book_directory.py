@@ -264,6 +264,31 @@ def test_phone_match_accepts_different_name_and_preserves_existing_name(app):
         assert person.home_address == '12 Main St.'
 
 
+def test_two_book_sources_share_new_person_and_preserve_first_address(app):
+    from person_addresses import PersonAddressDetails, address_details
+    client = app.test_client()
+    rows = [
+        entry('source-a', **{'Book source': 'Book A', 'Apartment': '1'}),
+        entry('source-b', **{'Book source': 'Book B', 'Apartment': '2',
+                             'Home address': 'Different St.'}),
+    ]
+    for _ in range(2):
+        response = upload(client, rows)
+        assert response.status_code == 200
+        with app.app_context():
+            records = db.session.scalars(db.select(PersonBookRecord).where(
+                PersonBookRecord.source.in_(['Book A', 'Book B']))).all()
+            assert len(records) == 2
+            person_ids = {record.person_id for record in records}
+            assert len(person_ids) == 1
+            person_id = person_ids.pop()
+            assert db.session.scalar(db.select(db.func.count(PersonAddressDetails.id)).where(
+                PersonAddressDetails.person_kind == 'person',
+                PersonAddressDetails.person_id == person_id)) == 1
+            assert address_details('person', person_id).home['unit'] == '1'
+            assert db.session.get(SupporterPerson, person_id).home_address == '12 Main St.'
+
+
 def test_book_import_batches_contact_snapshot_reads(app):
     from sqlalchemy import event
     client = app.test_client()

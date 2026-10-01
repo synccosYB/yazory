@@ -48,6 +48,9 @@
   </form>
 </section>
 
+{# These identical lists occur in every row; render/escape them only once. #}
+{% set case_connection_options %}{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}{% endset %}
+{% set case_relationship_options %}{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}{% endset %}
 <details class="card supporter-list-card foldable-supporter-list">
   <summary class="supporter-list-summary"><span><strong>{{ _('Search people') }}</strong><small>{{ total_profiles }} {{ _('records') }} · {{ _('On this page') }}: {{ profiles|length }}</small></span><span>{{ _('Open tools') }}</span></summary>
   <div class="supporter-accordion supporter-directory-accordion">
@@ -69,8 +72,8 @@
         <div class="supporter-directory-tools">
           {% if families %}<form method="post" action="{{ url_for('connect_supporter_profile', profile_id=profile.id) }}" class="compact-form supporter-directory-connect">
         {{ token(csrf) }}
-            <label>{{ _('Connect to a case') }}<select name="family_id" required><option value="">{{ _('Choose case') }}</option>{% for family in families %}<option value="{{ family.id }}">{{ family.name }}</option>{% endfor %}</select></label>
-            <label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}">{{ _(relationship) }}</option>{% endfor %}</select></label>
+            <label>{{ _('Connect to a case') }}<select name="family_id" required><option value="">{{ _('Choose case') }}</option>{{ case_connection_options }}</select></label>
+            <label>{{ _('Relationship') }}<select name="relationship">{{ case_relationship_options }}</select></label>
             <button class="small">{{ _('Connect') }}</button>
           </form>{% endif %}
           <a class="button small secondary" href="{{ url_for('edit_supporter_profile', profile_id=profile.id) }}">{{ _('Names, addresses & relationships') }}</a>

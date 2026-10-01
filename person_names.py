@@ -43,6 +43,38 @@ def resolve_name_owner(kind, ident, field='name'):
     return kind, ident, field
 
 
+def _request_name_cache():
+    if (not has_request_context() or not (
+            getattr(g, '_batch_person_import', False) or
+            getattr(g, '_person_name_preload_enabled', False))):
+        return None
+    transaction = DB.session().get_transaction()
+    if transaction is None:
+        DB.session().begin()
+        transaction = DB.session().get_transaction()
+    cache = getattr(g, '_bilingual_name_cache', None)
+    if cache is None or cache[0] is not transaction:
+        cache = (transaction, {})
+        g._bilingual_name_cache = cache
+    return cache[1]
+
+
+def _invalidate_name_cache(*keys):
+    cache = _request_name_cache()
+    if cache is None:
+        return
+    if not keys:
+        cache.clear()
+    for key in keys:
+        row = cache.pop(key, None)
+        if row is not None:
+            try:
+                DB.session.expire(row)
+            except Exception:
+                # New/detached rows have no persistent state to expire.
+                pass
+
+
 def link_name_owner(kind, ident, field, person):
     alias = DB.session.scalar(select(PersonNameOwner).where(
         PersonNameOwner.owner_kind == kind, PersonNameOwner.owner_id == ident, PersonNameOwner.field == field))
@@ -59,6 +91,7 @@ def link_name_owner(kind, ident, field, person):
         target.yiddish_name = target.yiddish_name or old.yiddish_name
         DB.session.delete(old)
     DB.session.add(PersonNameOwner(owner_kind=kind, owner_id=ident, field=field, person_id=person.id))
+    _invalidate_name_cache((kind, ident, field))
 
 
 def detected_names(legacy):
@@ -66,45 +99,64 @@ def detected_names(legacy):
 
 
 def names_row(kind, ident, field='name'):
-    if has_request_context() and request.method == 'GET':
-        cache = getattr(g, '_bilingual_name_rows', {})
-        if (kind, ident, field) in cache:
-            return cache[(kind, ident, field)]
+    cache = _request_name_cache()
+    key = kind, ident, field
+    if cache is not None and key in cache:
+        return cache[key]
     kind, ident, field = resolve_name_owner(kind, ident, field)
-    return DB.session.scalar(select(PersonNames).where(
-        PersonNames.owner_kind == kind, PersonNames.owner_id == ident, PersonNames.field == field))
+    row = DB.session.scalar(select(PersonNames).where(
+        PersonNames.owner_kind == kind, PersonNames.owner_id == ident,
+        PersonNames.field == field).execution_options(populate_existing=True))
+    if cache is not None:
+        cache[key] = row
+        cache[(kind, ident, field)] = row
+    return row
 
 
 def preload_names(keys):
-    """Batch template lookups, including absent names and role aliases."""
+    """Batch name lookups, including absent names and role aliases."""
     keys = set(keys)
     if not keys:
         return
+    if has_request_context():
+        g._person_name_preload_enabled = True
+    cache = _request_name_cache()
+    if cache is None:
+        cache = {}
+    cached = cache
+    missing = keys - cached.keys()
+    if not missing:
+        return
+    alias_keys = [key for key in missing if key[0] != 'person']
     aliases = DB.session.scalars(select(PersonNameOwner).where(tuple_(
         PersonNameOwner.owner_kind, PersonNameOwner.owner_id,
-        PersonNameOwner.field).in_([key for key in keys if key[0] != 'person']))).all() if any(key[0] != 'person' for key in keys) else []
-    resolved = {key: key for key in keys}
+        PersonNameOwner.field).in_(alias_keys))).all() if alias_keys else []
+    resolved = {key: key for key in missing}
     for alias in aliases:
         resolved[(alias.owner_kind, alias.owner_id, alias.field)] = ('person', alias.person_id, 'name')
     rows = DB.session.scalars(select(PersonNames).where(tuple_(
         PersonNames.owner_kind, PersonNames.owner_id, PersonNames.field
     ).in_(set(resolved.values())))).all()
     by_key = {(row.owner_kind, row.owner_id, row.field): row for row in rows}
-    cache = getattr(g, '_bilingual_name_rows', {})
     cache.update({key: by_key.get(target) for key, target in resolved.items()})
-    g._bilingual_name_rows = cache
 
 
-def save_names(kind, ident, english, yiddish, field='name', fill_only=False, legacy=''):
+def save_names(kind, ident, english, yiddish, field='name', fill_only=False,
+               legacy='', known_missing=False):
     if max(len(english or ''), len(yiddish or '')) > 160:
         abort(400)
     kind, ident, field = resolve_name_owner(kind, ident, field)
-    row = names_row(kind, ident, field)
+    cache = _request_name_cache()
+    key = kind, ident, field
+    row = cache.get(key) if cache is not None and key in cache else (
+        None if known_missing else names_row(kind, ident, field))
     if row is None:
         old_en, old_yi = detected_names(legacy)
         row = PersonNames(owner_kind=kind, owner_id=ident, field=field,
                           english_name=old_en, yiddish_name=old_yi)
         DB.session.add(row)
+    if cache is not None:
+        cache[key] = row
     if not fill_only or not row.english_name:
         row.english_name = english or ''
     if not fill_only or not row.yiddish_name:
@@ -169,6 +221,12 @@ def install(app, extras):
             request.form = form
 
     def record_names(mapper, connection, obj):
+        # Directory imports write canonical names explicitly in batches. The
+        # normal mapper path performs a raw SELECT for each inserted profile,
+        # canonical person and case contact, defeating that batching.
+        if (has_request_context() and request.method == 'POST' and
+                getattr(g, '_batch_person_import', False)):
+            return
         # Mapper hooks run in the original transaction, including manual creates.
         kind = next((k for k, model in models.items() if isinstance(obj, model)), None)
         if kind is None:
@@ -179,7 +237,8 @@ def install(app, extras):
             legacy = getattr(obj, field, '') or ''
             if not legacy:
                 continue
-            key = owner(kind, obj, field)
+            requested_key = owner(kind, obj, field)
+            key = requested_key
             if key[0] != 'person':
                 aliases = PersonNameOwner.__table__
                 alias = connection.execute(select(aliases.c.person_id).where(aliases.c.owner_kind == key[0], aliases.c.owner_id == key[1], aliases.c.field == key[2])).scalar()
@@ -205,8 +264,10 @@ def install(app, extras):
             if existing:
                 if submitted:
                     connection.execute(table.update().where(condition).values(english_name=en, yiddish_name=yi))
+                    _invalidate_name_cache(requested_key, key)
             else:
                 connection.execute(table.insert().values(owner_kind=key[0], owner_id=key[1], field=key[2], english_name=en, yiddish_name=yi))
+                _invalidate_name_cache(requested_key, key)
 
     # Register one handler per model, dispatching to the current app's closure.
     app.extensions['record_person_names'] = record_names
@@ -220,6 +281,7 @@ def install(app, extras):
             return
         connection.execute(PersonNames.__table__.delete().where(
             PersonNames.owner_kind == kind, PersonNames.owner_id == obj.id))
+        _invalidate_name_cache()
         alias_table = PersonNameOwner.__table__
         condition = (alias_table.c.owner_kind == kind) & (alias_table.c.owner_id == obj.id)
         if kind == 'person':

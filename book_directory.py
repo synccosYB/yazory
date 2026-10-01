@@ -6,7 +6,8 @@ the exact source and printed ID, including targets imported on later pages.
 import hashlib
 
 from flask import abort, flash, redirect, request, url_for
-from sqlalchemy import UniqueConstraint, select, tuple_
+from flask import g, has_request_context
+from sqlalchemy import UniqueConstraint, event, select, tuple_
 import app_original as core
 from person_names import detected_names, save_names
 from person_addresses import save_new_supporter_addresses
@@ -58,15 +59,22 @@ def resolve_family_references(sources):
     """Explicit external references may fill canonical links, never override them."""
     records = db.session.scalars(select(PersonBookRecord).where(
         PersonBookRecord.source.in_(sources))).all()
+    _apply_family_references(records)
+
+
+def _apply_family_references(records):
     by_key = {(r.source, r.book_id): r for r in records}
-    families = {r.person_id: r for r in db.session.scalars(select(PersonFamilyConnection).where(
-        PersonFamilyConnection.person_id.in_([r.person_id for r in records]))).all()}
+    person_ids = {r.person_id for r in records}
+    families = preload_family_connections(person_ids)
     for record in records:
         family = families.get(record.person_id)
         if family is None:
             family = PersonFamilyConnection(person_id=record.person_id)
             db.session.add(family)
             families[record.person_id] = family
+            cache = _request_family_cache()
+            if cache is not None:
+                cache[record.person_id] = family
         for kind in ('father', 'father_inlaw'):
             if getattr(family, kind + '_manually_set'):
                 continue
@@ -76,6 +84,96 @@ def resolve_family_references(sources):
             target = by_key.get((record.source, getattr(record, kind + '_book_id')))
             if target and target.person_id != record.person_id and not getattr(family, kind + '_person_id'):
                 setattr(family, kind + '_person_id', target.person_id)
+
+
+def resolve_import_family_references(reference_keys):
+    """Resolve this import's rows and rows which explicitly point to them."""
+    reference_keys = set(reference_keys)
+    if not reference_keys:
+        return
+    own = db.session.scalars(select(PersonBookRecord).where(tuple_(
+        PersonBookRecord.source, PersonBookRecord.book_id
+    ).in_(reference_keys))).all()
+    dependents = db.session.scalars(select(PersonBookRecord).where(
+        tuple_(PersonBookRecord.source, PersonBookRecord.father_book_id).in_(reference_keys) |
+        tuple_(PersonBookRecord.source, PersonBookRecord.father_inlaw_book_id).in_(reference_keys)
+    )).all()
+    records = list({record.id: record for record in (*own, *dependents)}.values())
+    target_keys = {(r.source, ref) for r in records for ref in
+                   (r.father_book_id, r.father_inlaw_book_id) if ref}
+    targets = db.session.scalars(select(PersonBookRecord).where(tuple_(
+            PersonBookRecord.source, PersonBookRecord.book_id
+        ).in_(target_keys))).all() if target_keys else []
+    by_key = {(r.source, r.book_id): r for r in targets}
+    family_rows = preload_family_connections({r.person_id for r in records})
+    for record in records:
+        family = family_rows.get(record.person_id)
+        if family is None:
+            family = PersonFamilyConnection(person_id=record.person_id)
+            db.session.add(family)
+            family_rows[record.person_id] = family
+            cache = _request_family_cache()
+            if cache is not None:
+                cache[record.person_id] = family
+        for kind in ('father', 'father_inlaw'):
+            if getattr(family, kind + '_manually_set'):
+                continue
+            name_field = kind + '_name'
+            if not getattr(family, name_field):
+                setattr(family, name_field, getattr(record, name_field))
+            target = by_key.get((record.source, getattr(record, kind + '_book_id')))
+            if target and target.person_id != record.person_id and not getattr(
+                    family, kind + '_person_id'):
+                setattr(family, kind + '_person_id', target.person_id)
+
+
+def _request_family_cache():
+    if (not has_request_context() or not (
+            getattr(g, '_batch_person_import', False) or
+            getattr(g, '_person_family_preload_enabled', False))):
+        return None
+    transaction = db.session().get_transaction()
+    if transaction is None:
+        db.session().begin()
+        transaction = db.session().get_transaction()
+    cache = getattr(g, '_person_family_connection_cache', None)
+    if cache is None or cache[0] is not transaction:
+        cache = (transaction, {})
+        g._person_family_connection_cache = cache
+    return cache[1]
+
+
+def _remember_family_connection(mapper, connection, row):
+    cache = _request_family_cache()
+    if cache is not None:
+        cache[row.person_id] = row
+
+
+for _event_name in ('after_insert', 'after_update'):
+    if not event.contains(PersonFamilyConnection, _event_name,
+                          _remember_family_connection):
+        event.listen(PersonFamilyConnection, _event_name,
+                     _remember_family_connection)
+
+
+def preload_family_connections(person_ids):
+    """Batch and cache requested family rows, including missing rows."""
+    person_ids = set(person_ids)
+    if not person_ids:
+        return {}
+    if has_request_context():
+        g._person_family_preload_enabled = True
+    cache = _request_family_cache()
+    if cache is None:
+        cache = {}
+    cached = cache
+    missing = person_ids - cached.keys()
+    if missing:
+        rows = db.session.scalars(select(PersonFamilyConnection).where(
+            PersonFamilyConnection.person_id.in_(missing))).all()
+        by_id = {row.person_id: row for row in rows}
+        cache.update({person_id: by_id.get(person_id) for person_id in missing})
+    return {person_id: cache.get(person_id) for person_id in person_ids}
 
 
 def family_context(person_id, profile_model):
@@ -105,10 +203,18 @@ def family_context(person_id, profile_model):
 def save_family_names(person_id, row):
     if not row.get('father_name') and not row.get('father_inlaw_name'):
         return
-    family = db.session.get(PersonFamilyConnection, person_id)
+    if (has_request_context() and (
+            getattr(g, '_batch_person_import', False) or
+            getattr(g, '_person_family_preload_enabled', False))):
+        family = preload_family_connections({person_id}).get(person_id)
+    else:
+        family = db.session.get(PersonFamilyConnection, person_id)
     if family is None:
         family = PersonFamilyConnection(person_id=person_id)
         db.session.add(family)
+        cache = _request_family_cache()
+        if cache is not None:
+            cache[person_id] = family
     for field in ('father_name', 'father_inlaw_name'):
         if row.get(field) and not getattr(family, field):
             setattr(family, field, row[field][:240])
@@ -121,16 +227,43 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
         return result
     keys = {(r['book_source'] or default_source, r['book_id']) for r in rows}
     sources = {key[0] for key in keys}
-    records = db.session.scalars(select(PersonBookRecord).where(
-        PersonBookRecord.source.in_(sources))).all()
+    records = db.session.scalars(select(PersonBookRecord).where(tuple_(
+        PersonBookRecord.source, PersonBookRecord.book_id
+    ).in_(keys))).all()
     by_key = {(r.source, r.book_id): r for r in records}
-    owner_ids = {(r.source, r.person_id): r.book_id for r in records}
     phones = {normalize(r['phone']) for r in rows if r['phone']}
     profiles = db.session.scalars(select(profile_model).where(core.or_(
         profile_model.normalized_phone.in_(phones),
         profile_model.person_id.in_([r.person_id for r in records if (r.source, r.book_id) in keys])))).all()
     by_phone = {p.normalized_phone: p for p in profiles}
     by_person = {p.person_id: p for p in profiles if p.person_id}
+    canonical_people = (app.extensions['supporter_identity']['preload_profiles'](profiles)
+                        if profiles else {})
+    case_keys = {person.identity_key for person in canonical_people.values()}
+    case_keys.update('phone:' + normalize(row['phone']) for row in rows if row['phone'])
+    for row in rows:
+        if not row['phone']:
+            digest = hashlib.sha256(
+                ((row['book_source'] or default_source) + '\0' + row['book_id']).encode()
+            ).hexdigest()[:15]
+            case_keys.add('phone:book:' + digest)
+    known_people = app.extensions['supporter_identity']['preload_people'](case_keys)
+    person_ids = {p.person_id for p in profiles if p.person_id}
+    person_ids.update(person.id for person in canonical_people.values())
+    person_ids.update(person.id for person in known_people.values() if person is not None)
+    profile_person_ids = set(person_ids)
+    owner_records = db.session.scalars(select(PersonBookRecord).where(
+        PersonBookRecord.source.in_(sources),
+        PersonBookRecord.person_id.in_(profile_person_ids))).all() if profile_person_ids else []
+    owner_ids = {(r.source, r.person_id): r.book_id for r in (*records, *owner_records)}
+    from person_addresses import preload_addresses
+    from person_names import preload_names
+    preload_names({('person', person_id, 'name') for person_id in person_ids})
+    preload_addresses({('person', person_id) for person_id in person_ids})
+    existing_person_ids = set(person_ids)
+    if family_id is not None:
+        app.extensions['supporter_identity']['preload_case_links'](family_id, case_keys)
+    resolved_keys = set()
     changed_people = {}
     seen = set()
     for row in rows:
@@ -173,8 +306,13 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             profile = profile_model(name=row['name'][:160], phone=row['phone'][:80],
                 normalized_phone=phone or 'book:' + digest, email=row['email'][:254])
             db.session.add(profile)
-            # Flush identities before processing another row with a shared phone.
-            db.session.flush()
+            # Allocate this profile's key without prematurely updating every
+            # earlier import row still pending in the unit of work.
+            if (has_request_context() and
+                    getattr(g, '_batch_book_import', False)):
+                db.session.flush([profile])
+            else:
+                db.session.flush()
             person = canonical(profile)
             by_phone[profile.normalized_phone] = profile
             by_person[person.id] = profile
@@ -189,6 +327,7 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             by_key[key] = record
             owner_ids[(source, person.id)] = ident
             changed = True
+        resolved_keys.add(key)
         for field, limit in FIELDS.items():
             value = row.get(field, '')
             if value and not getattr(record, field):
@@ -209,10 +348,12 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
             changed = True
         en, yi = detected_names(row['name'])
         save_names('person', person.id, row['english_name'] or en,
-                   row['yiddish_name'] or yi, fill_only=True, legacy=person.name)
+                   row['yiddish_name'] or yi, fill_only=True, legacy=person.name,
+                   known_missing=person.id not in existing_person_ids)
         # Same address owner as every other import and case profile.
         from person_addresses import address_details, home_values
-        details = address_details('person', person.id)
+        details = (None if person.id not in existing_person_ids else
+                   address_details('person', person.id))
         home = home_values(person, details)
         work = dict(details.work or {}) if details else {}
         address_row = dict(row)
@@ -223,13 +364,17 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
         target = core.Contact(person_id=person.id)
         save_new_supporter_addresses(
             app, target, address_row, person=person, details=details, sync=False)
+        # Another row in this upload may reference this same person from a
+        # different book source. Its names/address now exist in the write-through
+        # caches and must be read rather than treated as absent a second time.
+        existing_person_ids.add(person.id)
         changed_people[person.id] = person
         if family_id is not None:
             result['linked'] += int(connect(profile, family_id, relationship) is not None)
         result['updated'] += int(changed and not is_new)
     app.extensions['supporter_identity']['sync_many'](changed_people.values())
     db.session.flush()
-    resolve_family_references(sources)
+    resolve_import_family_references(resolved_keys)
     return result
 
 

@@ -16,10 +16,10 @@ from person_names import install as install_person_names
 from book_directory import (PersonBookRecord, import_book_rows, book_context,
                             family_context, save_family_names, install as install_book_directory)
 
-from flask import Response, current_app, has_request_context, jsonify, session
+from flask import Response, current_app, g, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload, load_only, selectinload
 from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.exceptions import Forbidden
 from twilio_service import (account_overview, configure_inbound_webhook, create_messaging_service,
@@ -1395,13 +1395,7 @@ def create_app(test_config=None):
         people = {person.id: person for person in people}
         if not people:
             return
-        contacts = _app.db.session.scalars(select(_app.Contact).where(
-            _app.Contact.person_id.in_(people))).all()
-        for row in contacts:
-            person = people[row.person_id]
-            for field_name in personal_fields:
-                setattr(row, field_name, getattr(person, field_name) or '')
-            row.supporter_key = person.identity_key
+        sync_contact_snapshots(people.values())
 
         profiles = _app.db.session.scalars(select(SupporterProfile).where(
             SupporterProfile.person_id.in_(people))).all()
@@ -1414,45 +1408,157 @@ def create_app(test_config=None):
             if normalized:
                 profile.normalized_phone = normalized
 
+    def sync_contact_snapshots(people):
+        """Update legacy case rows in one query without rewriting profiles."""
+        people = {person.id: person for person in people}
+        if not people:
+            return
+        contacts = _app.db.session.scalars(select(_app.Contact).where(
+            _app.Contact.person_id.in_(people))).all()
+        for row in contacts:
+            person = people[row.person_id]
+            for field_name in personal_fields:
+                setattr(row, field_name, getattr(person, field_name) or '')
+            row.supporter_key = person.identity_key
+
     def sync_person_snapshots(person):
         sync_people_snapshots([person])
 
+    def canonical_person_cache():
+        if (not has_request_context() or
+                not getattr(g, '_batch_person_import', False)):
+            return None
+        transaction = _app.db.session().get_transaction()
+        if transaction is None:
+            _app.db.session().begin()
+            transaction = _app.db.session().get_transaction()
+        cache = getattr(g, '_canonical_supporter_people', None)
+        if cache is None or cache[0] is not transaction:
+            cache = (transaction, {'ids': {}, 'keys': {}})
+            g._canonical_supporter_people = cache
+        return cache[1]
+
+    def preload_profile_people(profiles):
+        profiles = list(profiles)
+        by_profile = {}
+        person_ids = {profile.person_id for profile in profiles if profile.person_id}
+        identity_keys = {'phone:' + profile.normalized_phone
+                         for profile in profiles if not profile.person_id}
+        conditions = []
+        if person_ids:
+            conditions.append(SupporterPerson.id.in_(person_ids))
+        if identity_keys:
+            conditions.append(SupporterPerson.identity_key.in_(identity_keys))
+        people = _app.db.session.scalars(select(SupporterPerson).where(
+            _app.or_(*conditions))).all() if conditions else []
+        cache = canonical_person_cache()
+        people_by_id = {person.id: person for person in people}
+        people_by_key = {person.identity_key: person for person in people}
+        if cache is not None:
+            cache['ids'].update(people_by_id)
+            cache['keys'].update({key: people_by_key.get(key) for key in identity_keys})
+        for profile in profiles:
+            person = people_by_id.get(profile.person_id) if profile.person_id else (
+                people_by_key.get('phone:' + profile.normalized_phone))
+            if person is not None:
+                by_profile[profile.id] = person
+        return by_profile
+
+    def preload_canonical_people(identity_keys):
+        identity_keys = set(identity_keys)
+        cache = canonical_person_cache()
+        cached_keys = cache['keys'] if cache is not None else {}
+        missing = identity_keys - cached_keys.keys()
+        people = _app.db.session.scalars(select(SupporterPerson).where(
+            SupporterPerson.identity_key.in_(missing))).all() if missing else []
+        by_key = {person.identity_key: person for person in people}
+        if cache is not None:
+            cache['keys'].update({key: by_key.get(key) for key in missing})
+            cache['ids'].update({person.id: person for person in people})
+            return {key: cache['keys'].get(key) for key in identity_keys}
+        return {key: by_key.get(key) for key in identity_keys}
+
+    def preload_profile_case_links(family_id, identity_keys):
+        if (family_id is None or not has_request_context() or
+                not getattr(g, '_batch_person_import', False)):
+            return
+        keys = set(identity_keys)
+        if not keys:
+            return
+        transaction = _app.db.session().get_transaction()
+        if transaction is None:
+            _app.db.session().begin()
+            transaction = _app.db.session().get_transaction()
+        cached = getattr(g, '_supporter_case_link_cache', None)
+        if cached is None or cached[0] is not transaction:
+            cached = (transaction, {})
+            g._supporter_case_link_cache = cached
+        entries = cached[1]
+        missing = {key for key in keys if (family_id, key) not in entries}
+        if missing:
+            existing = set(_app.db.session.scalars(select(_app.Contact.supporter_key).where(
+                _app.Contact.family_id == family_id,
+                _app.Contact.supporter_key.in_(missing))).all())
+            entries.update({(family_id, key): key in existing for key in missing})
+
     def canonical_person_for_profile(profile):
         """Attach an import row to the same authoritative person used by cases."""
-        person = (_app.db.session.get(SupporterPerson, profile.person_id)
-                  if profile.person_id else None)
+        cache = canonical_person_cache()
+        person = (cache['ids'].get(profile.person_id) if cache and profile.person_id else None)
+        if person is None and profile.person_id:
+            person = _app.db.session.get(SupporterPerson, profile.person_id)
         if person is None:
             identity_key = 'phone:' + profile.normalized_phone
-            person = _app.db.session.scalar(select(SupporterPerson).where(
-                SupporterPerson.identity_key == identity_key))
+            person = cache['keys'].get(identity_key) if cache and identity_key in cache['keys'] else None
+            if cache is None or identity_key not in cache['keys']:
+                person = _app.db.session.scalar(select(SupporterPerson).where(
+                    SupporterPerson.identity_key == identity_key))
+                if cache is not None:
+                    cache['keys'][identity_key] = person
             if person is None:
                 person = SupporterPerson(
                     identity_key=identity_key, name=profile.name,
                     phone=profile.phone, cell_phone=profile.phone,
                     email=profile.email)
                 _app.db.session.add(person)
-                _app.db.session.flush()
+                if (has_request_context() and
+                        getattr(g, '_batch_book_import', False)):
+                    _app.db.session.flush([person])
+                else:
+                    _app.db.session.flush()
+                if cache is not None:
+                    cache['ids'][person.id] = person
+                    cache['keys'][identity_key] = person
             else:
                 if not person.email:
                     person.email = profile.email
                 if not person.cell_phone:
                     person.cell_phone = profile.phone
             profile.person_id = person.id
+        if cache is not None:
+            cache['ids'][person.id] = person
+            cache['keys'][person.identity_key] = person
         return person
 
-    def canonicalize_unlinked_profiles():
+    def canonicalize_unlinked_profiles(profiles=None):
         """Make imported profiles selectable using a fixed number of queries."""
-        profiles = _app.db.session.scalars(select(SupporterProfile).where(
-            SupporterProfile.person_id.is_(None))).all()
+        profiles = (list(profiles) if profiles is not None else
+                    _app.db.session.scalars(select(SupporterProfile).where(
+                        SupporterProfile.person_id.is_(None))).all())
+        profiles = [profile for profile in profiles if profile.person_id is None]
         if not profiles:
-            return
+            return set()
         identity_keys = ['phone:' + row.normalized_phone for row in profiles]
         people_by_key = {
             row.identity_key: row for row in _app.db.session.scalars(select(
                 SupporterPerson).where(
                     SupporterPerson.identity_key.in_(identity_keys))).all()
         }
+        cache = canonical_person_cache()
+        if cache is not None:
+            cache['keys'].update(people_by_key)
         profile_people = []
+        created_people = []
         for profile, identity_key in zip(profiles, identity_keys):
             person = people_by_key.get(identity_key)
             if person is None:
@@ -1462,6 +1568,7 @@ def create_app(test_config=None):
                     email=profile.email)
                 _app.db.session.add(person)
                 people_by_key[identity_key] = person
+                created_people.append(person)
             else:
                 if not person.email:
                     person.email = profile.email
@@ -1471,6 +1578,10 @@ def create_app(test_config=None):
         _app.db.session.flush()
         for profile, person in profile_people:
             profile.person_id = person.id
+            if cache is not None:
+                cache['ids'][person.id] = person
+                cache['keys'][person.identity_key] = person
+        return {person.id for person in created_people}
 
     def attach_supporter_person(contact, source=None):
         """Attach a case connection to exactly one canonical person."""
@@ -1587,7 +1698,13 @@ def create_app(test_config=None):
             SupporterPerson.id != person.id))
         if collision:
             raise ValueError('That phone number already belongs to another person.')
+        old_key = person.identity_key
         person.identity_key = identity_key
+        cache = canonical_person_cache()
+        if cache is not None:
+            if cache['keys'].get(old_key) is person:
+                cache['keys'].pop(old_key, None)
+            cache['keys'][identity_key] = person
         for field_name in personal_fields:
             if field_name in values:
                 setattr(person, field_name, values[field_name] or '')
@@ -1600,6 +1717,9 @@ def create_app(test_config=None):
         'sync': sync_person_snapshots,
         'sync_many': sync_people_snapshots,
         'profile_person': canonical_person_for_profile,
+        'preload_profiles': preload_profile_people,
+        'preload_people': preload_canonical_people,
+        'preload_case_links': preload_profile_case_links,
     }
 
     def ensure_extension_schema():
@@ -1746,7 +1866,8 @@ def create_app(test_config=None):
 
     def supporter_directory_families():
         user = require_supporter_directory_access()
-        statement = select(_app.Family).order_by(_app.Family.name)
+        statement = select(_app.Family).options(load_only(
+            _app.Family.id, _app.Family.name)).order_by(_app.Family.name)
         if user is not None and user.role != 'organization_admin':
             statement = statement.where(_app.Family.id.in_(select(
                 _app.FamilyAssignment.family_id).where(
@@ -1796,6 +1917,7 @@ def create_app(test_config=None):
         if import_result and import_result.get('family_id') is not None and import_result['family_id'] not in {f.id for f in families}:
             import_result = None
         if _app.request.method == 'POST':
+            g._batch_person_import = True
             family_id = _app.request.form.get('family_id', type=int)
             if _app.request.form.get('family_id') and family_id not in {f.id for f in families}:
                 _app.abort(403, 'Choose a case you can access.')
@@ -1812,11 +1934,13 @@ def create_app(test_config=None):
             created = updated = duplicates = skipped = 0
             book_rows = [row for row in rows if row['book_id']]
             rows = [row for row in rows if not row['book_id']]
+            g._batch_book_import = True
             book_result = import_book_rows(
                 app, SupporterProfile, book_rows,
                 _app.request.form.get('book_source', '').strip() or 'directory',
                 family_id, import_relationship, connect_profile_to_case,
                 normalized_profile_phone, canonical_person_for_profile)
+            g._batch_book_import = False
             seen = set()
             errors = []
             candidates = []
@@ -1869,22 +1993,29 @@ def create_app(test_config=None):
                     created += 1
                 imported_profiles.append((profile, row))
             _app.db.session.flush()
-            canonicalize_unlinked_profiles()
+            created_people = canonicalize_unlinked_profiles(
+                [profile for profile, _ in imported_profiles])
             from person_names import save_names
-            from person_addresses import save_new_supporter_addresses
+            from person_names import preload_names
+            from person_addresses import preload_addresses, save_new_supporter_addresses
+            from book_directory import preload_family_connections
             imported_people = {p.id: p for p in _app.db.session.scalars(select(SupporterPerson).where(
                 SupporterPerson.id.in_([profile.person_id for profile, _ in imported_profiles]))).all()}
-            imported_contacts = {}
-            for contact in _app.db.session.scalars(select(_app.Contact).where(
-                    _app.Contact.person_id.in_(imported_people))).all():
-                imported_contacts.setdefault(contact.person_id, []).append(contact)
+            imported_ids = set(imported_people)
+            preload_names({('person', person_id, 'name') for person_id in imported_ids})
+            preload_addresses({('person', person_id) for person_id in imported_ids})
+            preload_family_connections(imported_ids)
+            app.extensions['supporter_identity']['preload_case_links'](
+                family_id, (person.identity_key for person in imported_people.values()))
             linked = 0
             for profile, row in imported_profiles:
                 person = imported_people[profile.person_id]
                 save_family_names(person.id, row)
                 if not person.notes and row['notes']:
                     person.notes = row['notes'][:5000]
-                save_names('person', person.id, row['english_name'], row['yiddish_name'], fill_only=True, legacy=person.name)
+                save_names('person', person.id, row['english_name'], row['yiddish_name'],
+                           fill_only=True, legacy=person.name,
+                           known_missing=person.id in created_people)
                 # Fill missing address components without replacing established data.
                 address_row = dict(row)
                 from person_addresses import address_details, home_values
@@ -1898,11 +2029,10 @@ def create_app(test_config=None):
                 target = _app.Contact(person_id=person.id)
                 save_new_supporter_addresses(
                     app, target, address_row, person=person, details=details, sync=False)
-                for contact in imported_contacts.get(person.id, []):
-                    for field in personal_fields:
-                        setattr(contact, field, getattr(person, field) or '')
                 if family_id is not None:
                     linked += int(connect_profile_to_case(profile, family_id, import_relationship) is not None)
+            if imported_people:
+                sync_contact_snapshots(imported_people.values())
             if without_phones:
                 from people_import import import_without_phones
                 actor = require_supporter_directory_access()
@@ -1920,6 +2050,12 @@ def create_app(test_config=None):
             skipped += book_result['skipped']
             linked += book_result['linked']
             errors.extend(book_result['errors'])
+            create_import_followups()
+            _app.db.session.flush()
+            g._batch_person_import = False
+            g._person_name_preload_enabled = False
+            g._person_address_preload_enabled = False
+            g._person_family_preload_enabled = False
             _app.db.session.commit()
             import_result = dict(linked=linked, created=created, updated=updated, duplicates=duplicates,
                                  skipped=skipped, errors=errors[:20], family_id=family_id,
@@ -1953,7 +2089,9 @@ def create_app(test_config=None):
             statement.limit(page_size).offset((page - 1) * page_size)).all()
         book_records = {}
         if profiles:
-            for record in _app.db.session.scalars(select(PersonBookRecord).where(
+            for record in _app.db.session.scalars(select(PersonBookRecord).options(load_only(
+                    PersonBookRecord.person_id, PersonBookRecord.source,
+                    PersonBookRecord.book_id)).where(
                     PersonBookRecord.person_id.in_([p.person_id for p in profiles]))).all():
                 book_records.setdefault(record.person_id, []).append(record)
         case_counts = dict(_app.db.session.execute(select(
@@ -1970,9 +2108,18 @@ def create_app(test_config=None):
     def connect_profile_to_case(profile, family_id, relationship):
         person = canonical_person_for_profile(profile)
         key = person.identity_key
-        duplicate = _app.db.session.scalar(select(_app.Contact.id).where(
-            _app.Contact.family_id == family_id,
-            _app.Contact.supporter_key == key))
+        cached = getattr(g, '_supporter_case_link_cache', None) if has_request_context() else None
+        link_cache = (cached[1] if cached and
+                      cached[0] is _app.db.session().get_transaction() else None)
+        cache_key = family_id, key
+        if link_cache is not None and cache_key in link_cache:
+            duplicate = link_cache[cache_key]
+        else:
+            duplicate = bool(_app.db.session.scalar(select(_app.Contact.id).where(
+                _app.Contact.family_id == family_id,
+                _app.Contact.supporter_key == key)))
+            if link_cache is not None:
+                link_cache[cache_key] = duplicate
         if duplicate:
             return None
         contact = _app.Contact(
@@ -1982,9 +2129,12 @@ def create_app(test_config=None):
             monthly_cents=0, pledge_frequency='Monthly', status='To contact')
         _app.db.session.add(contact)
         _app.db.session.flush()
+        if link_cache is not None:
+            link_cache[cache_key] = True
         person = canonical_person_for_profile(profile)
         contact.person_id = person.id
-        sync_person_snapshots(person)
+        if not (has_request_context() and getattr(g, '_batch_person_import', False)):
+            sync_person_snapshots(person)
 
         # The case's current Circle of Support is backed by both Contact and
         # SupporterLink.  Imports used to create only the legacy Contact row,
@@ -2002,7 +2152,14 @@ def create_app(test_config=None):
             verified=False,
         ))
         sync_followup = app.extensions.get('sync_supporter_followup_task')
-        if sync_followup:
+        if has_request_context() and getattr(g, '_batch_person_import', False):
+            # Only newly created case contacts are queued. They cannot already
+            # have a task or callback, and this upload has one case/actor.
+            contacts = getattr(g, '_import_followup_contacts', None)
+            if contacts is None:
+                contacts = g._import_followup_contacts = []
+            contacts.append(contact)
+        elif sync_followup:
             sync_followup(contact)
         return contact
 
@@ -4661,6 +4818,25 @@ def create_app(test_config=None):
                                  if task.status == 'Completed' else None)
             task.outcome = (f'Outreach status updated to {contact.status}.'
                             if task.status == 'Completed' else '')
+
+    def create_import_followups():
+        """Create fresh import tasks without re-querying each new contact."""
+        contacts = getattr(g, '_import_followup_contacts', ())
+        if not contacts:
+            return
+        # All queued contacts are new and have the same case and link assignee.
+        # Reuse the ordinary precedence (active link owner, case owner, actor,
+        # organization owner), rather than changing who gets follow-up work.
+        assignee = automatic_task_assignee(contacts[0])
+        if assignee is not None:
+            for contact in contacts:
+                _app.db.session.add(StaffTask(
+                    family_id=contact.family_id, source_contact_id=contact.id,
+                    assigned_to=assignee.id, created_by=assignee.id,
+                    title=f'Contact supporter: {contact.name}',
+                    description='', priority='Normal'))
+                add_audit(f'Created automatic supporter follow-up: {contact.name}')
+        g._import_followup_contacts = []
 
     def sync_contact_ids(contact_ids):
         for contact_id in contact_ids:
