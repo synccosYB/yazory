@@ -190,6 +190,7 @@ def install(app, profile_model, relationship_model, access):
     @app.route('/people/<int:person_id>/edit', methods=['GET', 'POST'])
     def edit_person_hub(person_id):
         person = person_or_404(person_id)
+        profile = canonical_profile(person.id)
         if request.method == 'POST':
             english = request.form.get('name_english', '').strip()[:160]
             yiddish = request.form.get('name_yiddish', '').strip()[:160]
@@ -203,7 +204,21 @@ def install(app, profile_model, relationship_model, access):
                                  ('work_phone', 80)):
                 if hasattr(person, field):
                     setattr(person, field, request.form.get(field, '').strip()[:limit])
-            app.extensions['supporter_identity']['sync'](person)
+            if profile is not None:
+                profile.name = person.name
+                profile.phone = person.phone
+                profile.email = person.email
+                profile.home_phone = person.home_phone
+                profile.cell_phone = person.cell_phone
+                profile.home_address = person.home_address
+                profile.city = person.city
+                profile.state = person.state
+                profile.zip_code = person.zip_code
+                profile.workplace = person.workplace
+                profile.work_phone = person.work_phone
+            sync = app.extensions.get('supporter_identity', {}).get('sync')
+            if sync:
+                sync(person)
             db.session.commit()
             flash('Person updated.')
             return redirect(url_for('person_hub', person_id=person.id))
