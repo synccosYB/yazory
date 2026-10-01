@@ -40,17 +40,12 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         key = row_identity(row)
         address_key = row_name_address_key(row)
         existing_person = address_people.get(address_key) if address_key else None
-        if existing_person is not None:
-            duplicates += 1
-            warnings.append(duplicate_address_message(row['row'], existing_person))
-            continue
+        # A matching name/address is a review signal, not an automatic merge.
+        # Reuse is determined by the stable synthetic import identity below.
         if address_key and address_key in seen_addresses:
-            duplicates += 1
-            warnings.append(
-                f"Row {row['row']}: same name and home address already appeared "
-                f"on row {seen_addresses[address_key]}. Review before importing."
-            )
-            continue
+            # Do not collapse household members or repeated names automatically.
+            # Keep the rows distinct unless their stable synthetic identity is equal.
+            pass
         if key in unique:
             duplicates += 1
         else:
