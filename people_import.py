@@ -40,11 +40,14 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         key = row_identity(row)
         address_key = row_name_address_key(row)
         existing_person = address_people.get(address_key) if address_key else None
-        # A matching name/address is a review signal, not an automatic merge.
-        # Reuse is determined by the stable synthetic import identity below.
+        # Protect an existing canonical identity from an ambiguous address-only
+        # import. Within the same new spreadsheet, however, keep separate rows
+        # separate: household members and repeated names are not auto-merged.
+        if existing_person is not None:
+            duplicates += 1
+            warnings.append(duplicate_address_message(row['row'], existing_person))
+            continue
         if address_key and address_key in seen_addresses:
-            # Do not collapse household members or repeated names automatically.
-            # Keep the rows distinct unless their stable synthetic identity is equal.
             pass
         if key in unique:
             duplicates += 1
