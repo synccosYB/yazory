@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import app_original as _app
 from person_addresses import install as install_person_addresses
 from person_names import install as install_person_names
+from unified_people import install as install_unified_people
 from book_directory import (PersonBookRecord, import_book_rows, book_context,
                             family_context, save_family_names, install as install_book_directory)
 
@@ -1914,9 +1915,10 @@ def create_app(test_config=None):
     def supporter_directory():
         families = supporter_directory_families()
         if _app.request.method == 'GET':
-            # Show the most recent import result once, then clear it so an old
-            # upload cannot keep appearing on later visits/uploads.
-            import_result = _app.session.pop('people_import_result', None)
+            # Keep the latest import result available while staff refresh,
+            # search, or navigate back to the directory to review it. A later
+            # upload replaces this session value, so results do not accumulate.
+            import_result = _app.session.get('people_import_result')
         else:
             import_result = None
         if import_result and import_result.get('family_id') is not None and import_result['family_id'] not in {f.id for f in families}:
@@ -5422,6 +5424,7 @@ def create_app(test_config=None):
     install_person_names(app, dict(profile=SupporterProfile, rabbi=RabbiPerson, helper=HelperPerson,
         gabbai=ShulGabbaiDirectory, partner_contact=PartnerContact))
     install_book_directory(app, SupporterProfile, require_supporter_directory_access)
+    install_unified_people(app, SupporterProfile, PersonRelationship, require_supporter_directory_access)
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)

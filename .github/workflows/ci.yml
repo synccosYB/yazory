@@ -34,7 +34,7 @@ jobs:
       - run: npm install
       - run: npx playwright install --with-deps chromium
       - name: Start demo application
-        run: gunicorn --bind 127.0.0.1:5010 'app_entry:create_app()' > /tmp/yazory-visual-server.log 2>&1 &
+        run: gunicorn --workers 1 --bind 127.0.0.1:5010 'app_entry:create_app()' > /tmp/yazory-visual-server.log 2>&1 &
       - name: Wait for application
         run: |
           for attempt in {1..30}; do

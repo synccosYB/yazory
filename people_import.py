@@ -11,9 +11,20 @@ from duplicate_watch import (duplicate_address_message, existing_name_address_ma
 
 
 def row_identity(row):
-    # Match only an exact source record. Never merge people just by their name.
-    payload = {k: v for k, v in row.items() if k != 'row'}
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    # Address-only imports need a durable synthetic key because there is no
+    # phone number to anchor identity. Use stable person/contact fields only;
+    # source row numbers, notes, and relationship metadata must not create a
+    # second person on a later upload. Name alone is intentionally insufficient.
+    stable_fields = (
+        'name', 'english_name', 'yiddish_name', 'email',
+        'home_street', 'home_unit', 'home_city', 'home_state',
+        'home_zip_code', 'home_country', 'work_company', 'work_street',
+        'work_unit', 'work_city', 'work_state', 'work_zip_code',
+        'work_country',
+    )
+    payload = {key: (row.get(key) or '').strip() for key in stable_fields}
+    digest = hashlib.sha256(json.dumps(
+        payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return 'sheet:' + digest[:14]  # Fits the existing normalized_phone column.
 
 
@@ -29,7 +40,10 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         key = row_identity(row)
         address_key = row_name_address_key(row)
         existing_person = address_people.get(address_key) if address_key else None
-        if existing_person is not None:
+        # Protect an existing canonical identity from an ambiguous address-only
+        # import. Within the same new spreadsheet, however, keep separate rows
+        # separate: household members and repeated names are not auto-merged.
+        if existing_person is not None and family_id is None:
             duplicates += 1
             warnings.append(duplicate_address_message(row['row'], existing_person))
             continue
@@ -50,7 +64,10 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         return 0, duplicates, 0, warnings
     profiles = {p.normalized_phone: p for p in db.session.scalars(select(profile_model).where(
         profile_model.normalized_phone.in_(unique))).all()}
-    duplicates += len(profiles)
+    if family_id is None:
+        duplicates += len(profiles)
+        # Global directory imports do not silently reuse an existing identity.
+        unique = {key: row for key, row in unique.items() if key not in profiles}
     new = {key: row for key, row in unique.items() if key not in profiles}
     people = core.SupporterPerson.__table__
     if new:
@@ -90,11 +107,23 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
     for key, row in unique.items():
         save_family_names(profiles[key].person_id, row)
     if family_id is not None:
-        person_ids = [p.person_id for p in profiles.values()]
+        # Preserve every imported profile/person independently. Do not reduce
+        # this through a set before deciding which case-specific rows are
+        # missing; the canonical profile key is the import identity.
+        person_ids = [profile.person_id for profile in profiles.values()]
         existing = set(db.session.scalars(select(core.Contact.person_id).where(
-            core.Contact.family_id == family_id, core.Contact.person_id.in_(person_ids))).all())
-        targets = db.session.scalars(select(core.SupporterPerson).where(
-            core.SupporterPerson.id.in_(set(person_ids) - existing))).all()
+            core.Contact.family_id == family_id,
+            core.Contact.person_id.in_(person_ids))).all())
+        # Existing canonical people are reusable across cases, but importing
+        # them into a case they already belong to is a duplicate, not a new link.
+        duplicates += sum(1 for person_id in person_ids if person_id in existing)
+        missing_person_ids = [person_id for person_id in person_ids
+                              if person_id not in existing]
+        targets_by_id = {p.id: p for p in db.session.scalars(
+            select(core.SupporterPerson).where(
+                core.SupporterPerson.id.in_(missing_person_ids))).all()}
+        targets = [targets_by_id[person_id] for person_id in missing_person_ids
+                   if person_id in targets_by_id]
         if targets:
             snapshot = ('name', 'phone', 'email', 'home_phone', 'cell_phone',
                         'home_address', 'city', 'state', 'zip_code', 'workplace', 'work_phone', 'notes')
@@ -102,9 +131,20 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
                 **{f: getattr(p, f) for f in snapshot}, person_id=p.id,
                 family_id=family_id, relationship=relationship, supporter_key=p.identity_key,
                 monthly_cents=0, pledge_frequency='Monthly', status='To contact') for p in targets])
+            target_ids = {p.id for p in targets}
             contacts = db.session.scalars(select(core.Contact).where(
                 core.Contact.family_id == family_id,
-                core.Contact.person_id.in_([p.id for p in targets]))).all()
+                core.Contact.person_id.in_(target_ids))).all()
+            # Bulk inserts bypass the ORM identity map; explicitly verify every
+            # intended canonical person received its case row before creating
+            # workflow links.
+            contact_by_person = {c.person_id: c for c in contacts}
+            missing_ids = target_ids - set(contact_by_person)
+            if missing_ids:
+                raise RuntimeError(
+                    f'Case link insert incomplete for family {family_id}: '
+                    f'missing person ids {sorted(missing_ids)}')
+            contacts = [contact_by_person[person_id] for person_id in target_ids]
             link_model = app.extensions['workflows']['models']['SupporterLink']
             db.session.execute(link_model.__table__.insert(), [dict(
                 contact_id=c.id, side='Community', relationship=relationship,
