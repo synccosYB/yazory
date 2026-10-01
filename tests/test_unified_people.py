@@ -1,7 +1,7 @@
 import pytest
 from app_entry import create_app
-from app import db, SupporterPerson
-from unified_people import PersonFamilyLink, PersonMatchDecision, _candidates
+from app import db, SupporterPerson, PersonRelationship
+from unified_people import PersonMatchDecision, _candidates
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def test_shared_household_can_be_reviewed_but_does_not_create_tree(app):
         rows = _candidates([one, two], [], 'connection')
         assert len(rows) == 1
         assert rows[0][2] == ['same home address']
-        assert db.session.scalar(db.select(db.func.count(PersonFamilyLink.id))) == 0
+        assert db.session.scalar(db.select(db.func.count(PersonRelationship.id))) == 0
 
 
 def test_exact_name_without_second_signal_is_not_duplicate(app):
