@@ -43,7 +43,7 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         # Protect an existing canonical identity from an ambiguous address-only
         # import. Within the same new spreadsheet, however, keep separate rows
         # separate: household members and repeated names are not auto-merged.
-        if existing_person is not None:
+        if existing_person is not None and family_id is None:
             duplicates += 1
             warnings.append(duplicate_address_message(row['row'], existing_person))
             continue
@@ -59,7 +59,10 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         return 0, duplicates, 0, warnings
     profiles = {p.normalized_phone: p for p in db.session.scalars(select(profile_model).where(
         profile_model.normalized_phone.in_(unique))).all()}
-    duplicates += len(profiles)
+    if family_id is None:
+        duplicates += len(profiles)
+        # Global directory imports do not silently reuse an existing identity.
+        unique = {key: row for key, row in unique.items() if key not in profiles}
     new = {key: row for key, row in unique.items() if key not in profiles}
     people = core.SupporterPerson.__table__
     if new:
