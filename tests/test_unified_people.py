@@ -67,4 +67,3 @@ def test_rejected_pair_stays_out_of_queue(app):
         db.session.commit()
         decisions = db.session.scalars(db.select(PersonMatchDecision)).all()
         assert _candidates([one, two], decisions, 'connection') == []
- 
