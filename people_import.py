@@ -6,6 +6,8 @@ from sqlalchemy import select
 import app_original as core
 from person_names import PersonNames, detected_names
 from person_addresses import PersonAddressDetails, FIELDS
+from duplicate_watch import (duplicate_address_message, existing_name_address_map,
+                             row_name_address_key)
 
 
 def row_identity(row):
@@ -20,14 +22,32 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
     db = core.db
     unique = {}
     duplicates = 0
+    warnings = []
+    address_people = existing_name_address_map()
+    seen_addresses = {}
     for row in rows:
         key = row_identity(row)
+        address_key = row_name_address_key(row)
+        existing_person = address_people.get(address_key) if address_key else None
+        if existing_person is not None:
+            duplicates += 1
+            warnings.append(duplicate_address_message(row['row'], existing_person))
+            continue
+        if address_key and address_key in seen_addresses:
+            duplicates += 1
+            warnings.append(
+                f"Row {row['row']}: same name and home address already appeared "
+                f"on row {seen_addresses[address_key]}. Review before importing."
+            )
+            continue
         if key in unique:
             duplicates += 1
         else:
             unique[key] = row
+            if address_key:
+                seen_addresses[address_key] = row['row']
     if not unique:
-        return 0, duplicates, 0
+        return 0, duplicates, 0, warnings
     profiles = {p.normalized_phone: p for p in db.session.scalars(select(profile_model).where(
         profile_model.normalized_phone.in_(unique))).all()}
     duplicates += len(profiles)
@@ -96,4 +116,4 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
                     assigned_to=assignee.id, created_by=assignee.id,
                     title=f'Contact supporter: {c.name}', description='', priority='Normal') for c in contacts])
             linked = len(contacts)
-    return len(new), duplicates, linked
+    return len(new), duplicates, linked, warnings
