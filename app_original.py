@@ -3805,6 +3805,20 @@ def create_app(test_config=None):
             Institution.kind.in_(('Shul', 'Yeshivah')),
         ).order_by(PersonAffiliation.person_id, Institution.kind, Institution.name)).all() \
             if available_family_ids else []
+        detail_possible_parents = db.session.scalars(scoped_contacts_statement().where(
+            Contact.family_id == contact.family_id,
+            Contact.id != contact.id
+        ).order_by(Contact.name)).all()
+        descendants, pending = set(), [contact.id]
+        while pending:
+            found = db.session.scalars(select(Contact.id).where(
+                Contact.parent_contact_id.in_(pending))).all()
+            pending = [row_id for row_id in found if row_id not in descendants]
+            descendants.update(pending)
+        detail_possible_parents = [
+            row for row in detail_possible_parents
+            if row.id not in descendants and contact_visible(row)
+        ]
         return render_template('supporter_detail.html', title='Supporter history',
                                supporter=contact, linked_contacts=linked_contacts,
                                communications=communications,
@@ -3815,6 +3829,7 @@ def create_app(test_config=None):
                                available_families=available_families,
                                available_parents=available_parents,
                                available_institutions=available_institutions,
+                               possible_parents=detail_possible_parents,
                                total_received=(sum(receipt.amount_cents for receipt in receipts)
                                                + sum(donation.amount_cents for donation in abcharity_donations)))
 
