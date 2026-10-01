@@ -211,10 +211,16 @@ def install(app, profile_model, relationship_model, access):
     @app.get('/people/matching')
     def people_matching():
         access()
+        # Keep review fast as the directory grows: inspect the most recently
+        # created canonical people instead of rebuilding evidence across every
+        # historical person on each page load.
         people = db.session.scalars(select(core.SupporterPerson).order_by(
-            core.SupporterPerson.name, core.SupporterPerson.id)).all()
+            core.SupporterPerson.id.desc()).limit(1000)).all()
         preload_names({('person', person.id, 'name') for person in people})
-        decisions = db.session.scalars(select(PersonMatchDecision)).all()
+        ids = [person.id for person in people]
+        decisions = db.session.scalars(select(PersonMatchDecision).where(
+            PersonMatchDecision.person_one_id.in_(ids) |
+            PersonMatchDecision.person_two_id.in_(ids))).all()
         tab = request.args.get('tab', 'connections')
         if tab not in ('connections', 'duplicates'):
             abort(400)
