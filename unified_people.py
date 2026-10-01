@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import app_original as core
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import UniqueConstraint, select
-from person_names import PersonNameOwner, names_row, resolve_name_owner, save_names
+from person_names import PersonNameOwner, names_row, preload_names, resolve_name_owner, save_names
 from app import PersonRelationship
 
 db = core.db
@@ -213,6 +213,7 @@ def install(app, profile_model, relationship_model, access):
         access()
         people = db.session.scalars(select(core.SupporterPerson).order_by(
             core.SupporterPerson.name, core.SupporterPerson.id)).all()
+        preload_names({('person', person.id, 'name') for person in people})
         decisions = db.session.scalars(select(PersonMatchDecision)).all()
         tab = request.args.get('tab', 'connections')
         if tab not in ('connections', 'duplicates'):
