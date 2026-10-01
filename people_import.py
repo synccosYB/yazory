@@ -11,9 +11,20 @@ from duplicate_watch import (duplicate_address_message, existing_name_address_ma
 
 
 def row_identity(row):
-    # Match only an exact source record. Never merge people just by their name.
-    payload = {k: v for k, v in row.items() if k != 'row'}
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    # Address-only imports need a durable synthetic key because there is no
+    # phone number to anchor identity. Use stable person/contact fields only;
+    # source row numbers, notes, and relationship metadata must not create a
+    # second person on a later upload. Name alone is intentionally insufficient.
+    stable_fields = (
+        'name', 'english_name', 'yiddish_name', 'email',
+        'home_street', 'home_unit', 'home_city', 'home_state',
+        'home_zip_code', 'home_country', 'work_company', 'work_street',
+        'work_unit', 'work_city', 'work_state', 'work_zip_code',
+        'work_country',
+    )
+    payload = {key: (row.get(key) or '').strip() for key in stable_fields}
+    digest = hashlib.sha256(json.dumps(
+        payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return 'sheet:' + digest[:14]  # Fits the existing normalized_phone column.
 
 
