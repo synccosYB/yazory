@@ -7,7 +7,6 @@ import app_original as core
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import UniqueConstraint, select
 from person_names import PersonNameOwner, names_row, preload_names, resolve_name_owner, save_names
-from app import PersonRelationship
 
 db = core.db
 
@@ -130,6 +129,7 @@ def _candidates(people, decisions, kind):
 
 
 def install(app, profile_model, relationship_model, access):
+    PersonRelationship = relationship_model
     def current_user_id():
         return core.session.get('user_id')
 
