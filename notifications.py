@@ -144,6 +144,8 @@ def install(app):
         if any(word in lowered for word in ('message', 'email', 'replied')):
             return url_for('communications', _anchor='general-inbox')
         if any(word in lowered for word in ('receipt', 'donation', 'pledge', 'stripe')):
+            if row.family_id:
+                return url_for('family_detail', family_id=row.family_id)
             return url_for('collections')
         if 'expense' in lowered:
             return url_for('expenses')

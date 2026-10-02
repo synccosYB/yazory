@@ -29,6 +29,7 @@
       <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Cancel') }}</a>
     </div>
   </form></details>
+{% include '_person_verification.html' %}
 <div id="addresses"><h3>{{ _('Home & work addresses') }}</h3>
 <p><bdi dir="ltr">{{ address_home.get('street') or '—' }} {{ address_home.get('unit','') }}{% if address_home.get('city') %}, {{ address_home.get('city') }}{% endif %} {{ address_home.get('state','') }} {{ address_home.get('zip_code','') }}</bdi></p>
 {% if address_work.get('company') or address_work.get('street') %}<p>{{ _('Work address') }}: <bdi dir="ltr">{{ address_work.get('company','') }} {{ address_work.get('street','') }} {{ address_work.get('city','') }} {{ address_work.get('state','') }} {{ address_work.get('zip_code','') }}</bdi></p>{% endif %}

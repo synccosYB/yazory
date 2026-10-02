@@ -1,0 +1,16 @@
+<details class="person-verification" data-person-verification="{{ person.id }}" data-url="{{ url_for('get_person_verification',person_id=person.id) }}" data-csrf="{{ csrf }}" data-error="{{ _('Could not save verification. Reopen to refresh and try again.') }}" data-expired="{{ _('Previous value') }}" data-saved="{{ _('Verification saved') }}">
+<summary>{{ _('Field verification') }}</summary>
+<p class="field-hint">{{ _('Verification applies to the saved value. Save edits before verifying.') }}</p>
+<div class="verification-grid">
+{% for field,label in verification_fields.items() %}<div data-verification-field="{{ field }}">
+<strong data-field-label>{{ _(label) }}</strong> <span data-status>{{ _('Unverified') }}</span>
+<small data-review></small><small data-value dir="auto"></small>
+{% if not current_staff or current_staff.role == 'organization_admin' %}<details><summary>{{ _('Review') }}</summary>
+<label>{{ _('Status') }}<select data-choice><option value="unverified">{{ _('Unverified') }}</option><option value="verified">{{ _('Verified') }}</option><option value="incorrect">{{ _('Incorrect') }}</option></select></label>
+<label>{{ _('How was this checked?') }}<input data-reason maxlength="1000" dir="auto"></label>
+<button type="button" class="small" data-save>{{ _('Save') }}</button></details>{% endif %}
+</div>{% endfor %}</div><p data-result role="status"></p><details><summary>{{ _('Verification history') }}</summary><div data-history></div></details>
+<span hidden data-status-label="verified">{{ _('Verified') }}</span><span hidden data-status-label="unverified">{{ _('Unverified') }}</span><span hidden data-status-label="incorrect">{{ _('Incorrect') }}</span>
+</details>
+<script src="{{ url_for('static',filename='person-verification.js') }}" defer></script>
+<style>.verification-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.6rem}.person-verification{margin-block:.6rem}.verification-grid>div{border-block-end:1px solid #dce3eb;padding:.4rem}.verification-grid small{display:block;overflow-wrap:anywhere}.verification-grid label{display:block}.verification-grid [data-status]{font-size:.85em;color:#173e66}</style>

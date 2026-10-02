@@ -8,6 +8,7 @@
 <section class="card padded"><h2>{{ names.yiddish_name if session.get('lang') in ('yi','he') and names.yiddish_name else names.english_name or names.yiddish_name or person.name }}</h2>
 <label><input type="radio" name="target_id" value="{{ person.id }}" required {{ 'checked' if loop.first }}> {{ _('Keep this Person ID') }}: {{ person_number('person',person) }}</label>
 <table><tbody>{% for field,label in [('name','Name'),('home_phone','Home phone'),('cell_phone','Cell phone'),('phone','Phone'),('email','Email'),('home_address','Home address'),('city','City'),('state','State'),('zip_code','Zip code'),('notes','Notes')] %}<tr><th>{{ _(label) }}</th><td>{{ person|attr(field) or '—' }}</td></tr>{% endfor %}</tbody></table>
+{% include '_person_verification.html' %}
 {% for book in snapshots[person.id].get('person_book_record',[]) %}<p>{{ _('Book source') }}: {{ book.source }} · {{ _('Book ID') }}: {{ book.book_id }}</p>{% endfor %}
 <details><summary>{{ _('Linked records') }}</summary>{% for table,label in [('contact','Cases'),('person_relationship','Family connections'),('person_book_record','Optional book reference'),('person_names','Names'),('person_address_details','Addresses'),('person_name_owner','Roles')] %}<p>{{ _(label) }}: {{ snapshots[person.id].get(table,[])|length }}</p>{% endfor %}</details>
 </section>{% endfor %}</div>
