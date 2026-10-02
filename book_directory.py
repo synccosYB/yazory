@@ -356,17 +356,41 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
         save_names('person', person.id, row['english_name'] or en,
                    row['yiddish_name'] or yi, fill_only=True, legacy=person.name,
                    known_missing=person.id not in existing_person_ids)
-        # Same address owner as every other import and case profile.
+        # Imported book data may supply an address when this row creates a new
+        # canonical person.  Never silently backfill a blank address on an
+        # already-existing person: a phone/book match establishes identity, but
+        # the imported household address still needs human review before it
+        # becomes authoritative person data.
         from person_addresses import address_details, home_values
         details = (None if person.id not in existing_person_ids else
                    address_details('person', person.id))
         home = home_values(person, details)
         work = dict(details.work or {}) if details else {}
         address_row = dict(row)
-        for prefix, current in (('home', home), ('work', work)):
-            for field in ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'):
-                if current.get(field) or (prefix == 'work' and field == 'company' and person.workplace):
+        if person.id in existing_person_ids:
+            submitted_address = any(row.get(prefix + '_' + field, '').strip()
+                                    for prefix in ('home', 'work')
+                                    for field in ('street', 'unit', 'city', 'state',
+                                                  'zip_code', 'country', 'company'))
+            if submitted_address:
+                existing_address = any(home.get(field) for field in
+                                       ('street', 'unit', 'city', 'state', 'zip_code', 'country'))
+                existing_address = existing_address or any(work.get(field) for field in
+                    ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'))
+                result['errors'].append(
+                    f"Row {row['row']}, book ID {ident}: imported address not applied "
+                    f"to existing person #{person.id}; review the address manually."
+                    if not existing_address else
+                    f"Row {row['row']}, book ID {ident}: existing address kept; "
+                    f"review any imported address difference manually.")
+            for prefix in ('home', 'work'):
+                for field in ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'):
                     address_row.pop(prefix + '_' + field, None)
+        else:
+            for prefix, current in (('home', home), ('work', work)):
+                for field in ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'):
+                    if current.get(field) or (prefix == 'work' and field == 'company' and person.workplace):
+                        address_row.pop(prefix + '_' + field, None)
         target = core.Contact(person_id=person.id)
         save_new_supporter_addresses(
             app, target, address_row, person=person, details=details, sync=False)
