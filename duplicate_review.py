@@ -367,9 +367,12 @@ def install(app, profile_model, access):
                 # this merge): return to the queue and let its GET do the scan.
                 return redirect(url_for('people_matching',
                                         tab='duplicates', queue='ready'))
+        next_one_id = request.args.get('next_one_id', type=int)
+        next_two_id = request.args.get('next_two_id', type=int)
         return render_template('person_merge.html', title='Review merge',
                                one=one, two=two, error=error,
-                               snapshots=snapshots, version=version), 409 if error else 200
+                               snapshots=snapshots, version=version,
+                               next_one_id=next_one_id, next_two_id=next_two_id), 409 if error else 200
 
     @app.get('/people/merge-history')
     def person_merge_history():
