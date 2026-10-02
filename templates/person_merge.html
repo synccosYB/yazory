@@ -14,23 +14,20 @@
 <label>{{ _('Yiddish / Hebrew name') }}<input type="text" name="name_yiddish_{{ person.id }}" maxlength="160" value="{{ names.yiddish_name }}"></label>
 </div>
 <table class="person-merge-table"><tbody>{% for field,label in [('home_phone','Home phone'),('cell_phone','Cell phone'),('phone','Phone'),('email','Email'),('home_address','Home address'),('city','City'),('state','State'),('zip_code','Zip code'),('notes','Notes')] %}<tr><th scope="row">{{ _(label) }}</th><td>{% set value=person|attr(field) %}<bdi dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','zip_code') else 'auto' }}">{{ value|phone if value and field in ('home_phone','cell_phone','phone') else value or '—' }}</bdi></td></tr>{% endfor %}</tbody></table>
-<details class="person-source-evidence" open><summary>{{ _('Source / unapplied review information') }}</summary>
+<section class="person-source-evidence"><h3>{{ _('Source / unapplied review information') }}</h3>
 {% for book in books %}
-<table class="person-merge-table person-source-table"><tbody>
-<tr><th>{{ _('Book source') }}</th><td><bdi dir="auto">{{ book.source or '—' }}</bdi></td></tr>
-<tr><th>{{ _('Directory Book ID') }}</th><td><bdi dir="ltr">{{ book.book_id or '—' }}</bdi></td></tr>
-<tr><th>{{ _('Source reference') }}</th><td><bdi dir="auto">{{ book.source_ref or '—' }}</bdi></td></tr>
-<tr><th>{{ _('Source first name') }}</th><td><bdi dir="auto">{{ book.first_name or '—' }}</bdi></td></tr>
-<tr><th>{{ _('Source last name') }}</th><td><bdi dir="auto">{{ book.last_name or '—' }}</bdi></td></tr>
-<tr><th>{{ _('Family detail reading') }}</th><td><bdi dir="auto">{{ book.relationship_text or '—' }}</bdi></td></tr>
-<tr><th>{{ _('Import notes') }}</th><td><bdi dir="auto">{{ book.notes or '—' }}</bdi></td></tr>
-<tr><th>{{ _('Needs review') }}</th><td><bdi dir="auto">{{ book.review or '—' }}</bdi></td></tr>
-</tbody></table>
+<div class="person-source-grid">
+<div><strong>{{ _('Book source') }}</strong><span><bdi dir="auto">{{ book.source or '—' }}</bdi></span></div>
+<div><strong>{{ _('Directory Book ID') }}</strong><span><bdi dir="ltr">{{ book.book_id or '—' }}</bdi></span></div>
+<div><strong>{{ _('Source reference') }}</strong><span><bdi dir="auto">{{ book.source_ref or '—' }}</bdi></span></div>
+<div><strong>{{ _('Source first name') }}</strong><span><bdi dir="auto">{{ book.first_name or '—' }}</bdi></span></div>
+<div><strong>{{ _('Source last name') }}</strong><span><bdi dir="auto">{{ book.last_name or '—' }}</bdi></span></div>
+<div><strong>{{ _('Family detail reading') }}</strong><span><bdi dir="auto">{{ book.relationship_text or '—' }}</bdi></span></div>
+<div><strong>{{ _('Import notes') }}</strong><span><bdi dir="auto">{{ book.notes or '—' }}</bdi></span></div>
+<div><strong>{{ _('Needs review') }}</strong><span><bdi dir="auto">{{ book.review or '—' }}</bdi></span></div>
+</div>
 {% else %}<p>{{ _('No preserved book-source information for this record.') }}</p>{% endfor %}
-</details>
-<details class="person-merge-verification"><summary>{{ _('Field verification') }}</summary>
-<div class="person-merge-verification-body">{% include '_person_verification.html' %}</div>
-</details>
+</section>
 <details><summary>{{ _('Linked records') }}</summary>{% for table,label in [('contact','Cases'),('person_relationship','Family connections'),('person_book_record','Optional book reference'),('person_names','Names'),('person_address_details','Addresses'),('person_name_owner','Roles')] %}<p>{{ _(label) }}: {{ snapshots[person.id].get(table,[])|length }}</p>{% endfor %}</details>
 </section>{% endfor %}</div></div>
 <label class="person-merge-choice"><input type="checkbox" name="confirm" value="yes" required> {{ _('I reviewed both records and confirm my selection.') }}</label>
