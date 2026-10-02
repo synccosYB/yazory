@@ -69,3 +69,23 @@
 @media (max-width: 650px) {
   .person-merge-name-edit { grid-template-columns: 1fr; }
 }
+
+.person-merge-verification {
+  margin-top: .75rem;
+  border-top: 1px solid var(--border, #ddd);
+  padding-top: .65rem;
+}
+.person-merge-verification > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.person-merge-verification-body > .person-verification {
+  border: 0;
+  margin-top: .5rem;
+}
+.person-merge-verification-body > .person-verification > summary {
+  display: none;
+}
+.person-merge-verification-body > .person-verification:not([open]) > :not(summary) {
+  display: block;
+}
