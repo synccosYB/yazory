@@ -954,3 +954,24 @@ html[dir="ltr"] .people-match-actions{
   direction:ltr;
   text-align:left;
 }
+
+
+/* Keep Latin contact data readable while the card itself stays RTL. */
+.people-match-address bdi{
+  display:inline-block;
+  direction:ltr;
+  unicode-bidi:isolate;
+  text-align:left;
+}
+html[dir="rtl"] .people-match-reasons{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  align-items:baseline;
+  gap:.25rem;
+}
+html[dir="rtl"] .people-match-reasons strong,
+html[dir="rtl"] .people-match-reasons span{
+  direction:rtl;
+  unicode-bidi:isolate;
+}
