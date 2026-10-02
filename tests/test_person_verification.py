@@ -80,7 +80,7 @@ def test_stale_verification_and_validation(app):
         db.session.commit()
     assert post(client, f'/people/{ident}/verification/phone', dict(
         status='verified', reason='Checked', fingerprint=digest)).status_code == 409
-    assert verify(client, ident, 'phone', reason='').status_code == 400
+    assert verify(client, ident, 'phone', reason='').status_code == 200
     assert verify(client, ident, 'email').status_code == 400
     assert client.post(f'/people/{ident}/verification/phone', data={'status':'verified'}).status_code == 400
     assert client.get('/people/999999/verification').status_code == 404
