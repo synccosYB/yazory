@@ -1,4 +1,5 @@
 import pytest
+from werkzeug.datastructures import MultiDict
 from tests.test_unified_people import app, person
 from app import db, SupporterPerson, SupporterProfile, Contact, Receipt, SupporterCommunication, StaffUser
 from person_ids import PersonNumber
@@ -221,9 +222,9 @@ def test_review_can_keep_both_people_as_distinct(app):
     version=re.search(rb'name="version" value="([a-f0-9]+)"',page.data).group(1).decode()
     with client.session_transaction() as session:
         token=session['csrf']
-    response=client.post(url,data=[
+    response=client.post(url,data=MultiDict([
         ('csrf',token),('keep_id',str(a)),('keep_id',str(b)),
-        ('confirm','yes'),('version',version)])
+        ('confirm','yes'),('version',version)]))
     assert response.status_code == 302
     with app.app_context():
         assert db.session.get(SupporterPerson,a) is not None
