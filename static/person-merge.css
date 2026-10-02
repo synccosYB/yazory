@@ -61,13 +61,30 @@
 
 
 .person-source-evidence {
-  margin-top: 1rem;
-  padding-top: .75rem;
+  margin-top: .65rem;
   border-top: 1px solid var(--border, #ddd);
 }
-.person-source-evidence h3 {
-  margin: 0 0 .75rem;
-  font-size: 1rem;
+.person-source-evidence > summary {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-height: 2.25rem;
+  padding: .45rem 0;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.person-source-evidence > summary::marker {
+  font-size: .8rem;
+}
+.person-source-summary-meta {
+  margin-inline-start: auto;
+  font-size: .85rem;
+  font-weight: 400;
+  opacity: .72;
+  text-align: end;
+}
+.person-source-evidence-body {
+  padding: .2rem 0 .55rem;
 }
 .person-source-grid {
   display: grid;
@@ -90,4 +107,16 @@
 .person-source-grid bdi { unicode-bidi: isolate; }
 @media (max-width: 650px) {
   .person-source-grid > div { grid-template-columns: 1fr; gap: .15rem; }
+}
+
+.person-merge-card > details:not(.person-source-evidence) {
+  margin-top: .35rem;
+}
+.person-merge-card > details:not(.person-source-evidence) > summary {
+  cursor: pointer;
+  padding: .35rem 0;
+}
+@media (max-width: 650px) {
+  .person-source-evidence > summary { align-items: flex-start; flex-wrap: wrap; }
+  .person-source-summary-meta { width: 100%; margin-inline-start: 1.25rem; text-align: start; }
 }
