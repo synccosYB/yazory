@@ -211,6 +211,46 @@ def test_conflict_rolls_back_partial_field_updates(app):
         assert db.session.scalar(db.select(db.func.count(PersonMerge.id))) == 0
 
 
+def test_review_has_one_explicit_required_decision(app):
+    with app.app_context():
+        one, two = person('One','test:choice-one'), person('Two','test:choice-two')
+        profile(one,'rid:choice-one'); profile(two,'rid:choice-two')
+        db.session.commit()
+        a,b=one.id,two.id
+    page=app.test_client().get(f'/people/duplicates/{a}/{b}')
+    assert page.status_code == 200
+    assert 'name="decision" value="both" required' in page.text
+    assert f'name="decision" value="{a}"' in page.text
+    assert f'name="decision" value="{b}"' in page.text
+    assert 'name="confirm"' not in page.text
+    assert 'name="keep_id"' not in page.text
+
+
+def test_explicit_keep_both_decision_marks_people_distinct(app):
+    import re
+    with app.app_context():
+        one, two = person('One','test:explicit-one','8455553111'), person('Two','test:explicit-two','8455553111')
+        profile(one,'rid:explicit-one'); profile(two,'rid:explicit-two')
+        db.session.commit()
+        a,b=one.id,two.id
+    client=app.test_client()
+    url=f'/people/duplicates/{a}/{b}'
+    page=client.get(url)
+    version=re.search(rb'name="version" value="([a-f0-9]+)"',page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token=session['csrf']
+    response=client.post(url,data=dict(csrf=token,version=version,decision='both'))
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(SupporterPerson,a) is not None
+        assert db.session.get(SupporterPerson,b) is not None
+        decision=db.session.scalar(db.select(PersonMatchDecision).where(
+            PersonMatchDecision.person_one_id == min(a,b),
+            PersonMatchDecision.person_two_id == max(a,b),
+            PersonMatchDecision.kind == 'duplicate'))
+        assert decision.decision == 'not_duplicate'
+
+
 def test_review_can_keep_both_people_as_distinct(app):
     import re
     with app.app_context():
