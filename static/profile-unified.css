@@ -152,8 +152,27 @@ body[data-endpoint="family_detail"] .profile-extra-phones a {
   padding: 5px 0;
 }
 
+body[data-endpoint="family_detail"] .profile-record-metrics {
+  align-self: center;
+}
+
 body[data-endpoint="family_detail"] .profile-record-metrics > div {
-  min-height: 43px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+body[data-endpoint="family_detail"] .profile-record-metrics small {
+  margin: 0;
+  white-space: nowrap;
+}
+
+body[data-endpoint="family_detail"] .profile-record-metrics .badge {
+  white-space: nowrap;
 }
 
 body[data-endpoint="family_detail"] .case-denial-details {
