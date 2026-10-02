@@ -23,7 +23,7 @@
         <a href="{{ url_for('family_coordination',family_id=family.id) }}">{{ _('Partner coordination') }}</a>
         {% if is_org_admin %}<a href="{{ url_for('case_sponsorship_new',family_id=family.id) }}">{{ _('Case sponsorship') }}</a>{% endif %}
         <a href="{{ url_for('family_expense_report',family_id=family.id) }}">{{ _('Monthly expense report') }}</a>
-        {% if workflow_active %}<a href="{{ url_for('operations',family_id=family.id) }}">{{ _('Case workflows') }}</a><a href="{{ url_for('case_ledger',family_id=family.id) }}">{{ _('Case ledger') }}</a><a href="{{ url_for('supporter_network',family_id=family.id) }}">{{ _('Supporter tree') }}</a>{% endif %}<a href="{{ url_for('charity_donations',family_id=family.id) }}">{{ _('ABCharity donations') }}</a>
+        {% if workflow_active %}<a href="{{ url_for('operations',family_id=family.id) }}">{{ _('Case workflows') }}</a><a href="{{ url_for('case_ledger',family_id=family.id) }}">{{ _('Case ledger') }}</a>{% endif %}<a href="{{ url_for('charity_donations',family_id=family.id) }}">{{ _('ABCharity donations') }}</a>
       </div></details>
       {% if is_org_admin and not workflow_enforced %}<form method="post" action="/families/{{ family.id }}/status" class="profile-status-control">{{ token(csrf) }}<label for="case-status">{{ _("Move case to") }}</label><select id="case-status" name="status" onchange="this.form.querySelector('[name=denial_reason]').required=this.value==='Declined'">{% for status in family_transitions[family.status] %}<option value="{{ status }}">{{ _(status) }}</option>{% endfor %}</select><label>{{ _('Reason for denial') }}<textarea name="denial_reason" rows="2" maxlength="5000"></textarea></label><button>{{ _("Update status") }}</button></form>{% endif %}
     </div>
@@ -48,7 +48,8 @@
 {% include '_children.html' %}
 {% include '_household_budget.html' %}
 <section class="card padded" id="circle-of-support">
-  <div class="section-heading supporter-summary-heading"><div><h2>{{ _( "Circle of support" ) }}</h2><p>{{ _( "Track relatives, friends, and recurring or one-time commitments. A supporter connected to multiple cases is charged only once." ) }}</p></div><div><strong>{{ family.contacts|length }}</strong> {{ _( "Supporters" ) }} <a class="button small" href="{{ url_for('case_helper_roster', family_id=family.id) }}">{{ _('Work helpers') }}</a></div></div>
+  <div class="section-heading supporter-summary-heading"><div><h2>{{ _( "Circle of support" ) }}</h2><p>{{ _( "Track relatives, friends, and recurring or one-time commitments. A supporter connected to multiple cases is charged only once." ) }}</p></div><div><strong>{{ family.contacts|length }}</strong> {{ _( "Supporters" ) }}</div></div>
+  <nav class="list-switcher no-print" aria-label="{{ _('Supporter views') }}"><a class="button" href="#circle-of-support" aria-current="page">{{ _('List') }}</a>{% if workflow_active %}<a class="button secondary" href="{{ url_for('supporter_network', family_id=family.id) }}">{{ _('Tree') }}</a>{% endif %}<a class="button secondary" href="{{ url_for('case_helper_roster', family_id=family.id) }}">{{ _('Work') }}</a></nav>
   <div class="table-wrap"><table class="family-supporters-table"><thead><tr>
     <th scope="col">{{ _( "Supporter" ) }}</th><th scope="col">{{ _( "Relationship" ) }}</th><th scope="col">{{ _( "Phone" ) }}</th><th scope="col">{{ _( "Cell phone" ) }}</th><th scope="col">{{ _( "Donation & outreach" ) }}</th><th scope="col">{{ _( "Actions" ) }}</th>
   </tr></thead><tbody>{% for c, is_nested in contact_rows %}<tr class="{{ 'nested-supporter-row' if is_nested }}">
