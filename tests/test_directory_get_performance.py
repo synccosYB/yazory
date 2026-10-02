@@ -106,12 +106,13 @@ def test_directory_get_preserves_import_summary(app):
     assert '<strong>42</strong>' in page and '<strong>5</strong>' in page
 
 
-def test_reused_family_options_preserve_escaping_and_each_rows_controls(app):
+def test_directory_moves_connection_controls_to_person_workspace(app):
     seed(app, 0, 2)
     with app.app_context():
         db.session.get(Family, 1).name = 'Case <script>unsafe</script> & name'
         db.session.commit()
     page, _ = get_with_queries(app, app.test_client())
     assert 'Case <script>unsafe</script>' not in page
-    assert page.count('Case &lt;script&gt;unsafe&lt;/script&gt; &amp; name') == 3
-    assert page.count('action="/supporter-directory/') == 2
+    assert page.count('Case &lt;script&gt;unsafe&lt;/script&gt; &amp; name') == 1
+    assert page.count('action="/supporter-directory/') == 0
+    assert page.count('href="/supporter-directory/') >= 2

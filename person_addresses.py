@@ -271,6 +271,8 @@ def install(app, extra_models, directory_access):
             back_url = core.url_for('community_directories', kind='Shul')
         name_kind = ({'spouse': 'family', 'child_spouse': 'child', 'supporter_child_spouse': 'supporter_child'}.get(owner_kind, owner_kind))
         name_field = ('spouse' if kind == 'spouse' else 'spouse_name' if kind in ('child_spouse', 'supporter_child_spouse') and owner_kind != 'person' else 'name')
+        if request.method == 'GET' and kind in ('profile', 'supporter_profile'):
+            return core.redirect(core.url_for('edit_supporter_profile', profile_id=person_id, _anchor='addresses'))
         if request.method == 'POST':
             if name_field + '_english' in request.form or name_field + '_yiddish' in request.form:
                 from person_names import save_names
@@ -317,6 +319,8 @@ def install(app, extra_models, directory_access):
                                      action=f'Updated optional addresses: {owner_kind} {person.id}'))
             db.session.commit()
             flash('Addresses saved.')
+            if kind in ('profile', 'supporter_profile'):
+                return core.redirect(core.url_for('edit_supporter_profile', profile_id=person_id, _anchor='addresses'))
             return core.redirect(core.url_for('person_addresses', kind=kind, person_id=person_id))
         display_name = (person.spouse if kind == 'spouse' else
                         person.spouse_name if kind in ('child_spouse', 'supporter_child_spouse') and owner_kind != 'person'

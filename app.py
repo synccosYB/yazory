@@ -2231,15 +2231,15 @@ def create_app(test_config=None):
         contact = connect_profile_to_case(profile, family_id, relationship)
         if contact is None:
             _app.flash('This person is already connected to that case.')
-            return _app.redirect(_app.url_for('supporter_directory'))
+            return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id, _anchor='case-connections'))
         _app.db.session.commit()
         _app.flash('Person connected to the case. You can now complete the profile.')
-        return _app.redirect(_app.url_for('edit_contact', contact_id=contact.id))
+        return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id, _anchor='case-connections'))
 
 
     @app.route('/supporter-directory/<int:profile_id>/edit', methods=['GET', 'POST'])
     def edit_supporter_profile(profile_id):
-        require_supporter_directory_access()
+        user = require_supporter_directory_access()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
         person = canonical_person_for_profile(profile)
         _app.db.session.commit()
@@ -2287,6 +2287,14 @@ def create_app(test_config=None):
                 _app.or_(_app.Contact.person_id == person.id,
                          _app.Contact.supporter_key == person.identity_key)
             ).order_by(_app.Contact.id)).all()
+            allowed_families = supporter_directory_families()
+            allowed_ids = {row.id for row in allowed_families}
+            linked_contacts = [row for row in linked_contacts if row.family_id in allowed_ids]
+            if user and user.role == 'fundraiser' and app.extensions['workflows']['enforced']():
+                link_model = app.extensions['workflows']['models']['SupporterLink']
+                assigned_ids = set(_app.db.session.scalars(select(link_model.contact_id).where(
+                    link_model.assigned_to == user.id)).all())
+                linked_contacts = [row for row in linked_contacts if row.id in assigned_ids]
             contact_ids = [row.id for row in linked_contacts]
             supporter_tasks = []
             supporter_activity = []
@@ -2303,13 +2311,18 @@ def create_app(test_config=None):
                 from supporter_portal import SupporterTicket
                 supporter_tickets = _app.db.session.scalars(select(
                     SupporterTicket).where(
-                    _app.or_(SupporterTicket.contact_id.in_(contact_ids),
-                             SupporterTicket.supporter_key == person.identity_key)
+                    SupporterTicket.contact_id.in_(contact_ids)
                 ).order_by(SupporterTicket.created_at.desc(),
                            SupporterTicket.id.desc())).all()
             available_people = _app.db.session.scalars(
                 available_statement.order_by(SupporterPerson.name)).all()
+            from person_addresses import address_details, home_values
+            details = address_details('person', person.id)
+            work = dict(details.work or {}) if details else {}
+            work['company'] = person.workplace or ''
             return dict(
+                address_home=home_values(person, details), address_work=work,
+                address_preference=details.mailing_preference if details else '',
                 profile=profile, person=person,
                 book_entries=book_context(person.id, SupporterProfile),
                 **family_context(person.id, SupporterProfile),
@@ -2322,6 +2335,7 @@ def create_app(test_config=None):
                     institution_statement.order_by(
                         _app.Institution.kind, _app.Institution.name)).all(),
                 linked_contacts=linked_contacts,
+                families=allowed_families, relationships=_app.RELATIONSHIPS,
                 supporter_tasks=supporter_tasks,
                 supporter_activity=supporter_activity,
                 supporter_tickets=supporter_tickets)
@@ -2389,7 +2403,7 @@ def create_app(test_config=None):
                     **edit_context()), 409
             _app.db.session.commit()
             _app.flash('Person updated everywhere they are connected.')
-            return _app.redirect(_app.url_for('supporter_directory'))
+            return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id))
 
         return _app.render_template(
             'supporter_profile_edit.html', title='Edit imported person',
@@ -4387,6 +4401,13 @@ def create_app(test_config=None):
         if task:
             return _app.redirect(_app.url_for('task_detail', task_id=task.id,
                                               _anchor='task-communications'))
+        if _app.request.form.get('return_to') == 'person_workspace':
+            contact = _app.db.session.get(_app.Contact, contact_id)
+            profile_id = _app.db.session.scalar(select(SupporterProfile.id).where(
+                SupporterProfile.person_id == contact.person_id))
+            if profile_id:
+                return _app.redirect(_app.url_for('edit_supporter_profile',
+                    profile_id=profile_id, _anchor='case-connections'))
         if _app.request.form.get('return_to') == 'case_roster':
             contact = _app.db.session.get(_app.Contact, contact_id)
             destination = {'family_id': contact.family_id}

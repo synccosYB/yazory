@@ -5,25 +5,6 @@
   <div class="section-heading"><h1>{{ _('Home & work addresses') }}</h1><a class="button secondary" href="{{ back_url }}">{{ _('Back to profile') }}</a></div>
   <p><strong>{{ display_name }}</strong></p>
   <p>{{ _('All address fields are optional. You can save with either address blank.') }}</p>
-  <form method="post">{{ token(csrf) }}
-    <div class="form-grid">{{ bilingual_name_fields(name_kind, person, name_field, display_name) }}
-      <fieldset><legend>{{ _('Home address') }}</legend><div class="form-grid">
-        {% for field, label, limit in [('street','Street address',300),('unit','Apartment / suite',80),('city','City',120),('state','State / province',80),('zip_code','ZIP / postal code',20),('country','Country',80)] %}
-        <label>{{ _(label) }}<input name="home_{{ field }}" value="{{ home.get(field, '') }}" maxlength="{{ limit }}" dir="auto"></label>
-        {% endfor %}
-      </div></fieldset>
-      <fieldset><legend>{{ _('Work address') }}</legend><div class="form-grid">
-        {% for field, label, limit in [('company','Company name',160),('street','Street address',300),('unit','Apartment / suite',80),('city','City',120),('state','State / province',80),('zip_code','ZIP / postal code',20),('country','Country',80)] %}
-        <label>{{ _(label) }}<input name="work_{{ field }}" value="{{ work.get(field, '') }}" maxlength="{{ limit }}" dir="auto"></label>
-        {% endfor %}
-      </div></fieldset>
-    </div>
-    <label>{{ _('Preferred mailing address') }}<select name="mailing_preference">
-      <option value="" {% if not preference %}selected{% endif %}>{{ _('Not selected') }}</option>
-      <option value="home" {% if preference == 'home' %}selected{% endif %}>{{ _('Home address') }}</option>
-      <option value="work" {% if preference == 'work' %}selected{% endif %}>{{ _('Work address') }}</option>
-    </select></label>
-    <button>{{ _('Save addresses') }}</button>
-  </form>
+  {% include '_person_address_form.html' %}
 </section>
 {% endblock %}
