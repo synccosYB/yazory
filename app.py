@@ -1178,7 +1178,26 @@ def create_app(test_config=None):
     @app.get('/supporter-directory/options')
     def supporter_directory_options():
         supporter_directory_families()
-        profiles = imported_supporter_profiles()
+        query = _app.request.args.get('q', '').strip()[:160]
+        selected_id = _app.request.args.get('selected_id', type=int)
+        statement = select(SupporterProfile).order_by(
+            SupporterProfile.name, SupporterProfile.id)
+        if query:
+            from person_names import PersonNames
+            named_people = select(PersonNames.owner_id).where(
+                PersonNames.owner_kind == 'person',
+                _app.or_(PersonNames.english_name.icontains(query, autoescape=True),
+                         PersonNames.yiddish_name.icontains(query, autoescape=True)))
+            statement = statement.where(_app.or_(
+                SupporterProfile.person_id.in_(named_people),
+                SupporterProfile.name.icontains(query, autoescape=True),
+                SupporterProfile.phone.icontains(query, autoescape=True),
+                SupporterProfile.email.icontains(query, autoescape=True)))
+        profiles = _app.db.session.scalars(statement.limit(50)).all()
+        if selected_id and all(profile.id != selected_id for profile in profiles):
+            selected = _app.db.session.get(SupporterProfile, selected_id)
+            if selected is not None:
+                profiles.append(selected)
         from person_names import PersonNames, detected_names
         names = {row.owner_id: row for row in _app.db.session.scalars(select(PersonNames).where(
             PersonNames.owner_kind == 'person', PersonNames.field == 'name',
