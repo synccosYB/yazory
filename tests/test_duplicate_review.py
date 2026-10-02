@@ -209,3 +209,27 @@ def test_old_links_follow_multiple_merges(app):
         merge_people(app,SupporterProfile,a,b)
         merge_people(app,SupporterProfile,c,a)
     assert app.test_client().get(f'/people/{b}').location.endswith(f'/people/{c}')
+
+
+def test_large_review_keeps_database_parameters_bounded(app):
+    from sqlalchemy import event
+    with app.app_context():
+        one = person('Old One', 'test:old1', '8455551199')
+        two = person('Old Two', 'test:old2', '8455551199')
+        db.session.execute(SupporterPerson.__table__.insert(), [
+            dict(identity_key=f'bounded:{n}', name=f'Unrelated {n}') for n in range(1500)])
+        db.session.commit()
+        def enforce_limit(conn,cursor,statement,parameters,context,many):
+            if not many:
+                assert len(parameters) <= 900, 'Matching query exceeds safe parameter budget'
+        event.listen(db.engine,'before_cursor_execute',enforce_limit)
+        try:
+            for language in ('en','he','yi'):
+                client=app.test_client()
+                with client.session_transaction() as session:
+                    session['lang']=language
+                response=client.get('/people/matching?tab=duplicates')
+                assert response.status_code == 200
+                assert b'Old One' in response.data and b'Old Two' in response.data
+        finally:
+            event.remove(db.engine,'before_cursor_execute',enforce_limit)
