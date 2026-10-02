@@ -304,6 +304,8 @@ def test_review_shows_book_id_source_evidence_and_edits_canonical_names(app):
     assert '4011' in page.text and '4033' in page.text
     assert 'scan.pdf, page 83, entry 19' in page.text
     assert 'First-name reading to verify: אברהם.' in page.text
+    assert 'person-source-grid' in page.text
+    assert 'data-person-verification' not in page.text
     version = re.search(rb'name="version" value="([a-f0-9]+)"', page.data).group(1).decode()
     with client.session_transaction() as session:
         token = session['csrf']
