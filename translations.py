@@ -1002,3 +1002,19 @@ CATALOG.update({
     'Tree': {'he': 'עץ', 'yi': 'בוים'},
     'Work': {'he': 'עבודה', 'yi': 'ארבעט'},
 })
+
+CATALOG.update({
+ 'Field verification': {'he': 'אימות פרטים', 'yi': 'באשטעטיגן פרטים'},
+ 'Person identity': {'he': 'זהות האדם', 'yi': 'אידענטיטעט פונעם מענטש'},
+ 'Unverified': {'he': 'טרם אומת', 'yi': 'נאך נישט באשטעטיגט'},
+ 'Verified': {'he': 'מאומת', 'yi': 'באשטעטיגט'},
+ 'Incorrect': {'he': 'שגוי', 'yi': 'נישט ריכטיג'},
+ 'How was this checked?': {'he': 'כיצד נבדק הפרט?', 'yi': 'ווי האט מען דאס נאכגעקוקט?'},
+ 'Verification saved': {'he': 'האימות נשמר', 'yi': 'די באשטעטיגונג איז אפגעהיטן'},
+ 'Verification applies to the saved value. Save edits before verifying.': {'he': 'האימות חל על הפרט השמור. שמרו שינויים לפני האימות.', 'yi': 'די באשטעטיגונג איז אויף דעם אפגעהיטענעם פרט. היט אפ די ענדערונגען פארן באשטעטיגן.'},
+ 'Could not save verification. Reopen to refresh and try again.': {'he': 'לא ניתן לשמור את האימות. פתחו מחדש ונסו שוב.', 'yi': 'מען האט נישט געקענט אפהיטן די באשטעטיגונג. עפנט נאכאמאל און פרובירט ווידער.'},
+})
+
+CATALOG.update({'Verification history': {'he': 'היסטוריית אימות', 'yi': 'פריערדיגע באשטעטיגונגען'}, 'Previous value': {'he': 'ערך קודם', 'yi': 'פריערדיגער פרט'}})
+
+CATALOG.update({'Review': {'he': 'בדיקה', 'yi': 'נאכקוקן'}, 'Save': {'he': 'שמירה', 'yi': 'אפהיטן'}})

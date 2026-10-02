@@ -5584,6 +5584,8 @@ def create_app(test_config=None):
     install_unified_people(app, SupporterProfile, PersonRelationship, require_supporter_directory_access)
     from duplicate_review import install as install_duplicate_review
     install_duplicate_review(app, SupporterProfile, require_supporter_directory_access)
+    from person_verification import install as install_person_verification
+    install_person_verification(app, require_supporter_directory_access)
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)
