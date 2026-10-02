@@ -353,19 +353,18 @@ def install(app, profile_model, access):
                     flash(translate('People merged.'))
 
             if error is None:
-                # Keep duplicate review as a queue after either decision.
-                people = db.session.scalars(select(core.SupporterPerson).order_by(
-                    core.SupporterPerson.id.desc())).all()
-                decisions = db.session.scalars(select(PersonMatchDecision)).all()
-                later = {_pair(row.person_one_id, row.person_two_id)
-                         for row in decisions
-                         if row.kind == 'duplicate' and row.decision == 'review_later'}
-                ready = [row for row in _candidates(people, decisions, 'duplicate')
-                         if _pair(row[0].id, row[1].id) not in later]
-                if ready:
-                    next_one, next_two, _ = ready[0]
+                # The matching page already computed the ordered queue. Carry its
+                # next pair through the review form so saving does not rescan every
+                # canonical person and alias before returning a response.
+                next_one_id = request.form.get('next_one_id', type=int)
+                next_two_id = request.form.get('next_two_id', type=int)
+                if (next_one_id and next_two_id and next_one_id != next_two_id
+                        and db.session.get(core.SupporterPerson, next_one_id)
+                        and db.session.get(core.SupporterPerson, next_two_id)):
                     return redirect(url_for('review_person_merge',
-                                            one_id=next_one.id, two_id=next_two.id))
+                                            one_id=next_one_id, two_id=next_two_id))
+                # End of the current page (or an overlapping pair invalidated by
+                # this merge): return to the queue and let its GET do the scan.
                 return redirect(url_for('people_matching',
                                         tab='duplicates', queue='ready'))
         return render_template('person_merge.html', title='Review merge',
