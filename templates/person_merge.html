@@ -8,7 +8,6 @@
 {% for person in (one,two) %}{% set names=person_name_values('person',person) %}{% set books=snapshots[person.id].get('person_book_record',[]) %}
 <section class="person-merge-card">
 <div class="person-merge-heading"><h2>{{ _('Yazory record') }} <bdi dir="ltr">#{{ person.id }}</bdi></h2>{% if books %}<span>{{ _('Directory Book ID') }}: {% for book in books %}<bdi dir="ltr">{{ book.book_id }}</bdi>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}</div>
-<label class="person-merge-choice"><input type="checkbox" name="keep_id" value="{{ person.id }}" checked> {{ _('Keep this Yazory record') }} <bdi dir="ltr">#{{ person.id }}</bdi></label>
 <div class="person-merge-name-edit">
 <label>{{ _('English name') }}<input type="text" name="name_english_{{ person.id }}" maxlength="160" value="{{ names.english_name }}"></label>
 <label>{{ _('Yiddish / Hebrew name') }}<input type="text" name="name_yiddish_{{ person.id }}" maxlength="160" value="{{ names.yiddish_name }}"></label>
@@ -30,5 +29,10 @@
 </section>
 <details><summary>{{ _('Linked records') }}</summary>{% for table,label in [('contact','Cases'),('person_relationship','Family connections'),('person_book_record','Optional book reference'),('person_names','Names'),('person_address_details','Addresses'),('person_name_owner','Roles')] %}<p>{{ _(label) }}: {{ snapshots[person.id].get(table,[])|length }}</p>{% endfor %}</details>
 </section>{% endfor %}</div></div>
-<label class="person-merge-choice"><input type="checkbox" name="confirm" value="yes" required> {{ _('I reviewed both records and confirm my selection.') }}</label>
-<button type="submit">{{ _('Continue') }}</button></form>{% endblock %}
+<fieldset class="person-merge-decision">
+<legend>{{ _('Choose what to do with these records') }}</legend>
+<label><input type="radio" name="decision" value="both" required> <span>{{ _('Keep both records — these are two different people') }}</span></label>
+<label><input type="radio" name="decision" value="{{ one.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('into it') }}</span></label>
+<label><input type="radio" name="decision" value="{{ two.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('into it') }}</span></label>
+</fieldset>
+<button type="submit">{{ _('Save decision & continue') }}</button></form>{% endblock %}
