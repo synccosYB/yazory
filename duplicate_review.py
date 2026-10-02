@@ -272,6 +272,7 @@ def install(app, profile_model, access):
         if request.method == 'POST':
             from translations import translate
             from unified_people import PersonMatchDecision, _candidates, _pair
+            action = request.form.get('action', '').strip()
             decision = request.form.get('decision', '').strip()
             if decision:
                 if decision == 'both':
@@ -286,10 +287,11 @@ def install(app, profile_model, access):
                 kept = set(request.form.getlist('keep_id', type=int))
             if request.form.get('version') != version:
                 abort(409, 'The records changed. Reload the merge preview.')
-            if not kept or not kept.issubset({one_id, two_id}):
-                abort(400)
-            if not decision and request.form.get('confirm') != 'yes':
-                abort(400)
+            if action != 'save_fields':
+                if not kept or not kept.issubset({one_id, two_id}):
+                    abort(400)
+                if not decision and request.form.get('confirm') != 'yes':
+                    abort(400)
 
             # Name corrections made during duplicate review update the same
             # canonical bilingual name record used everywhere else. Do not
@@ -318,6 +320,35 @@ def install(app, profile_model, access):
                     sync = app.extensions.get('supporter_identity', {}).get('sync')
                     if sync:
                         sync(person)
+
+            # Phone corrections on the review screen write directly to the
+            # canonical person record. Empty values intentionally clear a bad
+            # imported value; no review-only phone copy is created.
+            for person in (one, two):
+                phone_changed = False
+                for field in ('home_phone', 'cell_phone', 'phone'):
+                    key = f'{field}_{person.id}'
+                    if key not in request.form:
+                        continue
+                    value = request.form.get(key, '').strip()[:40]
+                    if getattr(person, field) != value:
+                        setattr(person, field, value)
+                        phone_changed = True
+                if phone_changed:
+                    sync = app.extensions.get('supporter_identity', {}).get('sync')
+                    if sync:
+                        sync(person)
+
+            if action == 'save_fields':
+                db.session.commit()
+                flash(translate('Corrections saved.'))
+                args = {}
+                next_one_id = request.form.get('next_one_id', type=int)
+                next_two_id = request.form.get('next_two_id', type=int)
+                if next_one_id and next_two_id:
+                    args.update(next_one_id=next_one_id, next_two_id=next_two_id)
+                return redirect(url_for('review_person_merge',
+                                        one_id=one_id, two_id=two_id, **args))
 
             if kept == {one_id, two_id}:
                 # Human review confirmed that the matching signals belong to two
