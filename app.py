@@ -2401,6 +2401,17 @@ def create_app(test_config=None):
                 return _app.render_template(
                     'supporter_profile_edit.html', title='Edit imported person',
                     **edit_context()), 409
+            # The profile form edits the canonical person's bilingual name fields.
+            # Persist both variants explicitly; relying only on the legacy display
+            # name can make Save appear successful while the visible name reverts.
+            english_name = _app.request.form.get('name_english', '').strip()[:160]
+            yiddish_name = _app.request.form.get('name_yiddish', '').strip()[:160]
+            app.extensions['person_names']['save'](
+                'person', person.id, english_name, yiddish_name,
+                legacy=person.name)
+            person.name = english_name or yiddish_name
+            profile.name = person.name
+            sync_person_snapshots(person)
             _app.db.session.commit()
             _app.flash('Person updated everywhere they are connected.')
             return _app.redirect(_app.url_for('edit_supporter_profile', profile_id=profile.id))
