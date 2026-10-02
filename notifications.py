@@ -1,5 +1,6 @@
 """Per-staff unread activity feed for Yazory."""
 import re
+import time
 from datetime import datetime, timezone
 
 from flask import abort, g, redirect, render_template, session, url_for
@@ -30,6 +31,16 @@ def _now():
 
 
 def install(app):
+    # The unread badge appears on nearly every staff page. Recounting the
+    # entire growing audit feed for every render makes unrelated navigation
+    # slower as history grows. Keep a tiny process-local cache; correctness is
+    # bounded to a few seconds and explicit read actions invalidate it.
+    unread_cache = {}
+    unread_cache_seconds = 15.0
+
+    def invalidate_unread(user_id):
+        unread_cache.pop(user_id, None)
+
     def ensure_schema():
         StaffActivityCursor.__table__.create(core.db.engine, checkfirst=True)
         StaffActivityRead.__table__.create(core.db.engine, checkfirst=True)
@@ -88,18 +99,21 @@ def install(app):
         return select(core.Audit).where(*audit_filters(user, since))
 
     def unread_count(user):
-        # Keep the global navigation badge cheap. Provider item builders can
-        # resolve identities and load message threads, so they belong on the
-        # notifications page itself rather than on every rendered staff page.
+        cached = unread_cache.get(user.id)
+        now = time.monotonic()
+        if cached is not None and now - cached[0] < unread_cache_seconds:
+            return cached[1]
         # Read the cursor as part of the count query rather than issuing a
-        # second per-page SELECT. A missing cursor is treated like the old
-        # lazily-created row but is deliberately not persisted on a GET.
+        # second SELECT. The result is reused briefly across page requests so
+        # the audit table is not scanned for every ordinary navigation.
         last_seen = select(StaffActivityCursor.last_seen_at).where(
             StaffActivityCursor.staff_user_id == user.id).scalar_subquery()
         since = func.coalesce(
             last_seen, user.last_login_at or user.activated_at or _now())
-        return core.db.session.scalar(select(func.count(core.Audit.id)).where(
+        count = core.db.session.scalar(select(func.count(core.Audit.id)).where(
             *audit_filters(user, since))) or 0
+        unread_cache[user.id] = (now, count)
+        return count
 
     def activity_kind(action):
         lowered = action.lower()
@@ -195,6 +209,7 @@ def install(app):
             core.db.session.add(StaffActivityRead(
                 staff_user_id=user.id, audit_id=row.id, read_at=_now()))
             core.db.session.commit()
+            invalidate_unread(user.id)
         return redirect(activity_url(row))
 
     @app.post('/notifications/mark-read')
@@ -209,4 +224,5 @@ def install(app):
         # never create the missing cursor as a side effect.
         core.db.session.add(cursor)
         core.db.session.commit()
+        invalidate_unread(user.id)
         return redirect(url_for('notifications'))
