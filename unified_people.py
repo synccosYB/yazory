@@ -90,9 +90,9 @@ def _evidence(people):
 
     from duplicate_review import PersonIdentityAlias
     ids = [person.id for person in people]
-    if ids:
+    for start in range(0, len(ids), 250):
         for alias in db.session.scalars(select(PersonIdentityAlias).where(
-                PersonIdentityAlias.person_id.in_(ids),
+                PersonIdentityAlias.person_id.in_(ids[start:start + 250]),
                 PersonIdentityAlias.kind.in_(['phone', 'email']))):
             (by_phone if alias.kind == 'phone' else by_email)[alias.value].append(alias.person_id)
     evidence = defaultdict(set)
@@ -226,11 +226,11 @@ def install(app, profile_model, relationship_model, access):
         # Scan all canonical identities with preloaded names; paginate rendered cards.
         people = db.session.scalars(select(core.SupporterPerson).order_by(
             core.SupporterPerson.id.desc())).all()
-        preload_names({('person', person.id, 'name') for person in people})
-        ids = [person.id for person in people]
-        decisions = db.session.scalars(select(PersonMatchDecision).where(
-            PersonMatchDecision.person_one_id.in_(ids) |
-            PersonMatchDecision.person_two_id.in_(ids))).all()
+        for start in range(0, len(people), 250):
+            preload_names({('person', person.id, 'name') for person in people[start:start + 250]})
+        # Every canonical person is in this scan; repeating the entire ID list
+        # twice can exceed the production driver's bound-parameter limit.
+        decisions = db.session.scalars(select(PersonMatchDecision)).all()
         tab = request.args.get('tab', 'connections')
         if tab not in ('connections', 'duplicates'):
             abort(400)
