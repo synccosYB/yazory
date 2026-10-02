@@ -1,5 +1,5 @@
   <form method="post" action="{{ address_action if address_action is defined else request.path }}">{{ token(csrf) }}
-    <div class="form-grid">{{ bilingual_name_fields(name_kind, person, name_field, display_name) }}
+    <div class="form-grid">{% if not omit_address_names|default(false) %}{{ bilingual_name_fields(name_kind, person, name_field, display_name) }}{% endif %}
       <fieldset><legend>{{ _('Home address') }}</legend><div class="form-grid">
         {% for field, label, limit in [('street','Street address',300),('unit','Apartment / suite',80),('city','City',120),('state','State / province',80),('zip_code','ZIP / postal code',20),('country','Country',80)] %}
         <label>{{ _(label) }}<input name="home_{{ field }}" value="{{ home.get(field, '') }}" maxlength="{{ limit }}" dir="auto"></label>
