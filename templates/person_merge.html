@@ -28,7 +28,9 @@
 </tbody></table>
 {% else %}<p>{{ _('No preserved book-source information for this record.') }}</p>{% endfor %}
 </details>
-{% include '_person_verification.html' %}
+<details class="person-merge-verification"><summary>{{ _('Field verification') }}</summary>
+<div class="person-merge-verification-body">{% include '_person_verification.html' %}</div>
+</details>
 <details><summary>{{ _('Linked records') }}</summary>{% for table,label in [('contact','Cases'),('person_relationship','Family connections'),('person_book_record','Optional book reference'),('person_names','Names'),('person_address_details','Addresses'),('person_name_owner','Roles')] %}<p>{{ _(label) }}: {{ snapshots[person.id].get(table,[])|length }}</p>{% endfor %}</details>
 </section>{% endfor %}</div></div>
 <label class="person-merge-choice"><input type="checkbox" name="confirm" value="yes" required> {{ _('I reviewed both records and confirm my selection.') }}</label>
