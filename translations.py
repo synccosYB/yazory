@@ -971,3 +971,11 @@ _EXTRA.update({
 })
 
 _EXTRA.update({'Names, addresses & relationships': {'he': 'שמות, כתובות וקשרים', 'yi': 'נעמען, אדרעסן און קרובים'}})
+
+
+CATALOG.update({
+    'Supporter views': {'he': 'תצוגות תומכים', 'yi': 'העלפער איבערבליק'},
+    'List': {'he': 'רשימה', 'yi': 'ליסטע'},
+    'Tree': {'he': 'עץ', 'yi': 'בוים'},
+    'Work': {'he': 'עבודה', 'yi': 'ארבעט'},
+})
