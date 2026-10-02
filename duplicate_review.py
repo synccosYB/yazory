@@ -2,7 +2,7 @@
 import json
 import hashlib
 from datetime import datetime, timezone
-from flask import abort, flash, redirect, render_template, request, url_for
+from flask import abort, flash, g, has_request_context, redirect, render_template, request, url_for
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 import app_original as core
@@ -235,11 +235,20 @@ def install(app, profile_model, access):
     # PostgreSQL sequences retain deleted IDs; reserve merged IDs on SQLite too.
     def reserve_ids(mapper, connection, person):
         if connection.dialect.name == 'sqlite' and person.id is None:
-            highest = max(connection.scalar(select(func.max(core.SupporterPerson.id))) or 0,
-                          connection.scalar(select(func.max(PersonMerge.source_id))) or 0,
-                          connection.info.get('person_merge_last_id', 0))
+            # SQLite has no independent sequence to preserve IDs of people that
+            # were merged and deleted. Read the two high-water marks once per
+            # batch import instead of twice for every newly inserted person.
+            batch = has_request_context() and getattr(g, '_batch_person_import', False)
+            cache_key = 'person_merge_batch_highest' if batch else None
+            highest = connection.info.get(cache_key) if cache_key else None
+            if highest is None:
+                highest = max(connection.scalar(select(func.max(core.SupporterPerson.id))) or 0,
+                              connection.scalar(select(func.max(PersonMerge.source_id))) or 0,
+                              connection.info.get('person_merge_last_id', 0))
             person.id = highest + 1
             connection.info['person_merge_last_id'] = person.id
+            if cache_key:
+                connection.info[cache_key] = person.id
     if not getattr(core.SupporterPerson, '_merge_ids_reserved', False):
         event.listen(core.SupporterPerson, 'before_insert', reserve_ids)
         core.SupporterPerson._merge_ids_reserved = True
