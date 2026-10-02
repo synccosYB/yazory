@@ -79,14 +79,22 @@ def test_review_pages_render_all_locales(app):
         one = person('One', 'test:one', '8455551111')
         two = person('Two', 'test:two', '8455551111')
         profile(one, 'rid:one'); profile(two, 'rid:two')
+        from person_names import save_names
+        save_names('person', one.id, 'One', 'איינער', legacy='One')
         a,b=one.id,two.id
         db.session.commit()
     client=app.test_client()
     for lang in ('en','he','yi'):
         with client.session_transaction() as session:
-            session['lang']=lang
+            session['language']=lang
         assert client.get('/people/matching?tab=duplicates').status_code == 200
-        assert client.get(f'/people/duplicates/{a}/{b}').status_code == 200
+        response = client.get(f'/people/duplicates/{a}/{b}')
+        assert response.status_code == 200
+        assert f'<html lang="{lang}" dir="{"ltr" if lang == "en" else "rtl"}">' in response.text
+        assert 'class="person-merge-table"' in response.text
+        assert '<bdi dir="ltr">(845) 555-1111</bdi>' in response.text
+        assert 'scope="row"' in response.text
+        assert ('<h2 dir="auto">One</h2>' if lang == 'en' else '<h2 dir="auto">איינער</h2>') in response.text
 
 
 def test_review_later_is_separate_queue(app):

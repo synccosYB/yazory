@@ -4,7 +4,7 @@
 <div class="verification-grid">
 {% for field,label in verification_fields.items() %}<div data-verification-field="{{ field }}">
 <strong data-field-label>{{ _(label) }}</strong> <span data-status>{{ _('Unverified') }}</span>
-<small data-review></small><small data-value dir="auto"></small>
+<small data-review></small><small data-value dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','work_phone') else 'auto' }}"></small>
 {% if not current_staff or current_staff.role == 'organization_admin' %}<details><summary>{{ _('Review') }}</summary>
 <label>{{ _('Status') }}<select data-choice><option value="unverified">{{ _('Unverified') }}</option><option value="verified">{{ _('Verified') }}</option><option value="incorrect">{{ _('Incorrect') }}</option></select></label>
 <label>{{ _('How was this checked?') }}<input data-reason maxlength="1000" dir="auto"></label>
