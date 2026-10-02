@@ -2695,12 +2695,18 @@ def create_app(test_config=None):
         # Preserve access to legacy/orphaned records whose parent is unavailable.
         contact_rows.extend((contact, False) for contact in family.contacts
                             if contact.parent_contact_id and contact.id not in included_contact_ids)
-        # Localized supporter names are rendered throughout the profile. Batch-load
-        # them once so the number of SQL queries does not grow with the number of
-        # supporters connected to a case.
+        # Keep the case profile payload bounded.  The dedicated supporters/work
+        # screens remain the full-directory views; the profile only needs a useful
+        # first slice so cases with hundreds of connections still open quickly.
+        supporter_preview_limit = 30
+        supporter_total = len(contact_rows)
+        contact_rows = contact_rows[:supporter_preview_limit]
+        preview_contacts = [contact for contact, _depth in contact_rows]
+        # Localized supporter names are rendered throughout the preview. Batch-load
+        # only the rows that will actually be sent to the browser.
         from person_names import preload_names
         preload_names(('person' if contact.person_id else 'supporter',
-                       contact.person_id or contact.id, 'name') for contact in family.contacts)
+                       contact.person_id or contact.id, 'name') for contact in preview_contacts)
         fund_totals = case_fund_totals(family.id)
         profile_values = (
             family.email, family.full_address, family.phone, family.spouse,
@@ -2710,7 +2716,8 @@ def create_app(test_config=None):
             family.designated_askan_id,
         )
         return render_template('family.html', title=family.name, family=family, activity=activity,
-                               contact_rows=contact_rows,
+                               contact_rows=contact_rows, supporter_total=supporter_total,
+                               supporter_preview_limit=supporter_preview_limit,
                                missing_profile_count=sum(not value for value in profile_values),
                                budget=budget_totals(family),
                                collected=fund_totals['collected'], sent=fund_totals['given_out'],
