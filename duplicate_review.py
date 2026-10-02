@@ -261,26 +261,49 @@ def install(app, profile_model, access):
         snapshots = {one.id: snapshot(one), two.id: snapshot(two)}
         version = hashlib.sha256(json.dumps(snapshots, sort_keys=True).encode()).hexdigest()
         if request.method == 'POST':
-            target = request.form.get('target_id', type=int)
+            from translations import translate
+            from unified_people import PersonMatchDecision, _candidates, _pair
+            kept = set(request.form.getlist('keep_id', type=int))
             if request.form.get('version') != version:
                 abort(409, 'The records changed. Reload the merge preview.')
-            if target not in (one_id, two_id) or request.form.get('confirm') != 'yes':
+            if not kept or not kept.issubset({one_id, two_id}) or request.form.get('confirm') != 'yes':
                 abort(400)
-            try:
-                merge_people(app, profile_model, target,
-                             two_id if target == one_id else one_id,
-                             user.id if user else None)
-            except (ValueError, IntegrityError) as exc:
-                db.session.rollback()
-                error = str(exc) if isinstance(exc, ValueError) else 'Linked records conflict. Merge was cancelled; all records remain intact.'
-            else:
-                from translations import translate
-                from unified_people import PersonMatchDecision, _candidates, _pair
-                flash(translate('People merged.'))
 
-                # Keep duplicate review as a queue. After a successful merge,
-                # open the next ready pair instead of leaving the workflow for
-                # the surviving person's profile.
+            if kept == {one_id, two_id}:
+                # Human review confirmed that the matching signals belong to two
+                # separate people. Preserve both canonical IDs and suppress this
+                # pair from future duplicate suggestions; field verification is
+                # deliberately untouched.
+                a, b = _pair(one_id, two_id)
+                decision = db.session.scalar(select(PersonMatchDecision).where(
+                    PersonMatchDecision.person_one_id == a,
+                    PersonMatchDecision.person_two_id == b,
+                    PersonMatchDecision.kind == 'duplicate'))
+                if decision is None:
+                    decision = PersonMatchDecision(
+                        person_one_id=a, person_two_id=b, kind='duplicate',
+                        decision='not_duplicate', reviewed_by=user.id if user else None)
+                    db.session.add(decision)
+                else:
+                    decision.decision = 'not_duplicate'
+                    decision.reviewed_by = user.id if user else None
+                    decision.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                db.session.commit()
+                flash(translate('Both people kept as separate people.'))
+            else:
+                target = next(iter(kept))
+                try:
+                    merge_people(app, profile_model, target,
+                                 two_id if target == one_id else one_id,
+                                 user.id if user else None)
+                except (ValueError, IntegrityError) as exc:
+                    db.session.rollback()
+                    error = str(exc) if isinstance(exc, ValueError) else 'Linked records conflict. Merge was cancelled; all records remain intact.'
+                else:
+                    flash(translate('People merged.'))
+
+            if error is None:
+                # Keep duplicate review as a queue after either decision.
                 people = db.session.scalars(select(core.SupporterPerson).order_by(
                     core.SupporterPerson.id.desc())).all()
                 decisions = db.session.scalars(select(PersonMatchDecision)).all()
