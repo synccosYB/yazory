@@ -1188,8 +1188,15 @@ def create_app(test_config=None):
                 PersonNames.owner_kind == 'person',
                 _app.or_(PersonNames.english_name.icontains(query, autoescape=True),
                          PersonNames.yiddish_name.icontains(query, autoescape=True)))
+            canonical_people = select(SupporterPerson.id).where(_app.or_(
+                SupporterPerson.name.icontains(query, autoescape=True),
+                SupporterPerson.phone.icontains(query, autoescape=True),
+                SupporterPerson.home_phone.icontains(query, autoescape=True),
+                SupporterPerson.cell_phone.icontains(query, autoescape=True),
+                SupporterPerson.email.icontains(query, autoescape=True)))
             statement = statement.where(_app.or_(
                 SupporterProfile.person_id.in_(named_people),
+                SupporterProfile.person_id.in_(canonical_people),
                 SupporterProfile.name.icontains(query, autoescape=True),
                 SupporterProfile.phone.icontains(query, autoescape=True),
                 SupporterProfile.email.icontains(query, autoescape=True)))
