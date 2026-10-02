@@ -287,9 +287,20 @@ const setupImportedSupporterPicker=(form,profiles,labels,select=null)=>{
     select=document.createElement('select');select.name='supporter_profile_id';
     label.append(hint,search,select);
     (name.closest('label')||form.querySelector('[name="name_english"]')?.closest('label')||name).before(label);
+    let searchTimer;
     search.addEventListener('input',()=>{
-      const query=search.value.trim().toLocaleLowerCase();
-      [...select.options].forEach((option,index)=>{option.hidden=index>0&&query&&!option.textContent.toLocaleLowerCase().includes(query);});
+      clearTimeout(searchTimer);
+      searchTimer=setTimeout(()=>{
+        const query=search.value.trim();
+        const selectedId=select.value;
+        const params=new URLSearchParams();
+        if(query)params.set('q',query);
+        if(selectedId)params.set('selected_id',selectedId);
+        fetch('/supporter-directory/options?'+params.toString(),{headers:{Accept:'application/json'}})
+          .then(response=>response.ok?response.json():Promise.reject())
+          .then(data=>setupImportedSupporterPicker(form,data.profiles,data.labels,select))
+          .catch(()=>{});
+      },250);
     });
   }
   const selectedId=select.value;
