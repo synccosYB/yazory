@@ -239,9 +239,18 @@ def install_workflows(app, db, entities, helpers):
         return hashlib.sha256(json.dumps(data,sort_keys=True).encode()).hexdigest()
 
     def financials(fid):
-        entries=db.session.scalars(select(Ledger).where(Ledger.family_id==fid)).all()
-        matched_ledger_ids=set(db.session.scalars(select(Match.ledger_id).where(
-            Match.ledger_id.in_([e.id for e in entries])))) if entries else set()
+        # Aggregate ledger history in SQL. A case can accumulate thousands of
+        # immutable ledger rows; constructing every row as an ORM object on each
+        # profile/workflow view makes old cases progressively slower.
+        ledger_totals=dict(db.session.execute(select(
+            Ledger.entry_type, func.coalesce(func.sum(Ledger.amount_cents), 0)
+        ).where(Ledger.family_id==fid).group_by(Ledger.entry_type)).all())
+        posted_sources=set(db.session.scalars(select(Ledger.source_item_id).where(
+            Ledger.family_id==fid, Ledger.source_item_id.is_not(None))))
+        unmatched=db.session.scalar(select(func.count(Ledger.id)).where(
+            Ledger.family_id==fid,
+            Ledger.entry_type.notin_(['Transfer in','Transfer out']),
+            ~select(Match.id).where(Match.ledger_id==Ledger.id).exists())) or 0
         # Checks and direct Stripe payouts are real case disbursements even
         # when they were created outside the Operations expense workflow.
         # The family profile has always deducted every non-voided payout; the
@@ -249,7 +258,6 @@ def install_workflows(app, db, entities, helpers):
         # funds as still available.
         direct_payouts=db.session.scalar(select(func.coalesce(func.sum(ApplicantPayout.amount_cents),0)).where(
             ApplicantPayout.family_id==fid,ApplicantPayout.status!='voided')) or 0
-        posted_sources={e.source_item_id for e in entries}
         # Load the workflow rows needed by this summary once.  The previous
         # implementation re-read the same case's collection/work history
         # multiple times during a single profile request.
@@ -266,7 +274,7 @@ def install_workflows(app, db, entities, helpers):
             CharityDonation.campaign_id.in_(campaign_ids))) if d.id not in posted_imports] if campaign_ids else []
         imported_gross=sum(d.amount_cents for d in imported)
         imported_net=sum(d.net_cents for d in imported)
-        balance=sum(e.amount_cents for e in entries)+imported_net-direct_payouts
+        balance=sum(ledger_totals.values())+imported_net-direct_payouts
         reserved=0
         for item in financial_work:
             if item.disposition=='Open' and ((item.kind=='expense' and item.stage>=4) or
@@ -282,12 +290,12 @@ def install_workflows(app, db, entities, helpers):
             for w in collections:
                 if w.data.get('abcharity_donation_id') and w.id in posted_sources and not consistency(w):held=True
         return dict(balance=balance,reserved=reserved,protected_reserve=protected,held_for_review=held,available=0 if held else balance-reserved-protected,
-                    collected=sum(e.amount_cents for e in entries if e.entry_type in ('Donation','Donation adjustment'))+imported_gross,
-                    assistance=-sum(e.amount_cents for e in entries if e.entry_type=='Family assistance')+direct_payouts,
-                    overhead=-sum(e.amount_cents for e in entries if e.entry_type in ('Organization expense','Processing fee','Processing fee adjustment'))+(imported_gross-imported_net),
-                    refunds=-sum(e.amount_cents for e in entries if e.entry_type=='Refund'),
+                    collected=sum(ledger_totals.get(kind,0) for kind in ('Donation','Donation adjustment'))+imported_gross,
+                    assistance=-ledger_totals.get('Family assistance',0)+direct_payouts,
+                    overhead=-sum(ledger_totals.get(kind,0) for kind in ('Organization expense','Processing fee','Processing fee adjustment'))+(imported_gross-imported_net),
+                    refunds=-ledger_totals.get('Refund',0),
                     imported_pending=len(imported),imported_pending_gross=imported_gross,imported_pending_net=imported_net,
-            unmatched=sum(1 for e in entries if e.entry_type not in ('Transfer in','Transfer out') and e.id not in matched_ledger_ids))
+                    unmatched=unmatched)
 
     def report_snapshot(fid,period):
         totals=financials(fid)
