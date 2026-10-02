@@ -1,27 +1,24 @@
-{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='profile', person_id=profile.id) }}">{{ _('Home & work addresses') }}</a>
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
 <div class="page-heading">
   <div>
     <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
-    <h1>{{ _('Edit imported person') }}</h1>
+    <h1>{{ profile.name }}</h1><small>{{ _('Person ID') }}: <bdi dir="ltr">{{ person_number('profile', profile) }}</bdi></small>
     <p>{{ _('Changes will also update every case connected to this person.') }}</p>
   </div>
   <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Back to imported people') }}</a>
 </div>
 
-<section class="card padded">
+<section class="card padded" id="identity">
+  <h2>{{ _('Identity') }}</h2>
   <form method="post">
     {{ token(csrf) }}
     <div class="form-grid">
       <input type="hidden" name="name" value="{{ person.name }}" maxlength="160">{{ bilingual_name_fields('profile', profile, 'name') }}
       <label>{{ _('Phone') }}<input name="phone" value="{{ person.phone }}" maxlength="80"></label>
-      <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ person.cell_phone }}" maxlength="80"></label>
       <label>{{ _('Home phone') }}<input name="home_phone" value="{{ person.home_phone }}" maxlength="80"></label>
+      <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ person.cell_phone }}" maxlength="80"></label>
       <label>{{ _('Email address') }}<input type="email" name="email" value="{{ person.email }}" maxlength="254"></label>
-      <label>{{ _('Home address') }}<input name="home_address" value="{{ person.home_address }}" maxlength="240"></label>
-      <label>{{ _('City') }}<input name="city" value="{{ person.city }}" maxlength="120"></label>
-      <label>{{ _('State') }}<input name="state" value="{{ person.state }}" maxlength="80"></label>
-      <label>{{ _('ZIP code') }}<input name="zip_code" value="{{ person.zip_code }}" maxlength="20"></label>
-      <label>{{ _('Workplace') }}<input name="workplace" value="{{ person.workplace }}" maxlength="160"></label>
+      {% for field in ['home_address', 'city', 'state', 'zip_code', 'workplace'] %}<input type="hidden" name="{{ field }}" value="{{ person[field] }}">{% endfor %}
       <label>{{ _('Work phone') }}<input name="work_phone" value="{{ person.work_phone }}" maxlength="80"></label>
       <label class="full-width">{{ _('Notes') }}<textarea name="notes" rows="3">{{ person.notes }}</textarea></label>
     </div>
@@ -32,6 +29,25 @@
   </form>
 </section>
 
+
+<section class="card padded" id="case-connections">
+<h2>{{ _('Roles & cases') }}</h2>
+{% if families %}<details><summary>{{ _('Connect to a case') }}</summary>
+<form method="post" action="{{ url_for('connect_supporter_profile', profile_id=profile.id) }}">{{ token(csrf) }}
+<div class="form-grid"><label>{{ _('Case') }}<select name="family_id" required><option value="">{{ _('Choose case') }}</option>{% for family in families %}<option value="{{ family.id }}">YZ-{{ '%04d'|format(family.id) }} · {{ family.name }}</option>{% endfor %}</select></label>
+<label>{{ _('Relationship') }}<select name="relationship">{% for relationship in relationships %}<option value="{{ relationship }}" {{ 'selected' if relationship == 'Other' }}>{{ _(relationship) }}</option>{% endfor %}</select></label></div><button>{{ _('Connect') }}</button></form></details>{% endif %}
+{% for contact in linked_contacts %}<details><summary>YZ-{{ '%04d'|format(contact.family_id) }} · {{ contact.family.name }} · {{ _(contact.relationship) }} · {{ _(contact.status) }}</summary>
+<div class="outreach-action-grid">
+{% with call_return_to='person_workspace' %}{% include '_supporter_call_form.html' %}{% endwith %}
+<details><summary>{{ _('Ask when to call') }}</summary><form method="post" action="{{ url_for('schedule_supporter_callback', contact_id=contact.id) }}">{{ token(csrf) }}<input type="hidden" name="return_to" value="person_workspace"><label>{{ _('Good time to call') }}<input type="datetime-local" name="scheduled_for" required></label><label>{{ _('Notes') }}<textarea name="note" maxlength="5000" rows="2"></textarea></label><button>{{ _('Save callback') }}</button></form></details>
+<details><summary>{{ _('Write an email') }}</summary><form method="post" action="{{ url_for('send_supporter_initial_email',contact_id=contact.id) }}">{{ token(csrf) }}<input type="hidden" name="return_to" value="person_workspace"><label>{{ _('Email address') }}<input type="email" name="recipient_email" value="{{ contact.email }}" maxlength="254" required></label><label>{{ _('Subject') }}<input name="subject" maxlength="300" required></label><label>{{ _('Email message') }}<textarea name="body" maxlength="5000" rows="4" required></textarea></label><button>{{ _('Send initial email') }}</button></form></details>
+<details><summary>{{ _('Send text') }}</summary><form method="post" action="{{ url_for('send_supporter_message', contact_id=contact.id, channel='sms') }}">{{ token(csrf) }}<input type="hidden" name="return_to" value="person_workspace"><label>{{ _('Mobile number') }}<input type="tel" dir="ltr" name="recipient_phone" value="{{ supporter_mobile(contact) }}" required></label><label>{{ _('Message') }}<textarea name="body" maxlength="1600" rows="3" required>{{ message_greeting(contact) }}</textarea></label><button>{{ _('Send SMS') }}</button></form></details>
+</div></details>{% else %}<p class="empty">{{ _('No case-specific roles yet.') }}</p>{% endfor %}
+</section>
+
+<section class="card padded" id="addresses"><h2>{{ _('Home & work addresses') }}</h2>
+{% with home=address_home, work=address_work, preference=address_preference, name_kind='person', name_field='name', display_name=profile.name, address_action=url_for('person_addresses',kind='profile',person_id=profile.id) %}{% include '_person_address_form.html' %}{% endwith %}
+</section>
 <section class="card padded" id="family-connections">
   <h2>{{ _('Family connections') }}</h2>
   <p>{{ _('These connections belong to the person, with or without a book or case.') }}</p>
@@ -43,7 +59,7 @@
     <form method="post" action="{{ url_for('edit_person_family_connections', profile_id=profile.id) }}">{{ token(csrf) }}
       <div class="form-grid">
       {% for kind, label in [('father', 'Father'), ('father_inlaw', 'Father-in-law')] %}
-        <label>{{ _(label) }}<input type="search" class="select-search" data-select-filter="family-{{ kind }}" placeholder="{{ _('Search people') }}"><select id="family-{{ kind }}" name="{{ kind }}_person_id"><option value="">{{ _('Not selected') }}</option>{% for other in family_people %}<option value="{{ other.id }}" {{ 'selected' if family_connection and family_connection[kind + '_person_id'] == other.id }}>{{ other.name }}{% if other.phone %} · {{ other.phone|phone }}{% endif %}</option>{% endfor %}</select></label>
+        <label>{{ _(label) }}<input type="search" class="select-search" data-select-filter="family-{{ kind }}" placeholder="{{ _('Search people') }}"><select id="family-{{ kind }}" name="{{ kind }}_person_id"><option value="">{{ _('Not selected') }}</option>{% for other in family_people %}<option value="{{ other.id }}" {{ 'selected' if family_connection and family_connection[kind + '_person_id'] == other.id }}>{{ other.name }} · {{ _('Home phone') }}: {{ other.home_phone|phone if other.home_phone else '—' }} · {{ _('Cell phone') }}: {{ (other.cell_phone or other.phone)|phone if (other.cell_phone or other.phone) else '—' }} · {{ other.email or '—' }} · {{ other.home_address or '—' }} {{ other.city }} {{ other.state }} {{ other.zip_code }}</option>{% endfor %}</select></label>
         <label>{{ _('Name if not connected yet') }}<input name="{{ kind }}_name" value="{{ family_connection[kind + '_name'] if family_connection else '' }}" maxlength="240" dir="auto"></label>
       {% endfor %}
       </div><button>{{ _('Save family connections') }}</button>
@@ -97,7 +113,7 @@
     {% for connection, other in person_relationships %}<tr><td><strong>{{ other.name }}</strong>{% if other.phone %}<small><bdi dir="ltr">{{ other.phone|phone }}</bdi></small>{% endif %}</td><td>{{ _(connection.relationship) }}</td><td>{{ connection.notes or '—' }}</td><td><form method="post" action="{{ url_for('delete_person_relationship', profile_id=profile.id, relationship_id=connection.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Remove') }}</button></form></td></tr>{% else %}<tr><td colspan="4" class="empty">{{ _('No direct person connections entered.') }}</td></tr>{% endfor %}
   </tbody></table></div>
   {% if available_people %}<details><summary>{{ _('+ Connect another person') }}</summary><form method="post" action="{{ url_for('add_person_relationship', profile_id=profile.id) }}">{{ token(csrf) }}<div class="form-grid">
-    <label>{{ _('Person') }}<input type="search" class="select-search" data-select-filter="related-person" placeholder="{{ _('Search people') }}"><select name="other_person_id" id="related-person" required><option value="">{{ _('Choose') }}</option>{% for other in available_people %}<option value="{{ other.id }}">{{ other.name }}{% if other.phone %} · {{ other.phone|phone }}{% endif %}</option>{% endfor %}</select></label>
+    <label>{{ _('Person') }}<input type="search" class="select-search" data-select-filter="related-person" placeholder="{{ _('Search people') }}"><select name="other_person_id" id="related-person" required><option value="">{{ _('Choose') }}</option>{% for other in available_people %}<option value="{{ other.id }}">{{ other.name }} · {{ _('Home phone') }}: {{ other.home_phone|phone if other.home_phone else '—' }} · {{ _('Cell phone') }}: {{ (other.cell_phone or other.phone)|phone if (other.cell_phone or other.phone) else '—' }} · {{ other.email or '—' }} · {{ other.home_address or '—' }} {{ other.city }} {{ other.state }} {{ other.zip_code }}</option>{% endfor %}</select></label>
     <label>{{ _('Connection') }}<select name="relationship" required>{% for item in relationship_types %}<option value="{{ item }}">{{ _(item) }}</option>{% endfor %}</select></label>
     <label>{{ _('Notes') }}<input name="relationship_notes" maxlength="500"></label>
   </div><button>{{ _('Connect people') }}</button></form></details>{% endif %}

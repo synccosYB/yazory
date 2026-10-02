@@ -144,6 +144,8 @@ def install(app, profile_model, relationship_model, access):
     def person_hub(person_id):
         person = person_or_404(person_id)
         profile = canonical_profile(person.id)
+        if profile is not None:
+            return redirect(url_for('edit_supporter_profile', profile_id=profile.id))
         contacts = db.session.scalars(select(core.Contact).where(
             core.Contact.person_id == person.id).order_by(core.Contact.family_id)).all()
         aliases = db.session.scalars(select(PersonNameOwner).where(
@@ -172,6 +174,8 @@ def install(app, profile_model, relationship_model, access):
     def edit_person_hub(person_id):
         person = person_or_404(person_id)
         profile = canonical_profile(person.id)
+        if profile is not None and request.method == 'GET':
+            return redirect(url_for('edit_supporter_profile', profile_id=profile.id))
         if request.method == 'POST':
             english = request.form.get('name_english', '').strip()[:160]
             yiddish = request.form.get('name_yiddish', '').strip()[:160]

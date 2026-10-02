@@ -166,7 +166,7 @@ def test_imported_profile_connects_once_to_a_case(app, client):
     payload = {'csrf': csrf(client), 'family_id': str(family_id), 'relationship': 'Friend'}
     first = client.post(path, data=payload)
     second = client.post(path, data=payload)
-    assert first.status_code == 302 and '/contacts/' in first.headers['Location']
+    assert first.status_code == 302 and first.location.endswith(f'/supporter-directory/{profile_id}/edit#case-connections')
     assert second.status_code == 302
     with app.app_context():
         contacts = db.session.scalars(db.select(Contact).where(
@@ -529,3 +529,69 @@ def test_selected_profile_cannot_be_added_to_unassigned_case(app, client):
     with app.app_context():
         assert db.session.scalar(db.select(Contact.id).where(
             Contact.family_id == family_id, Contact.phone == '8455559988')) is None
+
+
+@pytest.mark.parametrize('language', ['en', 'he', 'yi'])
+def test_person_workspace_contains_actions_in_all_locales(app, client, language):
+    with app.app_context():
+        profile = db.session.scalar(db.select(SupporterProfile).order_by(SupporterProfile.id))
+        profile_id, person_id = profile.id, profile.person_id
+    with client.session_transaction() as session:
+        session['language'] = language
+    page = client.get(f'/supporter-directory/{profile_id}/edit')
+    assert page.status_code == 200
+    assert 'id="identity"' in page.text
+    assert 'id="addresses"' in page.text
+    assert 'id="case-connections"' in page.text
+    assert client.get(f'/people/{person_id}').location.endswith(f'/supporter-directory/{profile_id}/edit')
+    assert client.get(f'/people/{person_id}/edit').location.endswith(f'/supporter-directory/{profile_id}/edit')
+    assert client.get(f'/people/profile/{profile_id}/addresses').location.endswith(f'/supporter-directory/{profile_id}/edit#addresses')
+
+
+def test_connect_from_person_workspace_stays_on_person_and_reuses_identity(app, client):
+    with app.app_context():
+        person = SupporterPerson(name='Workspace person', identity_key='phone:7185550198', phone='7185550198')
+        db.session.add(person); db.session.flush()
+        profile = SupporterProfile(name=person.name, phone=person.phone, normalized_phone='7185550198', person_id=person.id)
+        db.session.add(profile); db.session.commit()
+        profile_id, person_id = profile.id, person.id
+    target = f'/supporter-directory/{profile_id}/edit#case-connections'
+    for _ in range(2):
+        response = client.post(f'/supporter-directory/{profile_id}/connect', data={
+            'csrf': csrf(client), 'family_id': 1, 'relationship': 'Friend'})
+        assert response.status_code == 302
+        assert response.location.endswith(target)
+    with app.app_context():
+        contacts = db.session.scalars(db.select(Contact).where(Contact.person_id == person_id)).all()
+        assert len(contacts) == 1
+        contact_id = contacts[0].id
+    page = client.get(f'/supporter-directory/{profile_id}/edit').text
+    assert f'/contacts/{contact_id}/communications/message/sms' in page
+    assert f'/contacts/{contact_id}/communications/initial-email' in page
+    assert 'value="person_workspace"' in page
+    assert f'/supporter-directory/{profile_id}/connect' not in client.get('/supporter-directory').text
+
+
+def test_workspace_hides_unassigned_case_activity(app, client):
+    from app import StaffUser, FamilyAssignment, SupporterCommunication
+    with app.app_context():
+        person = SupporterPerson(name='Shared identity', identity_key='phone:7185550189', phone='7185550189')
+        hidden = Family(name='Private unassigned case')
+        staff = StaffUser(name='Assigned staff', email='assigned@example.test', password_hash='test', role='family_admin')
+        db.session.add_all([person, hidden, staff]); db.session.flush()
+        profile = SupporterProfile(name=person.name, phone=person.phone, normalized_phone='7185550189', person_id=person.id)
+        db.session.add(profile)
+        contact = Contact(name=person.name, family_id=hidden.id, person_id=person.id, supporter_key=person.identity_key, relationship='Friend')
+        db.session.add(contact); db.session.flush()
+        db.session.add(SupporterCommunication(contact_id=contact.id, family_id=hidden.id, kind='phone_call', body='Private call details', subject='Private history', status='completed'))
+        db.session.add(FamilyAssignment(staff_user_id=staff.id, family_id=1))
+        db.session.commit()
+        profile_id, staff_id = profile.id, staff.id
+    app.config['DEMO'] = False
+    with client.session_transaction() as session:
+        session['user_id'] = staff_id
+    response = client.get(f'/supporter-directory/{profile_id}/edit')
+    assert response.status_code == 200
+    assert '· Private unassigned case ·' not in response.text
+    assert 'Private call details' not in response.text
+    assert 'Private history' not in response.text
