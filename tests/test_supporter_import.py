@@ -457,9 +457,9 @@ def test_supporter_directory_options_are_bounded_and_searchable(app, client):
     response = client.get('/supporter-directory/options')
     assert response.status_code == 200
     assert len(response.json['profiles']) <= 50
-    response = client.get('/supporter-directory/options?q=Bulk%20Person%2074')
+    response = client.get('/supporter-directory/options?q=bulk74%40example.test')
     assert response.status_code == 200
-    assert any(profile['name'] == 'Bulk Person 074' for profile in response.json['profiles'])
+    assert any(profile['email'] == 'bulk74@example.test' for profile in response.json['profiles'])
 
 
 @pytest.mark.parametrize('phone', ['845-555-9876', ''])
