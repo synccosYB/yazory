@@ -858,3 +858,51 @@ details.quick-action-popup.supporter-workflow-popup>p{margin:14px 0 0}
   .profile-record-contact>span,.profile-linked-row,.profile-askan-details span{overflow-wrap:anywhere;white-space:normal}
   .family-supporters-table{min-width:720px}
 }
+
+
+/* Global RTL contract — Hebrew/Yiddish layouts */
+html[dir="rtl"] body{
+  direction:rtl;
+  text-align:start;
+}
+html[dir="rtl"] :is(main,.workspace,.card,.padded,.page-heading,.section-heading,.details,details,summary,form,fieldset,label,dl,.network-two-column>div,.network-two-column>form){
+  text-align:start;
+}
+html[dir="rtl"] :is(table,thead,tbody,tr,th,td){
+  direction:rtl;
+  text-align:start;
+}
+html[dir="rtl"] :is(input:not([type="number"]):not([type="email"]):not([type="tel"]):not([type="url"]),textarea,select){
+  direction:rtl;
+  text-align:start;
+}
+html[dir="rtl"] :is(input[type="number"],input[type="email"],input[type="tel"],input[type="url"],.numeric,[data-ltr],bdi[dir="ltr"]){
+  direction:ltr;
+  unicode-bidi:isolate;
+}
+html[dir="rtl"] :is(.network-two-column,.form-grid,.details,.tabs,.row-actions,.form-actions,.compact-form,.status-row,.header-actions,.helper-work-header-actions,.helper-picker-controls){
+  direction:rtl;
+}
+html[dir="rtl"] .network-two-column>*{
+  min-width:0;
+  text-align:start;
+}
+html[dir="rtl"] .page-heading,
+html[dir="rtl"] .section-heading,
+html[dir="rtl"] .status-row,
+html[dir="rtl"] .activity-row{
+  direction:rtl;
+}
+html[dir="rtl"] .button,
+html[dir="rtl"] button{
+  text-align:center;
+}
+html[dir="rtl"] .brand,
+html[dir="rtl"] .public-address,
+html[dir="rtl"] .email-preview-card{
+  direction:ltr;
+}
+html[dir="rtl"] .email-preview-card [dir="rtl"]{
+  direction:rtl;
+  text-align:start;
+}
