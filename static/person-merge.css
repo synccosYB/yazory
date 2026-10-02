@@ -38,3 +38,34 @@
   .person-merge-table th { width: 35%; }
   .person-merge-table td { width: 65%; }
 }
+
+.person-merge-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: .5rem;
+}
+.person-merge-heading h2 { margin: 0; }
+.person-merge-name-edit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+  margin: 1rem 0;
+}
+.person-merge-name-edit label { margin: 0; }
+.person-source-evidence {
+  margin-top: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border, #ddd);
+}
+.person-source-evidence summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: .75rem;
+}
+.person-source-table + .person-source-table { margin-top: 1rem; }
+@media (max-width: 650px) {
+  .person-merge-name-edit { grid-template-columns: 1fr; }
+}
