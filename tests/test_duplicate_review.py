@@ -4,7 +4,7 @@ from tests.test_unified_people import app, person
 from app import db, SupporterPerson, SupporterProfile, Contact, Receipt, SupporterCommunication, StaffUser
 from person_ids import PersonNumber
 from book_directory import PersonBookRecord
-from duplicate_review import PersonMerge, merge_people
+from duplicate_review import PersonMerge, merge_people, _snapshot_version
 from unified_people import PersonMatchDecision, _candidates
 
 
@@ -14,6 +14,18 @@ def profile(p, key):
     db.session.add(row)
     db.session.flush()
     return row
+
+
+def test_review_version_ignores_database_row_order():
+    first = {10: {'contact': [{'id': 2, 'name': 'B'}, {'id': 1, 'name': 'A'}]}}
+    second = {10: {'contact': [{'name': 'A', 'id': 1}, {'name': 'B', 'id': 2}]}}
+    assert _snapshot_version(first) == _snapshot_version(second)
+
+
+def test_review_version_still_detects_real_changes():
+    before = {10: {'contact': [{'id': 1, 'name': 'A'}]}}
+    after = {10: {'contact': [{'id': 1, 'name': 'Changed'}]}}
+    assert _snapshot_version(before) != _snapshot_version(after)
 
 
 def test_merge_preserves_case_ids_notes_and_public_number(app):
