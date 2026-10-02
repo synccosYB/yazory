@@ -13,4 +13,22 @@
 <span hidden data-status-label="verified">{{ _('Verified') }}</span><span hidden data-status-label="unverified">{{ _('Unverified') }}</span><span hidden data-status-label="incorrect">{{ _('Incorrect') }}</span>
 </details>
 <script src="{{ url_for('static',filename='person-verification.js',v='20261002-save-fix-2') }}" defer></script>
-<style>.verification-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.6rem}.person-verification{margin-block:.6rem}.verification-grid>div{border-block-end:1px solid #dce3eb;padding:.4rem}.verification-grid small{display:block;overflow-wrap:anywhere}.verification-grid label{display:block}.verification-grid [data-status]{font-size:.85em;color:#173e66}</style>
+<style>
+.person-verification{margin-block:.6rem}
+.person-verification>.field-hint{margin:.35rem 0 .75rem}
+.verification-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 1rem;align-items:stretch}
+.verification-grid>div{min-width:0;display:grid;grid-template-rows:auto auto minmax(1.35rem,auto) auto;align-content:start;border-block-end:1px solid #dce3eb;padding:.55rem .35rem .65rem}
+.verification-grid [data-field-label]{display:block;line-height:1.3}
+.verification-grid [data-status]{display:block;font-size:.85em;color:#173e66;min-height:1.25rem;margin-top:.15rem}
+.verification-grid small{display:block;overflow-wrap:anywhere;line-height:1.35}
+.verification-grid [data-review]:empty{display:none}
+.verification-grid [data-value]{min-height:1.35rem;margin-top:.2rem}
+.verification-grid>div>details{margin-top:.35rem}
+.verification-grid>div>details>summary{display:inline-block;cursor:pointer;white-space:nowrap}
+.verification-grid label{display:block;margin-top:.4rem}
+.verification-grid select,.verification-grid input{max-width:100%}
+[dir="rtl"] .verification-grid>div{text-align:right}
+.verification-grid [dir="ltr"]{text-align:left;unicode-bidi:plaintext}
+@media(max-width:900px){.verification-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.verification-grid{grid-template-columns:1fr}}
+</style>
