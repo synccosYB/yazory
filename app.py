@@ -3502,13 +3502,17 @@ def create_app(test_config=None):
             # first one chosen for the overview.
             raw_phone_values = {message.phone for message in general_sms_history}
             if raw_phone_values:
+                # The inbox needs conversational context, not an unbounded
+                # lifetime export. Keep the newest 1000 matching messages across
+                # the currently visible phone numbers so old SMS history cannot
+                # make the communications screen progressively slower forever.
                 thread_general_rows = _app.db.session.scalars(select(
                     GeneralSmsMessage).options(
                         joinedload(GeneralSmsMessage.family)).where(
                         GeneralSmsMessage.phone.in_(raw_phone_values)).order_by(
-                        GeneralSmsMessage.created_at,
-                        GeneralSmsMessage.id)).all()
-                for row in thread_general_rows:
+                        GeneralSmsMessage.created_at.desc(),
+                        GeneralSmsMessage.id.desc()).limit(1000)).all()
+                for row in reversed(thread_general_rows):
                     general_index.setdefault(
                         sms_phone_key(row.phone) or row.phone, []).append(row)
             _app.g.sms_general_index = general_index
@@ -3542,8 +3546,10 @@ def create_app(test_config=None):
                     SupporterCommunication).options(
                         joinedload(SupporterCommunication.family)).where(
                         SupporterCommunication.contact_id.in_(all_sms_contact_ids),
-                        SupporterCommunication.kind == 'sms')).all()
-                for row in supporter_sms_rows:
+                        SupporterCommunication.kind == 'sms').order_by(
+                        SupporterCommunication.created_at.desc(),
+                        SupporterCommunication.id.desc()).limit(1000)).all()
+                for row in reversed(supporter_sms_rows):
                     supporter_sms_by_contact.setdefault(row.contact_id, []).append(row)
             _app.g.sms_supporter_communications_by_contact = supporter_sms_by_contact
 
