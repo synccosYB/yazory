@@ -282,8 +282,14 @@ def install(app, profile_model, access):
             # canonical bilingual name record used everywhere else. Do not
             # create a review-only copy of the name.
             for person in (one, two):
-                english = request.form.get(f'name_english_{person.id}', '').strip()[:160]
-                yiddish = request.form.get(f'name_yiddish_{person.id}', '').strip()[:160]
+                english_key = f'name_english_{person.id}'
+                yiddish_key = f'name_yiddish_{person.id}'
+                # Older clients/tests that do not submit the new editable-name
+                # fields keep the existing name unchanged.
+                if english_key not in request.form and yiddish_key not in request.form:
+                    continue
+                english = request.form.get(english_key, '').strip()[:160]
+                yiddish = request.form.get(yiddish_key, '').strip()[:160]
                 if not english and not yiddish:
                     abort(400, 'Enter at least one name for each person.')
                 current = names_row('person', person.id)
