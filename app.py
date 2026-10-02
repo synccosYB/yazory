@@ -2161,16 +2161,31 @@ def create_app(test_config=None):
                 save_names('person', person.id, row['english_name'], row['yiddish_name'],
                            fill_only=True, legacy=person.name,
                            known_missing=person.id in created_people)
-                # Fill missing address components without replacing established data.
+                # Address data is authoritative only when this import created
+                # the canonical person.  An existing person with a blank address
+                # must stay blank until a human confirms the imported address.
                 address_row = dict(row)
                 from person_addresses import address_details, home_values
                 details = address_details('person', person.id)
                 home = home_values(person, details)
                 work = dict(details.work or {}) if details else {}
-                for prefix, current in (('home', home), ('work', work)):
-                    for field in ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'):
-                        if current.get(field) or (prefix == 'work' and field == 'company' and person.workplace):
+                if person.id not in created_people:
+                    submitted_address = any(row.get(prefix + '_' + field, '').strip()
+                                            for prefix in ('home', 'work')
+                                            for field in ('street', 'unit', 'city', 'state',
+                                                          'zip_code', 'country', 'company'))
+                    if submitted_address:
+                        errors.append(
+                            f"Row {row['row']}: imported address not applied to existing "
+                            f"person #{person.id}; review the address manually.")
+                    for prefix in ('home', 'work'):
+                        for field in ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'):
                             address_row.pop(prefix + '_' + field, None)
+                else:
+                    for prefix, current in (('home', home), ('work', work)):
+                        for field in ('street', 'unit', 'city', 'state', 'zip_code', 'country', 'company'):
+                            if current.get(field) or (prefix == 'work' and field == 'company' and person.workplace):
+                                address_row.pop(prefix + '_' + field, None)
                 target = _app.Contact(person_id=person.id)
                 save_new_supporter_addresses(
                     app, target, address_row, person=person, details=details, sync=False)
