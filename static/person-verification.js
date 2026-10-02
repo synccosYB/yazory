@@ -65,10 +65,6 @@
       const field = row.dataset.verificationField;
       const status = row.querySelector('[data-choice]').value;
       const reason = row.querySelector('[data-reason]');
-      reason.required = status !== 'unverified';
-      const valid = reason.reportValidity();
-      reason.required = false;
-      if (!valid) return;
       button.disabled = true;
       try {
         const body = new URLSearchParams({csrf: panel.dataset.csrf, status,
