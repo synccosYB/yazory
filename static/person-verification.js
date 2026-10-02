@@ -46,7 +46,21 @@
     });
     panel.addEventListener('click', async event => {
       const button = event.target.closest('[data-save]');
-      if (!button || !fields) return;
+      if (!button) return;
+      if (!fields) {
+        button.disabled = true;
+        try {
+          const response = await fetch(panel.dataset.url, {headers: {'Accept': 'application/json'}});
+          if (!response.ok) throw new Error();
+          show(await response.json());
+          result.textContent = '';
+        } catch (_) {
+          result.textContent = panel.dataset.error;
+          button.disabled = false;
+          return;
+        }
+        button.disabled = false;
+      }
       const row = button.closest('[data-verification-field]');
       const field = row.dataset.verificationField;
       const status = row.querySelector('[data-choice]').value;
