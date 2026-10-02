@@ -272,10 +272,23 @@ def install(app, profile_model, access):
         if request.method == 'POST':
             from translations import translate
             from unified_people import PersonMatchDecision, _candidates, _pair
-            kept = set(request.form.getlist('keep_id', type=int))
+            decision = request.form.get('decision', '').strip()
+            if decision:
+                if decision == 'both':
+                    kept = {one_id, two_id}
+                else:
+                    try:
+                        kept = {int(decision)}
+                    except ValueError:
+                        abort(400)
+            else:
+                # Backward compatibility for in-flight forms and older clients.
+                kept = set(request.form.getlist('keep_id', type=int))
             if request.form.get('version') != version:
                 abort(409, 'The records changed. Reload the merge preview.')
-            if not kept or not kept.issubset({one_id, two_id}) or request.form.get('confirm') != 'yes':
+            if not kept or not kept.issubset({one_id, two_id}):
+                abort(400)
+            if not decision and request.form.get('confirm') != 'yes':
                 abort(400)
 
             # Name corrections made during duplicate review update the same
