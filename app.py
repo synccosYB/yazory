@@ -18,6 +18,8 @@ from unified_people import install as install_unified_people
 from book_directory import (PersonBookRecord, import_book_rows, book_context,
                             family_context, save_family_names, install as install_book_directory)
 
+from duplicate_review import PersonIdentityAlias  # Register additive models before schema hooks.
+
 from flask import Response, current_app, g, has_request_context, jsonify, session
 from sqlalchemy import Index, UniqueConstraint, case, select, text, false
 from sqlalchemy.exc import IntegrityError
@@ -1584,6 +1586,9 @@ def create_app(test_config=None):
             if cache is None or identity_key not in cache['keys']:
                 person = _app.db.session.scalar(select(SupporterPerson).where(
                     SupporterPerson.identity_key == identity_key))
+                if person is None:
+                    from duplicate_review import resolve_identity_alias
+                    person = resolve_identity_alias(identity_key)
                 if cache is not None:
                     cache['keys'][identity_key] = person
             if person is None:
@@ -1667,6 +1672,9 @@ def create_app(test_config=None):
             identity_key = contact.supporter_key or f'legacy:{contact.id}'
             person = _app.db.session.scalar(select(SupporterPerson).where(
                 SupporterPerson.identity_key == identity_key))
+            if person is None:
+                from duplicate_review import resolve_identity_alias
+                person = resolve_identity_alias(identity_key)
             # A household phone is not proof that two relatives in the same
             # case are one person. Across cases it is the intended shared
             # identity; within one case preserve distinct people.
@@ -1967,7 +1975,24 @@ def create_app(test_config=None):
                 _app.flash('Enter a valid email address.', 'error')
                 return _app.render_template('person_new.html', title='Add person',
                                             return_to=return_to), 400
-            profile = create_neutral_directory_person(name=name, phone=phone, email=email)
+            from duplicate_watch import contact_identity_map, row_contact_matches, existing_name_address_map, row_name_address_key
+            submitted = dict(_app.request.form)
+            matches = row_contact_matches(submitted, contact_identity_map())
+            address_match = existing_name_address_map().get(row_name_address_key({
+                **submitted, 'name': name, 'home_street': submitted.get('home_address', ''),
+                'home_city': submitted.get('city', ''), 'home_state': submitted.get('state', ''),
+                'home_zip_code': submitted.get('zip_code', '')}))
+            if address_match and address_match.id not in {p.id for p in matches}:
+                matches.append(address_match)
+            if matches and _app.request.form.get('distinct_person') != 'yes':
+                return _app.render_template('person_new.html', title='Add person',
+                    return_to=return_to, duplicate_matches=matches), 409
+            if matches and _app.request.form.get('distinct_person') == 'yes':
+                profile = SupporterProfile(name=name[:160], phone=phone[:80], email=email[:254],
+                    normalized_phone='person:' + _app.secrets.token_hex(12))
+                _app.db.session.add(profile)
+            else:
+                profile = create_neutral_directory_person(name=name, phone=phone, email=email)
             _app.db.session.flush()
             person = canonical_person_for_profile(profile)
             for field_name, limit in (
@@ -1979,6 +2004,15 @@ def create_app(test_config=None):
                     field_name, '').strip()[:limit])
             if not person.cell_phone:
                 person.cell_phone = phone[:80]
+            if matches and _app.request.form.get('distinct_person') == 'yes':
+                from unified_people import PersonMatchDecision
+                actor = require_supporter_directory_access()
+                for matched in matches:
+                    a, b = sorted((person.id, matched.id))
+                    _app.db.session.add(PersonMatchDecision(person_one_id=a, person_two_id=b,
+                        kind='duplicate', decision='not_duplicate',
+                        evidence='Confirmed different person during Add Person',
+                        reviewed_by=actor.id if actor else None))
             _app.db.session.commit()
             _app.flash('Person added to the shared name list.')
             return _app.redirect(return_to)
@@ -2055,6 +2089,8 @@ def create_app(test_config=None):
                 row_name_address_key,
             )
             address_people = existing_name_address_map()
+            from duplicate_watch import contact_identity_map, row_contact_matches
+            contact_people = contact_identity_map()
             seen_new_addresses = {}
             imported_profiles = []
             for row, phone in candidates:
@@ -2073,6 +2109,12 @@ def create_app(test_config=None):
                         changed = True
                     updated += int(changed)
                 else:
+                    matches = row_contact_matches(row, contact_people)
+                    if matches:
+                        duplicates += 1
+                        skipped += 1
+                        errors.append(f"Row {row['row']}: possible duplicate person #{matches[0].id}. Review before importing.")
+                        continue
                     existing_person = address_people.get(address_key) if address_key else None
                     if existing_person is not None:
                         duplicates += 1
@@ -5582,6 +5624,8 @@ def create_app(test_config=None):
     install_person_ids(app, SupporterProfile)
     install_book_directory(app, SupporterProfile, require_supporter_directory_access)
     install_unified_people(app, SupporterProfile, PersonRelationship, require_supporter_directory_access)
+    from duplicate_review import install as install_duplicate_review
+    install_duplicate_review(app, SupporterProfile, require_supporter_directory_access)
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)

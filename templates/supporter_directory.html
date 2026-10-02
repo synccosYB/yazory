@@ -1,4 +1,5 @@
 {% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
+<a class="button secondary" href="{{ url_for('people_matching',tab='duplicates') }}">{{ _('Possible duplicates') }}</a>
 <div class="page-heading">
   <div>
     <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>

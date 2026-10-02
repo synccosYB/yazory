@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import app_original as core
 from flask import abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import UniqueConstraint, select
+from duplicate_watch import _normalized
 from person_names import PersonNameOwner, names_row, preload_names, resolve_name_owner, save_names
 
 db = core.db
@@ -58,7 +59,7 @@ def _phone(value):
 
 
 def _name(value):
-    return ' '.join((value or '').casefold().split())
+    return _normalized(value)
 
 
 def _person_names(person):
@@ -76,7 +77,7 @@ def _evidence(people):
     for person in people:
         for raw in (person.phone, person.home_phone, person.cell_phone):
             key = _phone(raw)
-            if key:
+            if 7 <= len(key) <= 15:
                 by_phone[key].append(person.id)
         if person.email:
             by_email[person.email.strip().casefold()].append(person.id)
@@ -87,6 +88,13 @@ def _evidence(people):
         for key in _person_names(person):
             by_name[key].append(person.id)
 
+    from duplicate_review import PersonIdentityAlias
+    ids = [person.id for person in people]
+    if ids:
+        for alias in db.session.scalars(select(PersonIdentityAlias).where(
+                PersonIdentityAlias.person_id.in_(ids),
+                PersonIdentityAlias.kind.in_(['phone', 'email']))):
+            (by_phone if alias.kind == 'phone' else by_email)[alias.value].append(alias.person_id)
     evidence = defaultdict(set)
     for label, buckets in (('same phone', by_phone), ('same email', by_email),
                            ('same home address', by_address), ('same full name', by_name)):
@@ -125,7 +133,7 @@ def _candidates(people, decisions, kind):
                 continue  # more likely a duplicate; review there first
         rows.append((one, two, sorted(reasons)))
     rows.sort(key=lambda row: (-len(row[2]), row[0].name.casefold(), row[1].name.casefold()))
-    return rows[:200]
+    return rows
 
 
 def install(app, profile_model, relationship_model, access):
@@ -215,11 +223,9 @@ def install(app, profile_model, relationship_model, access):
     @app.get('/people/matching')
     def people_matching():
         access()
-        # Keep review fast as the directory grows: inspect the most recently
-        # created canonical people instead of rebuilding evidence across every
-        # historical person on each page load.
+        # Scan all canonical identities with preloaded names; paginate rendered cards.
         people = db.session.scalars(select(core.SupporterPerson).order_by(
-            core.SupporterPerson.id.desc()).limit(1000)).all()
+            core.SupporterPerson.id.desc())).all()
         preload_names({('person', person.id, 'name') for person in people})
         ids = [person.id for person in people]
         decisions = db.session.scalars(select(PersonMatchDecision).where(
@@ -229,8 +235,19 @@ def install(app, profile_model, relationship_model, access):
         if tab not in ('connections', 'duplicates'):
             abort(400)
         kind = 'duplicate' if tab == 'duplicates' else 'connection'
+        rows = _candidates(people, decisions, kind)
+        later = {_pair(d.person_one_id, d.person_two_id) for d in decisions
+                 if d.kind == kind and d.decision == 'review_later'}
+        queue = request.args.get('queue', 'ready')
+        if queue not in ('ready', 'later'):
+            abort(400)
+        rows = [r for r in rows if ((_pair(r[0].id, r[1].id) in later) == (queue == 'later'))]
+        page = max(1, request.args.get('page', 1, type=int))
+        pages = max(1, (len(rows) + 19) // 20)
+        page = min(page, pages)
         return render_template('people_matching.html', title='People matching', tab=tab,
-                               candidates=_candidates(people, decisions, kind),
+                               candidates=rows[(page-1)*20:page*20], page=page,
+                               pages=pages, queue=queue, total=len(rows),
                                relationship_types=FAMILY_RELATIONSHIPS)
 
     @app.post('/people/matching/<kind>/<int:one_id>/<int:two_id>')

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% from 'macros.html' import token with context %}
 {% block content %}
 <div class="page-heading"><div><div class="eyebrow">{{ _('PEOPLE DIRECTORY') }}</div><h1>{{ _('Add person') }}</h1><p>{{ _('Create the person once. The same name can later be used as an applicant, askan, supporter, rabbi, helper, staff member, or community connection.') }}</p></div></div>
-<section class="card padded"><form method="post">{{ token(csrf) }}<input type="hidden" name="next" value="{{ return_to }}"><div class="form-grid">
+<section class="card padded"><form method="post">{{ token(csrf) }}<input type="hidden" name="next" value="{{ return_to }}">{% if duplicate_matches %}<div role="alert"><p>{{ _('Possible duplicate. Review the existing person before adding another.') }}</p>{% for person in duplicate_matches %}<p><a href="{{ url_for('person_hub',person_id=person.id) }}">{{ person.name }} · {{ person_number('person',person) }}</a></p>{% endfor %}<label><input type="checkbox" name="distinct_person" value="yes">{{ _('I checked the matches. This is a different person.') }}</label></div>{% endif %}<div class="form-grid">
 <input type="hidden" name="name" maxlength="160" value="{{ request.form.get('name','') }}">{{ bilingual_name_fields('profile', none, 'name') }}
 <label>{{ _('Phone') }}<input name="phone" maxlength="80" value="{{ request.form.get('phone','') }}" dir="ltr"></label>
 <label>{{ _('Cell phone') }}<input name="cell_phone" maxlength="80" value="{{ request.form.get('cell_phone','') }}" dir="ltr"></label>
