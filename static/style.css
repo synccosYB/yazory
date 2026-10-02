@@ -906,3 +906,51 @@ html[dir="rtl"] .email-preview-card [dir="rtl"]{
   direction:rtl;
   text-align:start;
 }
+
+
+/* People matching: mirror the whole candidate card, not only its text. */
+.people-match-card{
+  direction:inherit;
+  text-align:start;
+}
+.people-match-card .network-two-column{
+  direction:inherit;
+}
+.people-match-card .network-two-column>div{
+  direction:inherit;
+  text-align:start;
+}
+.people-match-reasons{
+  direction:inherit;
+  text-align:start;
+}
+.people-match-actions{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:0;
+  direction:inherit;
+  text-align:start;
+}
+.people-match-actions>.button,
+.people-match-actions>button{
+  margin:0;
+}
+html[dir="rtl"] .people-match-card,
+html[dir="rtl"] .people-match-card .network-two-column,
+html[dir="rtl"] .people-match-reasons,
+html[dir="rtl"] .people-match-actions{
+  direction:rtl !important;
+  text-align:right;
+}
+html[dir="rtl"] .people-match-card .network-two-column>div{
+  direction:rtl !important;
+  text-align:right;
+}
+html[dir="ltr"] .people-match-card,
+html[dir="ltr"] .people-match-card .network-two-column,
+html[dir="ltr"] .people-match-reasons,
+html[dir="ltr"] .people-match-actions{
+  direction:ltr;
+  text-align:left;
+}
