@@ -3492,18 +3492,26 @@ def create_app(test_config=None):
             abort(400, 'Enter a valid month.')
         month_start = datetime.strptime(month + '-01', '%Y-%m-%d').date()
         month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
-        contacts = db.session.scalars(scoped_contacts_statement()).all()
-        family_ids = list({contact.family_id for contact in contacts})
-        if app.config['DEMO'] or current_user().role != 'fundraiser':
-            family_scope = select(Family.id)
-            if not organization_admin():
-                family_scope = family_scope.where(Family.id.in_(select(FamilyAssignment.family_id).where(
-                    FamilyAssignment.staff_user_id == current_user().id)))
-            family_ids = db.session.scalars(family_scope).all()
+        contact_scope = scoped_contacts_statement()
+        # Collections is a working list, not an export. Page the commitment
+        # rows so lifetime receipt totals and rendered forms stay bounded as the
+        # supporter directory grows.
+        page = max(request.args.get('page', 1, type=int), 1)
+        page_size = 100
+        contact_rows = db.session.scalars(contact_scope.order_by(
+            Contact.family_id, Contact.name, Contact.id).offset(
+            (page - 1) * page_size).limit(page_size + 1)).all()
+        has_next = len(contact_rows) > page_size
+        contacts = contact_rows[:page_size]
+        family_scope = select(Family.id)
+        if not organization_admin():
+            family_scope = family_scope.where(Family.id.in_(select(FamilyAssignment.family_id).where(
+                FamilyAssignment.staff_user_id == current_user().id)))
+        family_ids = db.session.scalars(family_scope).all()
         receipts = db.session.scalars(select(Receipt).where(
-            Receipt.contact_id.in_([c.id for c in contacts]),
+            Receipt.family_id.in_(family_ids),
             Receipt.received_on >= month_start, Receipt.received_on < month_end
-        ).order_by(Receipt.received_on.desc(), Receipt.id.desc())).all() if family_ids else []
+        ).order_by(Receipt.received_on.desc(), Receipt.id.desc()).limit(500)).all() if family_ids else []
         charity_statement = select(CharityDonation).join(
             CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
             CharityCampaign.family_id.in_(family_ids),
@@ -3512,8 +3520,10 @@ def create_app(test_config=None):
         if not app.config['DEMO'] and current_user().role == 'fundraiser':
             charity_statement = charity_statement.join(
                 CharityDonor, CharityDonor.id == CharityDonation.donor_id).where(
-                CharityDonor.contact_id.in_([c.id for c in contacts]))
-        charity_donations = db.session.scalars(charity_statement).all() if family_ids else []
+                CharityDonor.contact_id.in_(select(Contact.id).where(
+                    Contact.family_id.in_(family_ids))))
+        charity_donations = db.session.scalars(charity_statement.order_by(
+            CharityDonation.donation_time.desc(), CharityDonation.id.desc()).limit(500)).all() if family_ids else []
         contacts_by_id = {c.id: c for c in contacts}
         families_by_id = {f.id: f for f in db.session.scalars(select(Family).where(
             Family.id.in_(family_ids))).all()} if family_ids else {}
@@ -3561,7 +3571,7 @@ def create_app(test_config=None):
                                automatic_total=sum(d.amount_cents for d in charity_donations),
                                received_by_contact=received_by_contact,
                                lifetime_by_contact=lifetime_by_contact, month=month,
-                               families=families)
+                               families=families, page=page, has_next=has_next)
 
     @app.post('/collections/receipts')
     def record_receipt():
