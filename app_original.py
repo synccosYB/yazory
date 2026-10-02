@@ -2653,13 +2653,6 @@ def create_app(test_config=None):
             abort(403, 'You are not assigned to this family.')
         family = db.session.scalar(select(Family).options(
             selectinload(Family.children),
-            selectinload(Family.contacts).selectinload(Contact.nested_supporters),
-            selectinload(Family.contacts).selectinload(Contact.nested_supporters).selectinload(
-                Contact.children),
-            selectinload(Family.contacts).selectinload(Contact.nested_supporters).selectinload(
-                Contact.parent_supporter),
-            selectinload(Family.contacts).selectinload(Contact.parent_supporter),
-            selectinload(Family.contacts).selectinload(Contact.children),
             selectinload(Family.expenses),
             selectinload(Family.documents).defer(Document.data),
             selectinload(Family.gabbais), selectinload(Family.intake_record),
@@ -2671,37 +2664,26 @@ def create_app(test_config=None):
         if current_user() and current_user().role == 'office_employee':
             return render_template('family_office_with_documents.html', title=family.name, family=family)
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
-        supporter_keys = {contact.supporter_key for contact in family.contacts if contact.supporter_key}
+        # The case profile is a summary, not the full supporter directory. Keep
+        # its database work bounded even when a case has hundreds of connections.
+        supporter_preview_limit = 30
+        supporter_total, awaiting_contact = db.session.execute(select(
+            func.count(Contact.id),
+            func.count(Contact.id).filter(Contact.status == 'To contact')
+        ).where(Contact.family_id == family.id)).one()
+        preview_contacts = db.session.scalars(select(Contact).options(
+            selectinload(Contact.parent_supporter),
+            selectinload(Contact.children),
+        ).where(Contact.family_id == family.id).order_by(
+            Contact.parent_contact_id.is_not(None), Contact.parent_contact_id,
+            Contact.id).limit(supporter_preview_limit)).all()
+        supporter_keys = {contact.supporter_key for contact in preview_contacts if contact.supporter_key}
         connected_counts = dict(db.session.execute(select(
             Contact.supporter_key, func.count(func.distinct(Contact.family_id))
         ).where(Contact.supporter_key.in_(supporter_keys)).group_by(Contact.supporter_key)).all()) if supporter_keys else {}
-        for contact in family.contacts:
+        for contact in preview_contacts:
             contact.connected_cases = connected_counts.get(contact.supporter_key, 1)
-        # Keep each supporter's household together in the profile table.  A
-        # supporter linked as a son or son-in-law belongs immediately beneath
-        # the selected parent instead of appearing elsewhere in the flat list.
-        top_level_contacts = [contact for contact in family.contacts if not contact.parent_contact_id]
-        included_contact_ids = set()
-        contact_rows = []
-        def add_contact_branch(contact, depth=0):
-            if contact.id in included_contact_ids:
-                return
-            included_contact_ids.add(contact.id)
-            contact_rows.append((contact, depth))
-            for nested in sorted(contact.nested_supporters, key=lambda row: row.name.lower()):
-                add_contact_branch(nested, depth + 1)
-        for contact in top_level_contacts:
-            add_contact_branch(contact)
-        # Preserve access to legacy/orphaned records whose parent is unavailable.
-        contact_rows.extend((contact, False) for contact in family.contacts
-                            if contact.parent_contact_id and contact.id not in included_contact_ids)
-        # Keep the case profile payload bounded.  The dedicated supporters/work
-        # screens remain the full-directory views; the profile only needs a useful
-        # first slice so cases with hundreds of connections still open quickly.
-        supporter_preview_limit = 30
-        supporter_total = len(contact_rows)
-        contact_rows = contact_rows[:supporter_preview_limit]
-        preview_contacts = [contact for contact, _depth in contact_rows]
+        contact_rows = [(contact, bool(contact.parent_contact_id)) for contact in preview_contacts]
         # Localized supporter names are rendered throughout the preview. Batch-load
         # only the rows that will actually be sent to the browser.
         from person_names import preload_names
@@ -2718,12 +2700,20 @@ def create_app(test_config=None):
         return render_template('family.html', title=family.name, family=family, activity=activity,
                                contact_rows=contact_rows, supporter_total=supporter_total,
                                supporter_preview_limit=supporter_preview_limit,
+                               awaiting_contact=awaiting_contact,
                                missing_profile_count=sum(not value for value in profile_values),
                                budget=budget_totals(family),
                                collected=fund_totals['collected'], sent=fund_totals['given_out'],
                                available_to_give=fund_totals['available'],
                                ledger_adjustments_and_holds=fund_totals['ledger_adjustments_and_holds'],
-                               pledged=sum(c.monthly_equivalent_cents for c in family.contacts if c.status=='Pledged') if not app.extensions['workflows']['enforced']() else app.extensions['workflows']['monthly_pledged'](family.id))
+                               pledged=(db.session.scalar(select(func.coalesce(func.sum(
+                                   case((Contact.pledge_frequency == 'Weekly',
+                                         Contact.monthly_cents * 52.0 / 12.0),
+                                        else_=Contact.monthly_cents)), 0)).where(
+                                   Contact.family_id == family.id, Contact.status == 'Pledged',
+                                   Contact.pledge_frequency != 'One time')) or 0)
+                               if not app.extensions['workflows']['enforced']()
+                               else app.extensions['workflows']['monthly_pledged'](family.id))
 
     @app.get('/families/<int:family_id>/print')
     def family_print_report(family_id):
