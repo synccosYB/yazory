@@ -2703,6 +2703,12 @@ def create_app(test_config=None):
         # Preserve access to legacy/orphaned records whose parent is unavailable.
         contact_rows.extend((contact, False) for contact in family.contacts
                             if contact.parent_contact_id and contact.id not in included_contact_ids)
+        # Localized supporter names are rendered throughout the profile. Batch-load
+        # them once so the number of SQL queries does not grow with the number of
+        # supporters connected to a case.
+        from person_names import preload_names
+        preload_names(('person' if contact.person_id else 'supporter',
+                       contact.person_id or contact.id, 'name') for contact in family.contacts)
         fund_totals = case_fund_totals(family.id)
         profile_values = (
             family.email, family.full_address, family.phone, family.spouse,
