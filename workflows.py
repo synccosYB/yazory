@@ -250,8 +250,14 @@ def install_workflows(app, db, entities, helpers):
         direct_payouts=db.session.scalar(select(func.coalesce(func.sum(ApplicantPayout.amount_cents),0)).where(
             ApplicantPayout.family_id==fid,ApplicantPayout.status!='voided')) or 0
         posted_sources={e.source_item_id for e in entries}
+        # Load the workflow rows needed by this summary once.  The previous
+        # implementation re-read the same case's collection/work history
+        # multiple times during a single profile request.
+        financial_work=list(db.session.scalars(select(Work).where(
+            Work.family_id==fid,Work.kind.in_(['collection','expense','emergency']))))
+        collections=[item for item in financial_work if item.kind=='collection']
         posted_imports=set()
-        for item in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind=='collection')):
+        for item in collections:
             donation_id=item.data.get('abcharity_donation_id')
             if donation_id and item.id in posted_sources:posted_imports.add(donation_id)
         campaign_ids=list(db.session.scalars(select(CharityCampaign.id).where(
@@ -262,9 +268,10 @@ def install_workflows(app, db, entities, helpers):
         imported_net=sum(d.net_cents for d in imported)
         balance=sum(e.amount_cents for e in entries)+imported_net-direct_payouts
         reserved=0
-        for item in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind.in_(['expense','emergency']),Work.disposition=='Open')):
-            if (item.kind=='expense' and item.stage>=4) or (item.kind=='emergency' and item.stage>=4):
-                if not any(e.source_item_id==item.id for e in entries): reserved+=item.data.get('amount',0)
+        for item in financial_work:
+            if item.disposition=='Open' and ((item.kind=='expense' and item.stage>=4) or
+                                             (item.kind=='emergency' and item.stage>=4)):
+                if item.id not in posted_sources: reserved+=item.data.get('amount',0)
         plan=approved('support_plan',fid)
         assessment=approved_assessment(plan) if plan else None
         family=db.session.get(Family,fid)
@@ -272,8 +279,8 @@ def install_workflows(app, db, entities, helpers):
         held=False
         consistency=app.extensions.get('workflows',{}).get('import_consistent')
         if consistency:
-            for w in db.session.scalars(select(Work).where(Work.family_id==fid,Work.kind=='collection')):
-                if w.data.get('abcharity_donation_id') and any(e.source_item_id==w.id for e in entries) and not consistency(w):held=True
+            for w in collections:
+                if w.data.get('abcharity_donation_id') and w.id in posted_sources and not consistency(w):held=True
         return dict(balance=balance,reserved=reserved,protected_reserve=protected,held_for_review=held,available=0 if held else balance-reserved-protected,
                     collected=sum(e.amount_cents for e in entries if e.entry_type in ('Donation','Donation adjustment'))+imported_gross,
                     assistance=-sum(e.amount_cents for e in entries if e.entry_type=='Family assistance')+direct_payouts,
@@ -294,11 +301,17 @@ def install_workflows(app, db, entities, helpers):
         return db.session.scalar(select(Family).where(Family.id==fid).with_for_update()) if fid else None
 
     def policy():
+        if hasattr(g,'workflow_policy'):
+            return g.workflow_policy
         p=db.session.scalar(select(Policy).order_by(Policy.id.desc()))
-        return p.data if p else {}
+        g.workflow_policy=p.data if p else {}
+        return g.workflow_policy
 
     def enforced():
-        return not app.config['DEMO'] and bool(app.config.get('WORKFLOW_ENFORCEMENT') or policy())
+        if hasattr(g,'workflow_enforced'):
+            return g.workflow_enforced
+        g.workflow_enforced=not app.config['DEMO'] and bool(app.config.get('WORKFLOW_ENFORCEMENT') or policy())
+        return g.workflow_enforced
 
     def conflict(item,uid):
         cache=getattr(g,'workflow_conflicts',None)
