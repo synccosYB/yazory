@@ -148,8 +148,6 @@ def install(app, access):
         reason = request.form.get('reason', '').strip()
         if status not in ('verified', 'unverified', 'incorrect') or len(reason) > 1000:
             abort(400)
-        if status != 'unverified' and not reason:
-            abort(400)
         current = values(person)
         digest = fingerprint(current[field])
         if request.form.get('fingerprint') != digest:
