@@ -445,6 +445,23 @@ def test_person_can_join_shul_network_before_being_connected_to_case(app, client
     assert directory.status_code == 200
     assert 'Future Helper' in directory.text
 
+def test_supporter_directory_options_are_bounded_and_searchable(app, client):
+    from app import SupporterProfile, db
+    with app.app_context():
+        db.session.add_all([
+            SupporterProfile(name=f'Bulk Person {index:03d}', phone=f'845555{index:04d}',
+                             normalized_phone=f'845555{index:04d}', email=f'bulk{index}@example.test')
+            for index in range(75)
+        ])
+        db.session.commit()
+    response = client.get('/supporter-directory/options')
+    assert response.status_code == 200
+    assert len(response.json['profiles']) <= 50
+    response = client.get('/supporter-directory/options?q=Bulk%20Person%2074')
+    assert response.status_code == 200
+    assert any(profile['name'] == 'Bulk Person 074' for profile in response.json['profiles'])
+
+
 @pytest.mark.parametrize('phone', ['845-555-9876', ''])
 def test_selected_person_needs_only_connection_and_keeps_identity(app, client, phone):
     from person_addresses import PersonAddressDetails
