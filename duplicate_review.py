@@ -275,8 +275,26 @@ def install(app, profile_model, access):
                 error = str(exc) if isinstance(exc, ValueError) else 'Linked records conflict. Merge was cancelled; all records remain intact.'
             else:
                 from translations import translate
+                from unified_people import PersonMatchDecision, _candidates, _pair
                 flash(translate('People merged.'))
-                return redirect(url_for('person_hub', person_id=target))
+
+                # Keep duplicate review as a queue. After a successful merge,
+                # open the next ready pair instead of leaving the workflow for
+                # the surviving person's profile.
+                people = db.session.scalars(select(core.SupporterPerson).order_by(
+                    core.SupporterPerson.id.desc())).all()
+                decisions = db.session.scalars(select(PersonMatchDecision)).all()
+                later = {_pair(row.person_one_id, row.person_two_id)
+                         for row in decisions
+                         if row.kind == 'duplicate' and row.decision == 'review_later'}
+                ready = [row for row in _candidates(people, decisions, 'duplicate')
+                         if _pair(row[0].id, row[1].id) not in later]
+                if ready:
+                    next_one, next_two, _ = ready[0]
+                    return redirect(url_for('review_person_merge',
+                                            one_id=next_one.id, two_id=next_two.id))
+                return redirect(url_for('people_matching',
+                                        tab='duplicates', queue='ready'))
         return render_template('person_merge.html', title='Review merge',
                                one=one, two=two, error=error,
                                snapshots=snapshots, version=version), 409 if error else 200
