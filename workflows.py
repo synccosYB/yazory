@@ -739,6 +739,11 @@ def install_workflows(app, db, entities, helpers):
         query=select(Work).order_by(Work.due,Work.id)
         if kind:query=query.where(Work.kind==kind)
         if fid:query=query.where(Work.family_id==fid)
+        # Normal queue views and all four dashboard counters concern open work.
+        # Do not materialize years of completed/rejected/canceled workflow
+        # history merely to discard it in Python. "All records" remains the
+        # explicit historical view.
+        if view!='all':query=query.where(Work.disposition=='Open')
         items=list(db.session.scalars(query))
         if user.role=='fundraiser':
             contact_ids={w.data.get('contact_id') for w in items if w.data.get('contact_id')}
