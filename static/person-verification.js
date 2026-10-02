@@ -72,9 +72,19 @@
         const response = await fetch(`${panel.dataset.url}/${field}`, {method: 'POST', body,
           headers: {'Accept': 'application/json'}});
         if (!response.ok) throw new Error();
-        show(await response.json());
-        const refreshed = await fetch(panel.dataset.url, {headers: {'Accept': 'application/json'}});
-        if (refreshed.ok) show(await refreshed.json());
+        const saved = await response.json();
+        // Do not repaint the whole panel here. Repainting resets the other
+        // rows' unsaved dropdown/reason edits, which made their Save buttons
+        // appear not to work when reviewing several fields in sequence.
+        fields = saved.fields;
+        const item = fields[field];
+        row.querySelector('[data-status]').textContent =
+          panel.querySelector(`[data-status-label="${item.status}"]`).textContent;
+        row.querySelector('[data-review]').textContent =
+          [item.reviewer, item.date ? new Date(item.date).toLocaleString() : '', item.reason]
+            .filter(Boolean).join(' · ');
+        row.querySelector('[data-choice]').value = item.status;
+        row.querySelector('[data-reason]').value = item.reason;
         result.textContent = panel.dataset.saved;
       } catch (_) {result.textContent = panel.dataset.error;}
       finally {button.disabled = false;}
