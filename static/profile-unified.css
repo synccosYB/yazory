@@ -481,3 +481,33 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Family identity status belongs to the title line; it is not a card. */
+body[data-endpoint="family_detail"] .profile-record-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+body[data-endpoint="family_detail"] .profile-record-title-line h1 {
+  margin: 0;
+}
+
+body[data-endpoint="family_detail"] .profile-inline-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+body[data-endpoint="family_detail"] .profile-inline-status small {
+  margin: 0;
+  color: var(--muted);
+}
