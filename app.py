@@ -2171,6 +2171,11 @@ def create_app(test_config=None):
         page = min(page, last_page)
         profiles = _app.db.session.scalars(
             statement.limit(page_size).offset((page - 1) * page_size)).all()
+        # The directory renders bilingual canonical names. Preload this page in
+        # one query so language-aware display does not add one SELECT per row.
+        if profiles:
+            from person_names import preload_names
+            preload_names({('person', p.person_id, 'name') for p in profiles if p.person_id})
         book_records = {}
         if profiles:
             for record in _app.db.session.scalars(select(PersonBookRecord).options(load_only(
