@@ -1926,9 +1926,9 @@ def create_app(test_config=None):
     def supporter_directory():
         families = supporter_directory_families()
         if _app.request.method == 'GET':
-            # Show the most recent import result once, then clear it so an old
-            # upload cannot keep appearing on later visits/uploads.
-            import_result = _app.session.pop('people_import_result', None)
+            # Keep the latest import outcome visible while the user refreshes,
+            # searches, paginates, or navigates back to the directory.
+            import_result = _app.session.get('people_import_result')
         else:
             import_result = None
         if import_result and import_result.get('family_id') is not None and import_result['family_id'] not in {f.id for f in families}:
@@ -2404,8 +2404,18 @@ def create_app(test_config=None):
             # The profile form edits the canonical person's bilingual name fields.
             # Persist both variants explicitly; relying only on the legacy display
             # name can make Save appear successful while the visible name reverts.
-            english_name = _app.request.form.get('name_english', '').strip()[:160]
-            yiddish_name = _app.request.form.get('name_yiddish', '').strip()[:160]
+            has_bilingual_name = (
+                'name_english' in _app.request.form or
+                'name_yiddish' in _app.request.form)
+            if has_bilingual_name:
+                english_name = _app.request.form.get('name_english', '').strip()[:160]
+                yiddish_name = _app.request.form.get('name_yiddish', '').strip()[:160]
+            else:
+                # Older callers/API-style posts still submit the legacy name.
+                # Preserve it instead of interpreting absent bilingual fields
+                # as an instruction to erase both names.
+                from person_names import detected_names
+                english_name, yiddish_name = detected_names(name[:160])
             app.extensions['person_names']['save'](
                 'person', person.id, english_name, yiddish_name,
                 legacy=person.name)
