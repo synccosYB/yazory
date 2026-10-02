@@ -83,8 +83,10 @@ def test_imported_people_directory_uses_the_same_foldable_accordion_pattern():
     assert 'class="supporter-accordion-item"' in template
     assert 'class="supporter-accordion-panel"' in template
     assert '<table>' not in template
-    assert 'supporter-directory-connect' in template
-    assert '.supporter-directory-connect' in css
+    # Case connections are managed from the canonical person profile rather
+    # than duplicating a second connection form inside every directory row.
+    assert "url_for('edit_supporter_profile', profile_id=profile.id)" in template
+    assert 'supporter-directory-connect' not in template
 
 
 def test_network_people_list_is_compact_searchable_and_not_hierarchy_indented():
@@ -120,10 +122,11 @@ def test_dashboard_uses_translated_labels_and_links_to_full_lists():
     assert 'family_table(' not in template
 
 
-def test_family_name_is_the_only_profile_link_in_family_table():
+def test_family_name_and_case_number_link_to_the_same_profile():
     root = Path(__file__).resolve().parents[1]
     macro = (root / 'templates/macros.html').read_text().splitlines()[3]
-    assert macro.count('href="/families/{{ f.id }}"') == 1
+    canonical_link = "href=\"{{ url_for('family_detail', family_id=f.id) }}\""
+    assert macro.count(canonical_link) == 2
     assert '_("View →")' not in macro
     assert 'colspan="4"' in macro
 
