@@ -40,6 +40,17 @@ def resolve_identity_alias(identity_key):
         PersonIdentityAlias.kind == 'identity_key', PersonIdentityAlias.value == identity_key))
 
 
+def _snapshot_version(snapshots):
+    """Hash review state independent of database row-return order."""
+    stable = {}
+    for person_id, tables in snapshots.items():
+        stable[str(person_id)] = {
+            table: sorted(rows, key=lambda row: json.dumps(row, sort_keys=True, default=str))
+            for table, rows in tables.items()
+        }
+    return hashlib.sha256(json.dumps(stable, sort_keys=True, default=str).encode()).hexdigest()
+
+
 def snapshot(person):
     result = {}
     for table in db.metadata.sorted_tables:
@@ -268,7 +279,7 @@ def install(app, profile_model, access):
         two = db.get_or_404(core.SupporterPerson, two_id)
         error = None
         snapshots = {one.id: snapshot(one), two.id: snapshot(two)}
-        version = hashlib.sha256(json.dumps(snapshots, sort_keys=True).encode()).hexdigest()
+        version = _snapshot_version(snapshots)
         if request.method == 'POST':
             from translations import translate
             from unified_people import PersonMatchDecision, _candidates, _pair
