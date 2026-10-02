@@ -3,7 +3,7 @@
 <div class="page-heading"><h1>{{ _('Review merge') }}</h1><a href="{{ url_for('people_matching',tab='duplicates') }}">{{ _('Possible duplicates') }}</a></div>
 {% if error %}<div class="card padded" role="alert">{{ _(error) }}</div>{% endif %}
 <p>{{ _('Compare the two Yazory records, correct their names if needed, then choose whether to keep one or both. Source information shown below is preserved import evidence; it is not automatically treated as verified person data.') }}</p>
-<form method="post" class="person-merge-form">{{ token(csrf) }}<input type="hidden" name="version" value="{{ version }}">{% if request.args.get('next_one_id', type=int) and request.args.get('next_two_id', type=int) %}<input type="hidden" name="next_one_id" value="{{ request.args.get('next_one_id', type=int) }}"><input type="hidden" name="next_two_id" value="{{ request.args.get('next_two_id', type=int) }}">{% endif %}
+<form method="post" class="person-merge-form">{{ token(csrf) }}<input type="hidden" name="version" value="{{ version }}">{% if next_one_id and next_two_id %}<input type="hidden" name="next_one_id" value="{{ next_one_id }}"><input type="hidden" name="next_two_id" value="{{ next_two_id }}">{% endif %}
 <div class="card padded person-merge-comparison"><div class="network-two-column">
 {% for person in (one,two) %}{% set names=person_name_values('person',person) %}{% set books=snapshots[person.id].get('person_book_record',[]) %}
 <section class="person-merge-card">
