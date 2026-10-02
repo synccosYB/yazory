@@ -93,7 +93,8 @@ def test_review_pages_render_all_locales(app):
         assert response.status_code == 200
         assert f'<html lang="{lang}" dir="{"ltr" if lang == "en" else "rtl"}">' in response.text
         assert 'class="person-merge-table"' in response.text
-        assert '<bdi dir="ltr">(845) 555-1111</bdi>' in response.text
+        assert f'name="phone_{a}"' in response.text
+        assert 'value="8455551111"' in response.text
         assert 'scope="row"' in response.text
         assert f'Yazory record <bdi dir="ltr">#{a}</bdi>' in response.text
         assert f'name="name_english_{a}"' in response.text
