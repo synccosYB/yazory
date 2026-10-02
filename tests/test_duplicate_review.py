@@ -95,7 +95,9 @@ def test_review_pages_render_all_locales(app):
         assert 'class="person-merge-table"' in response.text
         assert '<bdi dir="ltr">(845) 555-1111</bdi>' in response.text
         assert 'scope="row"' in response.text
-        assert (f'<h2 dir="auto"><a href="/people/{a}">One</a></h2>' if lang == 'en' else f'<h2 dir="auto"><a href="/people/{a}">איינער</a></h2>') in response.text
+        assert f'Yazory record <bdi dir="ltr">#{a}</bdi>' in response.text
+        assert f'name="name_english_{a}"' in response.text
+        assert f'name="name_yiddish_{a}"' in response.text
 
 
 def test_review_later_is_separate_queue(app):
@@ -270,3 +272,55 @@ def test_large_review_keeps_database_parameters_bounded(app):
                 assert b'Old One' in response.data and b'Old Two' in response.data
         finally:
             event.remove(db.engine,'before_cursor_execute',enforce_limit)
+
+
+def test_review_shows_book_id_source_evidence_and_edits_canonical_names(app):
+    import re
+    from person_names import names_row, save_names
+    with app.app_context():
+        one = person('Gold', 'test:source-one', '8455557101')
+        two = person('Gold', 'test:source-two', '8455557102')
+        profile(one, 'rid:source-one'); profile(two, 'rid:source-two')
+        save_names('person', one.id, '', 'גאלד', legacy=one.name)
+        save_names('person', two.id, '', 'גאלד', legacy=two.name)
+        db.session.add_all([
+            PersonBookRecord(person_id=one.id, source='directory', book_id='4011',
+                             last_name='גאלד', source_ref='scan.pdf, page 83, entry 19',
+                             notes='First-name reading to verify: אברהם.',
+                             review='Check first name'),
+            PersonBookRecord(person_id=two.id, source='directory', book_id='4033',
+                             last_name='גאלד', source_ref='scan.pdf, page 83, entry 40',
+                             notes='First-name reading to verify: חיים הערש.',
+                             review='Check first name'),
+        ])
+        a, b = one.id, two.id
+        db.session.commit()
+
+    client = app.test_client()
+    url = f'/people/duplicates/{a}/{b}'
+    page = client.get(url)
+    assert page.status_code == 200
+    assert f'#{a}' in page.text and f'#{b}' in page.text
+    assert '4011' in page.text and '4033' in page.text
+    assert 'scan.pdf, page 83, entry 19' in page.text
+    assert 'First-name reading to verify: אברהם.' in page.text
+    version = re.search(rb'name="version" value="([a-f0-9]+)"', page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token = session['csrf']
+
+    response = client.post(url, data=MultiDict([
+        ('csrf', token),
+        ('version', version),
+        ('keep_id', str(a)), ('keep_id', str(b)),
+        (f'name_english_{a}', ''), (f'name_yiddish_{a}', 'אברהם גאלד'),
+        (f'name_english_{b}', ''), (f'name_yiddish_{b}', 'חיים הערש גאלד'),
+        ('confirm', 'yes'),
+    ]))
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(SupporterPerson, a) is not None
+        assert db.session.get(SupporterPerson, b) is not None
+        assert names_row('person', a).yiddish_name == 'אברהם גאלד'
+        assert names_row('person', b).yiddish_name == 'חיים הערש גאלד'
+        assert db.session.get(SupporterPerson, a).name == 'אברהם גאלד'
+        assert db.session.get(SupporterPerson, b).name == 'חיים הערש גאלד'
