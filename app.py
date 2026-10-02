@@ -2171,11 +2171,27 @@ def create_app(test_config=None):
         page = min(page, last_page)
         profiles = _app.db.session.scalars(
             statement.limit(page_size).offset((page - 1) * page_size)).all()
-        # The directory renders bilingual canonical names. Preload this page in
-        # one query so language-aware display does not add one SELECT per row.
+        # The directory renders bilingual canonical names and home addresses.
+        # Preload the bounded page in bulk so neither field adds one SELECT per row.
+        directory_addresses = {}
         if profiles:
+            person_ids = [p.person_id for p in profiles if p.person_id]
             from person_names import preload_names
-            preload_names({('person', p.person_id, 'name') for p in profiles if p.person_id})
+            preload_names({('person', person_id, 'name') for person_id in person_ids})
+            if person_ids:
+                from person_addresses import address_details, home_values, preload_addresses
+                preload_addresses({('person', person_id) for person_id in person_ids})
+                people = {person.id: person for person in _app.db.session.scalars(
+                    select(SupporterPerson).where(SupporterPerson.id.in_(person_ids))).all()}
+                for person_id, person in people.items():
+                    home = home_values(person, address_details('person', person_id))
+                    locality = ', '.join(value for value in (
+                        home.get('city'), home.get('state')) if value)
+                    locality = ' '.join(value for value in (
+                        locality, home.get('zip_code')) if value)
+                    directory_addresses[person_id] = ', '.join(value for value in (
+                        home.get('street'), home.get('unit'), locality,
+                        home.get('country')) if value)
         book_records = {}
         if profiles:
             for record in _app.db.session.scalars(select(PersonBookRecord).options(load_only(
@@ -2195,6 +2211,7 @@ def create_app(test_config=None):
                     [p.person_id for p in profiles]))).all()} if profiles else {},
             families=families, import_result=import_result, query=query,
             case_counts=case_counts, book_records=book_records,
+            directory_addresses=directory_addresses,
             page=page, has_next=page < last_page, total_profiles=total_profiles)
 
     def connect_profile_to_case(profile, family_id, relationship):

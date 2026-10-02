@@ -5,6 +5,7 @@ from sqlalchemy import event
 from app_entry import create_app
 from app import db, Contact, Family, SupporterPerson, SupporterProfile
 from book_directory import PersonBookRecord
+from person_addresses import PersonAddressDetails
 
 
 @pytest.fixture
@@ -31,6 +32,9 @@ def seed(app, first, last, unlinked=False):
             db.session.add(PersonBookRecord(
                 person_id=person.id, source='Performance book', book_id=f'{i:05d}',
                 notes='Long optional reference detail ' * 100))
+            db.session.add(PersonAddressDetails(
+                person_kind='person', person_id=person.id,
+                home={'unit': f'Apt {i}'}, work={}, mailing_preference=''))
             db.session.add(Contact(
                 family_id=1, person_id=person.id, name=person.name,
                 phone='', supporter_key='phone:' + profile.normalized_phone,
@@ -76,8 +80,11 @@ def test_directory_get_query_count_and_related_reads_are_page_bounded(app):
     sql, params = book_reads[0]
     assert len(params) == 50
     assert 'person_book_record.notes' not in sql
-    assert not any('FROM person_address_details' in sql
-                   for sql, _ in large_queries)
+    address_reads = [(sql, params) for sql, params in large_queries
+                     if 'FROM person_address_details' in sql]
+    assert len(address_reads) == 1
+    assert len(address_reads[0][1]) == 100  # 50 composite (kind, person_id) keys.
+    assert 'Apt 49' in page
     # Search uses two set-based names subqueries, not one lookup per person.
     assert sum('FROM person_names' in sql for sql, _ in large_queries) <= 2
     family_reads = [sql for sql, _ in large_queries if 'FROM family ' in sql]

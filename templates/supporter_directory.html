@@ -55,6 +55,7 @@
         <span class="supporter-accordion-name"><strong>{{ display_name }}</strong><small>{{ _('Person ID') }}: <bdi dir="ltr">{{ person_numbers.get(profile.person_id, '') }}</bdi> · {{ _('Cases') }}: {{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</small></span>
         <span><bdi dir="ltr">{{ profile.phone|phone }}</bdi><small>{{ _('Phone') }}</small></span>
         <span><bdi dir="ltr">{{ profile.email or '—' }}</bdi><small>{{ _('Email address') }}</small></span>
+        <span><bdi dir="auto">{{ directory_addresses.get(profile.person_id) or '—' }}</bdi><small>{{ _('Address') }}</small></span>
         <span class="supporter-accordion-status">{{ _('Actions') }}</span>
       </summary>
       <div class="supporter-accordion-panel">
@@ -62,6 +63,7 @@
           <div><small>{{ _('Name') }}</small><strong>{{ display_name }}</strong></div>
           <div><small>{{ _('Phone') }}</small><bdi dir="ltr">{{ profile.phone|phone }}</bdi></div>
           <div><small>{{ _('Email address') }}</small><bdi dir="ltr">{{ profile.email or '—' }}</bdi></div>
+          <div><small>{{ _('Address') }}</small><bdi dir="auto">{{ directory_addresses.get(profile.person_id) or '—' }}</bdi></div>
           <div><small>{{ _('Cases') }}</small><strong>{{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</strong></div>
         </div>
         {% if book_records.get(profile.person_id) %}<details><summary>{{ _('Optional book reference') }}</summary>{% for record in book_records[profile.person_id] %}<p>{{ record.source }}: <bdi dir="ltr">{{ record.book_id }}</bdi></p>{% endfor %}</details>{% endif %}
