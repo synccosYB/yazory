@@ -21,15 +21,16 @@ body[data-endpoint="new_family"] .intake-applicant {
 
 body[data-endpoint="family_detail"] .profile-record-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  gap: 12px;
+  grid-template-columns: minmax(300px, max-content) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 12px;
 }
 
 body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: 12px;
+  grid-template-columns: minmax(300px, max-content) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 12px;
 }
 
 body[data-endpoint="family_detail"][data-page-tabs] .profile-record-identity,
@@ -41,7 +42,7 @@ body[data-endpoint="family_detail"][data-page-tabs] .profile-record-actions {
 }
 
 body[data-endpoint="family_detail"][data-page-tabs] .profile-record-actions {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 body[data-endpoint="family_detail"] .profile-record-identity {
@@ -170,7 +171,10 @@ body[data-endpoint="family_detail"] .case-denial-details > p {
 
 body[data-endpoint="family_detail"] .profile-record-actions {
   justify-content: flex-start;
-  flex-wrap: nowrap;
+  align-content: flex-start;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px;
 }
 
 /* The edit identity fields stay on a dense row instead of making a tall card. */
@@ -398,14 +402,14 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
   }
   body[data-endpoint="family_detail"] .profile-record-main,
   body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(280px, max-content) minmax(0, 1fr);
   }
   body[data-endpoint="family_detail"] .profile-record-contact {
     flex-wrap: wrap;
     white-space: normal;
   }
   body[data-endpoint="family_detail"] .profile-record-actions {
-    grid-column: 1 / -1;
+    grid-column: auto;
     flex-wrap: wrap;
   }
   body[data-endpoint="family_detail"][data-page-tabs] .profile-record-actions {
