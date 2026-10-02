@@ -94,7 +94,7 @@ def test_review_pages_render_all_locales(app):
         assert 'class="person-merge-table"' in response.text
         assert '<bdi dir="ltr">(845) 555-1111</bdi>' in response.text
         assert 'scope="row"' in response.text
-        assert ('<h2 dir="auto">One</h2>' if lang == 'en' else '<h2 dir="auto">איינער</h2>') in response.text
+        assert (f'<h2 dir="auto"><a href="/people/{a}">One</a></h2>' if lang == 'en' else f'<h2 dir="auto"><a href="/people/{a}">איינער</a></h2>') in response.text
 
 
 def test_review_later_is_separate_queue(app):
@@ -167,7 +167,7 @@ def test_changed_preview_is_rejected_and_confirmed_merge_persists(app):
     version = re.search(rb'name="version" value="([a-f0-9]+)"',page.data).group(1).decode()
     with client.session_transaction() as session:
         token = session['csrf']
-    data = dict(csrf=token, target_id=a, confirm='yes', version=version)
+    data = dict(csrf=token, keep_id=a, confirm='yes', version=version)
     with app.app_context():
         db.session.get(SupporterPerson,b).email = 'changed@example.test'
         db.session.commit()
@@ -200,11 +200,39 @@ def test_conflict_rolls_back_partial_field_updates(app):
     version=re.search(rb'name="version" value="([a-f0-9]+)"',page.data).group(1).decode()
     with client.session_transaction() as session:
         token=session['csrf']
-    response=client.post(url,data=dict(csrf=token,target_id=a,confirm='yes',version=version))
+    response=client.post(url,data=dict(csrf=token,keep_id=a,confirm='yes',version=version))
     assert response.status_code == 409
     with app.app_context():
         assert db.session.get(SupporterPerson,a).email == ''
         assert db.session.get(SupporterPerson,b).email == 'must-not-copy@example.test'
+        assert db.session.scalar(db.select(db.func.count(PersonMerge.id))) == 0
+
+
+def test_review_can_keep_both_people_as_distinct(app):
+    import re
+    with app.app_context():
+        one, two = person('One','test:one','8455551111'), person('Two','test:two','8455551111')
+        profile(one,'rid:one'); profile(two,'rid:two')
+        db.session.commit()
+        a,b=one.id,two.id
+    client=app.test_client()
+    url=f'/people/duplicates/{a}/{b}'
+    page=client.get(url)
+    version=re.search(rb'name="version" value="([a-f0-9]+)"',page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token=session['csrf']
+    response=client.post(url,data=[
+        ('csrf',token),('keep_id',str(a)),('keep_id',str(b)),
+        ('confirm','yes'),('version',version)])
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(SupporterPerson,a) is not None
+        assert db.session.get(SupporterPerson,b) is not None
+        decision=db.session.scalar(db.select(PersonMatchDecision).where(
+            PersonMatchDecision.person_one_id == min(a,b),
+            PersonMatchDecision.person_two_id == max(a,b),
+            PersonMatchDecision.kind == 'duplicate'))
+        assert decision.decision == 'not_duplicate'
         assert db.session.scalar(db.select(db.func.count(PersonMerge.id))) == 0
 
 
