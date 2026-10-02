@@ -167,3 +167,17 @@ def test_children_screen_uses_compact_records_without_losing_edit_forms():
     assert 'name="home_phone"' in template
     assert 'name="cell_phone"' in template
     assert '.child-records{display:grid;grid-template-columns:repeat(2' in css
+
+
+def test_supporter_navigation_has_one_global_people_entry_and_family_views():
+    root = Path(__file__).resolve().parents[1]
+    base = (root / 'templates/base.html').read_text()
+    family = (root / 'templates/family.html').read_text()
+    directory = (root / 'templates/supporter_directory.html').read_text()
+    assert 'href="/supporters">{{ _("Supporters") }}' not in base
+    assert "url_for('supporter_directory')" in base
+    assert '{{ _("People directory") }}' in base
+    assert "url_for('supporter_network', family_id=family.id)" in family
+    assert "url_for('case_helper_roster', family_id=family.id)" in family
+    assert "aria-label=\"{{ _('Supporter views') }}\"" in family
+    assert "Back to supporters" not in directory
