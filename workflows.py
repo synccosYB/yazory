@@ -299,10 +299,18 @@ def install_workflows(app, db, entities, helpers):
 
     def report_snapshot(fid,period):
         totals=financials(fid)
-        entries=[e for e in db.session.scalars(select(Ledger).where(Ledger.family_id==fid)) if e.at.strftime('%Y-%m')==period]
-        totals['period_collected']=sum(e.amount_cents for e in entries if e.entry_type in ('Donation','Donation adjustment'))
-        totals['period_assistance']=-sum(e.amount_cents for e in entries if e.entry_type=='Family assistance')
-        totals['period_overhead']=-sum(e.amount_cents for e in entries if e.entry_type in ('Organization expense','Processing fee','Processing fee adjustment'))
+        start=datetime.strptime(period+'-01','%Y-%m-%d')
+        if start.month==12:
+            end=start.replace(year=start.year+1,month=1)
+        else:
+            end=start.replace(month=start.month+1)
+        period_totals=dict(db.session.execute(select(
+            Ledger.entry_type, func.coalesce(func.sum(Ledger.amount_cents),0)
+        ).where(Ledger.family_id==fid,Ledger.at>=start,Ledger.at<end).group_by(
+            Ledger.entry_type)).all())
+        totals['period_collected']=sum(period_totals.get(kind,0) for kind in ('Donation','Donation adjustment'))
+        totals['period_assistance']=-period_totals.get('Family assistance',0)
+        totals['period_overhead']=-sum(period_totals.get(kind,0) for kind in ('Organization expense','Processing fee','Processing fee adjustment'))
         return totals
 
     def lock_family(fid):
