@@ -12,5 +12,5 @@
 </div>{% endfor %}</div><p data-result role="status"></p><details><summary>{{ _('Verification history') }}</summary><div data-history></div></details>
 <span hidden data-status-label="verified">{{ _('Verified') }}</span><span hidden data-status-label="unverified">{{ _('Unverified') }}</span><span hidden data-status-label="incorrect">{{ _('Incorrect') }}</span>
 </details>
-<script src="{{ url_for('static',filename='person-verification.js') }}" defer></script>
+<script src="{{ url_for('static',filename='person-verification.js',v='20261002-save-fix-2') }}" defer></script>
 <style>.verification-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.6rem}.person-verification{margin-block:.6rem}.verification-grid>div{border-block-end:1px solid #dce3eb;padding:.4rem}.verification-grid small{display:block;overflow-wrap:anywhere}.verification-grid label{display:block}.verification-grid [data-status]{font-size:.85em;color:#173e66}</style>
