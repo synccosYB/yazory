@@ -1,0 +1,40 @@
+/* Follow the page direction; isolate mixed-language values in the template. */
+.person-merge-form .person-merge-card {
+  min-width: 0;
+  text-align: start;
+}
+.person-merge-form .person-merge-choice {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: .5rem;
+  text-align: start;
+}
+.person-merge-form .person-merge-choice input {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+}
+.person-merge-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  direction: inherit;
+}
+.person-merge-table th,
+.person-merge-table td {
+  text-align: start;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.person-merge-table th { width: 28%; }
+.person-merge-table td { width: 72%; }
+.person-merge-table bdi { unicode-bidi: isolate; }
+.person-merge-form .person-verification [data-value] { unicode-bidi: isolate; }
+@media (max-width: 650px) {
+  .person-merge-table th { width: 35%; }
+  .person-merge-table td { width: 65%; }
+}
