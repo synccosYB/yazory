@@ -3504,8 +3504,10 @@ def create_app(test_config=None):
                     SupporterCommunication).options(
                         joinedload(SupporterCommunication.family)).where(
                         SupporterCommunication.contact_id.in_(all_sms_contact_ids),
-                        SupporterCommunication.kind == 'sms')).all()
-                for row in supporter_sms_rows:
+                        SupporterCommunication.kind == 'sms').order_by(
+                        SupporterCommunication.created_at.desc(),
+                        SupporterCommunication.id.desc()).limit(1000)).all()
+                for row in reversed(supporter_sms_rows):
                     supporter_sms_by_contact.setdefault(row.contact_id, []).append(row)
             _app.g.sms_supporter_communications_by_contact = supporter_sms_by_contact
 
