@@ -19,7 +19,13 @@ class PersonNumber(db.Model):
 
 def issue(connection, person_id, new=False):
     table = PersonNumber.__table__
-    number = None if new else connection.scalar(select(table.c.id).where(table.c.person_id == person_id))
+    # Batch directory imports create brand-new canonical people. Their mapper
+    # hook used to SELECT PersonNumber once per person before inserting it,
+    # even though a new person cannot already own a number.
+    batch_new = (has_request_context() and
+                 getattr(g, '_batch_person_import', False))
+    number = None if new or batch_new else connection.scalar(
+        select(table.c.id).where(table.c.person_id == person_id))
     if number is None:
         number = connection.execute(table.insert().values(person_id=person_id)).inserted_primary_key[0]
     return number
