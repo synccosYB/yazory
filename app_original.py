@@ -225,6 +225,7 @@ class Child(db.Model):
 class SupporterPerson(db.Model):
     """One authoritative personal record shared by every case connection."""
     __tablename__ = 'supporter_person'
+    __table_args__ = {'sqlite_autoincrement': True}
     id = db.Column(db.Integer, primary_key=True)
     identity_key = db.Column(db.String(200), nullable=False, unique=True, index=True)
     name = db.Column(db.String(160), nullable=False)

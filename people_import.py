@@ -69,6 +69,15 @@ def import_without_phones(app, profile_model, task_model, rows, family_id,
         # Global directory imports do not silently reuse an existing identity.
         unique = {key: row for key, row in unique.items() if key not in profiles}
     new = {key: row for key, row in unique.items() if key not in profiles}
+    from duplicate_watch import contact_identity_map, row_contact_matches
+    identity_index = contact_identity_map()
+    for key, row in list(new.items()):
+        matches = row_contact_matches(row, identity_index)
+        if matches:
+            duplicates += 1
+            warnings.append(f"Row {row['row']}: possible duplicate person #{matches[0].id}. Review before importing.")
+            del new[key]
+            del unique[key]
     people = core.SupporterPerson.__table__
     if new:
         db.session.execute(people.insert(), [dict(

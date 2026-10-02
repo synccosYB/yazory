@@ -82,3 +82,37 @@ def duplicate_address_message(row_number, person, *, book_id=''):
         f"Row {row_number}{ref}: same name and home address already belong to "
         f"existing person #{person.id}. Review before importing."
     )
+
+
+def contact_identity_map():
+    """Batch index for add/import checks, including home and cell phone variants."""
+    from unified_people import _phone
+    result = {}
+    for person in core.db.session.scalars(select(core.SupporterPerson)).all():
+        for raw in (person.phone, person.home_phone, person.cell_phone):
+            key = _phone(raw)
+            if 7 <= len(key) <= 15:
+                result.setdefault(('phone', key), person)
+        if person.email:
+            result.setdefault(('email', person.email.strip().casefold()), person)
+    from duplicate_review import PersonIdentityAlias
+    people = {p.id: p for p in result.values()}
+    for alias in core.db.session.scalars(select(PersonIdentityAlias).where(
+            PersonIdentityAlias.kind.in_(['phone', 'email']))):
+        owner = people.get(alias.person_id) or core.db.session.get(core.SupporterPerson, alias.person_id)
+        if owner:
+            result.setdefault((alias.kind, alias.value), owner)
+    return result
+
+
+def row_contact_matches(row, index):
+    from unified_people import _phone
+    result = {}
+    for field in ('phone', 'home_phone', 'cell_phone'):
+        person = index.get(('phone', _phone(row.get(field, ''))))
+        if person:
+            result[person.id] = person
+    person = index.get(('email', row.get('email', '').strip().casefold()))
+    if person:
+        result[person.id] = person
+    return list(result.values())
