@@ -12,7 +12,12 @@
 <label>{{ _('English name') }}<input type="text" name="name_english_{{ person.id }}" maxlength="160" value="{{ names.english_name }}"></label>
 <label>{{ _('Yiddish / Hebrew name') }}<input type="text" name="name_yiddish_{{ person.id }}" maxlength="160" value="{{ names.yiddish_name }}"></label>
 </div>
-<table class="person-merge-table"><tbody>{% for field,label in [('home_phone','Home phone'),('cell_phone','Cell phone'),('phone','Phone'),('email','Email'),('home_address','Home address'),('city','City'),('state','State'),('zip_code','Zip code'),('notes','Notes')] %}<tr><th scope="row">{{ _(label) }}</th><td>{% set value=person|attr(field) %}<bdi dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','zip_code') else 'auto' }}">{{ value|phone if value and field in ('home_phone','cell_phone','phone') else value or '—' }}</bdi></td></tr>{% endfor %}</tbody></table>
+<table class="person-merge-table"><tbody>
+{% for field,label in [('home_phone','Home phone'),('cell_phone','Cell phone'),('phone','Phone')] %}{% set value=person|attr(field) or '' %}{% set duplicate=(field == 'phone' and value and value in [person.home_phone,person.cell_phone]) or (field == 'cell_phone' and value and value == person.phone) or (field == 'home_phone' and value and value == person.phone) %}
+<tr class="person-phone-row{% if duplicate %} duplicate-phone-row{% endif %}"><th scope="row">{{ _(label) }}</th><td><div class="person-phone-edit"><input dir="ltr" type="tel" name="{{ field }}_{{ person.id }}" value="{{ value }}" maxlength="40" autocomplete="off">{% if duplicate %}<button type="button" class="button secondary clear-duplicate-phone" data-clear-phone="{{ field }}_{{ person.id }}">{{ _('Clear duplicate') }}</button><small>{{ _('Same number is already in another phone field.') }}</small>{% endif %}</div></td></tr>
+{% endfor %}
+{% for field,label in [('email','Email'),('home_address','Home address'),('city','City'),('state','State'),('zip_code','Zip code'),('notes','Notes')] %}<tr><th scope="row">{{ _(label) }}</th><td>{% set value=person|attr(field) %}<bdi dir="{{ 'ltr' if field in ('email','zip_code') else 'auto' }}">{{ value or '—' }}</bdi></td></tr>{% endfor %}
+</tbody></table>
 <details class="person-source-evidence">
 <summary><strong>{{ _('Source / unapplied review information') }}</strong>{% if books %}<span class="person-source-summary-meta">{% for book in books %}{{ _('Directory Book ID') }} <bdi dir="ltr">{{ book.book_id or '—' }}</bdi>{% if book.review %} · {{ _('Needs review') }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}</summary>
 <div class="person-source-evidence-body">
@@ -38,4 +43,12 @@
 <label><input type="radio" name="decision" value="{{ one.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('into it') }}</span></label>
 <label><input type="radio" name="decision" value="{{ two.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('into it') }}</span></label>
 </fieldset>
-<button type="submit">{{ _('Save decision & continue') }}</button></form>{% endblock %}
+<div class="person-merge-actions"><button type="submit" name="action" value="save_fields" formnovalidate class="secondary">{{ _('Save corrections') }}</button><button type="submit">{{ _('Save decision & continue') }}</button></div></form>
+<script>
+document.querySelectorAll('[data-clear-phone]').forEach(function(button){
+  button.addEventListener('click',function(){
+    var input=document.querySelector('[name="'+button.dataset.clearPhone+'"]');
+    if(input){ input.value=''; input.focus(); }
+  });
+});
+</script>{% endblock %}
