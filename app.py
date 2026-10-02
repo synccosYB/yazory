@@ -19,7 +19,7 @@ from book_directory import (PersonBookRecord, import_book_rows, book_context,
                             family_context, save_family_names, install as install_book_directory)
 
 from flask import Response, current_app, g, has_request_context, jsonify, session
-from sqlalchemy import Index, UniqueConstraint, case, select, text
+from sqlalchemy import Index, UniqueConstraint, case, select, text, false
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, load_only, selectinload
 from sqlalchemy.orm.exc import StaleDataError
@@ -1330,7 +1330,6 @@ def create_app(test_config=None):
             link_name_owner('family', family.id, field_name, person)
             if field_name == 'name':
                 person.phone = (family.phone or '')[:80]
-                person.cell_phone = (family.phone or '')[:80]
                 person.email = (family.email or '')[:254]
                 person.home_address = (family.address or '')[:240]
                 person.city = (family.city or '')[:120]
@@ -1408,6 +1407,40 @@ def create_app(test_config=None):
         if not people:
             return
         sync_contact_snapshots(people.values())
+        # Legacy roles are snapshots too. Leaving their fields stale lets a
+        # later case/askan/child save replay old identity data over this person.
+        from person_names import PersonNameOwner
+        aliases = _app.db.session.scalars(select(PersonNameOwner).where(
+            PersonNameOwner.person_id.in_(people))).all()
+        models, attributes = app.extensions.get('person_name_models', ({}, {}))
+        by_kind = {}
+        for alias in aliases:
+            if alias.owner_kind in models and alias.owner_kind not in ('person', 'profile', 'supporter'):
+                by_kind.setdefault(alias.owner_kind, []).append(alias)
+        for kind, kind_aliases in by_kind.items():
+            model = models[kind]
+            rows = {row.id: row for row in _app.db.session.scalars(select(model).where(
+                model.id.in_({alias.owner_id for alias in kind_aliases}))).all()}
+            for alias in kind_aliases:
+                row = rows.get(alias.owner_id)
+                if row is None or alias.field not in attributes.get(kind, ()):
+                    continue
+                person = people[alias.person_id]
+                setattr(row, alias.field, person.name)
+                if alias.field != 'name':
+                    continue
+                if kind == 'family':
+                    mapping = dict(phone='phone', email='email', address='home_address',
+                                   city='city', state='state', zip_code='zip_code')
+                elif kind == 'askan':
+                    mapping = dict(phone='phone', cell_phone='cell_phone', email='email')
+                elif kind == 'child':
+                    mapping = dict(home_phone='home_phone', cell_phone='cell_phone')
+                else:
+                    mapping = {}
+                for target, source in mapping.items():
+                    if hasattr(row, target):
+                        setattr(row, target, getattr(person, source) or '')
 
         profiles = _app.db.session.scalars(select(SupporterProfile).where(
             SupporterProfile.person_id.in_(people))).all()
@@ -1704,7 +1737,11 @@ def create_app(test_config=None):
     def update_supporter_person(contact, values):
         """Update one person once, then refresh every connected case snapshot."""
         person = attach_supporter_person(contact)
-        identity_key = values.pop('supporter_key', person.identity_key)
+        return update_canonical_person(person, values)
+
+    def update_canonical_person(person, values):
+        """Apply identity edits to their known owner, never to a guessed role."""
+        identity_key = values.get('supporter_key', person.identity_key)
         collision = _app.db.session.scalar(select(SupporterPerson.id).where(
             SupporterPerson.identity_key == identity_key,
             SupporterPerson.id != person.id))
@@ -2241,19 +2278,27 @@ def create_app(test_config=None):
     def edit_supporter_profile(profile_id):
         user = require_supporter_directory_access()
         profile = _app.db.get_or_404(SupporterProfile, profile_id)
-        person = canonical_person_for_profile(profile)
-        _app.db.session.commit()
+        if _app.request.method == 'POST':
+            person = canonical_person_for_profile(profile)
+        else:
+            # Reading an edit form must not backfill/link or commit any rows.
+            person = (_app.db.session.get(SupporterPerson, profile.person_id)
+                      if profile.person_id else None)
+            if person is None:
+                person = _app.db.session.scalar(select(SupporterPerson).where(
+                    SupporterPerson.identity_key == 'phone:' + profile.normalized_phone))
+            if person is None:
+                person = SupporterPerson(
+                    **dict.fromkeys(personal_fields, ''),
+                    identity_key='phone:' + profile.normalized_phone)
+                person.name, person.phone, person.cell_phone, person.email = (
+                    profile.name, profile.phone, profile.phone, profile.email)
 
         def edit_context():
-            # Relationship choices include every imported person. Link newly
-            # imported profiles in one batch instead of issuing queries and a
-            # flush for every row as the directory grows.
-            canonicalize_unlinked_profiles()
-            _app.db.session.commit()
             relationship_rows = _app.db.session.scalars(select(PersonRelationship).where(
                 _app.or_(PersonRelationship.person_one_id == person.id,
                          PersonRelationship.person_two_id == person.id)
-            ).order_by(PersonRelationship.id)).all()
+            ).order_by(PersonRelationship.id)).all() if person.id else []
             other_ids = {
                 row.person_two_id if row.person_one_id == person.id else row.person_one_id
                 for row in relationship_rows
@@ -2268,8 +2313,9 @@ def create_app(test_config=None):
                     else row.person_one_id))
                 for row in relationship_rows]
             connected_ids = {other.id for _, other in related_people if other}
-            available_statement = select(SupporterPerson).where(
-                SupporterPerson.id != person.id)
+            available_statement = select(SupporterPerson)
+            if person.id:
+                available_statement = available_statement.where(SupporterPerson.id != person.id)
             if connected_ids:
                 available_statement = available_statement.where(
                     SupporterPerson.id.not_in(connected_ids))
@@ -2284,8 +2330,9 @@ def create_app(test_config=None):
                 institution_statement = institution_statement.where(
                     _app.Institution.id.not_in(used_institutions))
             linked_contacts = _app.db.session.scalars(select(_app.Contact).where(
-                _app.or_(_app.Contact.person_id == person.id,
-                         _app.Contact.supporter_key == person.identity_key)
+                _app.or_(_app.Contact.person_id == person.id if person.id else false(),
+                         (_app.Contact.person_id.is_(None) &
+                          (_app.Contact.supporter_key == person.identity_key)))
             ).order_by(_app.Contact.id)).all()
             allowed_families = supporter_directory_families()
             allowed_ids = {row.id for row in allowed_families}
@@ -2317,7 +2364,7 @@ def create_app(test_config=None):
             available_people = _app.db.session.scalars(
                 available_statement.order_by(SupporterPerson.name)).all()
             from person_addresses import address_details, home_values
-            details = address_details('person', person.id)
+            details = address_details('person', person.id) if person.id else None
             work = dict(details.work or {}) if details else {}
             work['company'] = person.workplace or ''
             return dict(
@@ -2353,48 +2400,43 @@ def create_app(test_config=None):
             duplicate = (_app.db.session.scalar(select(SupporterProfile.id).where(
                 SupporterProfile.normalized_phone == normalized,
                 SupporterProfile.id != profile.id)) if normalized else None)
-            old_key = 'phone:' + profile.normalized_phone
+            old_key = person.identity_key
             new_key = ('phone:' + normalized) if normalized else person.identity_key
             case_duplicate = None
             if new_key != old_key:
                 case_duplicate = _app.db.session.scalar(select(_app.Contact.id).where(
-                    _app.Contact.supporter_key == new_key))
+                    _app.Contact.supporter_key == new_key,
+                    _app.or_(_app.Contact.person_id.is_(None),
+                             _app.Contact.person_id != person.id)))
             if duplicate or case_duplicate:
                 _app.flash('That phone number already belongs to another person.', 'error')
                 return _app.render_template(
                     'supporter_profile_edit.html', title='Edit imported person',
                     **edit_context()), 409
 
-            linked_contacts = _app.db.session.scalars(select(_app.Contact).where(
-                _app.or_(_app.Contact.person_id == person.id,
-                         _app.Contact.supporter_key == old_key))).all()
-            profile.name = name[:160]
-            profile.phone = phone[:80]
-            if normalized:
-                profile.normalized_phone = normalized
-            profile.email = email[:254]
+            # Repair genuinely unlinked legacy snapshots on this write path.
+            # Never adopt a contact already owned by a different canonical ID.
+            legacy_contacts = _app.db.session.scalars(select(_app.Contact).where(
+                _app.Contact.person_id.is_(None),
+                _app.Contact.supporter_key == old_key)).all()
+            for contact in legacy_contacts:
+                contact.person_id = person.id
             values = {
-                'name': profile.name, 'phone': profile.phone,
-                'email': profile.email, 'supporter_key': new_key,
+                'name': name[:160], 'phone': phone[:80],
+                'email': email[:254], 'supporter_key': new_key,
             }
             for field_name, limit in (
                     ('home_phone', 80), ('cell_phone', 80),
                     ('home_address', 240), ('city', 120), ('state', 80),
                     ('zip_code', 20), ('workplace', 160),
                     ('work_phone', 80), ('notes', 5000)):
-                values[field_name] = _app.request.form.get(
-                    field_name, '').strip()[:limit]
-            if not values['cell_phone']:
-                values['cell_phone'] = profile.phone
+                if field_name in _app.request.form:
+                    values[field_name] = _app.request.form.get(
+                        field_name, '').strip()[:limit]
+            if 'cell_phone' not in values:
+                values['cell_phone'] = values['phone']
             try:
-                if linked_contacts:
-                    person = update_supporter_person(linked_contacts[0], values)
-                else:
-                    person.identity_key = new_key
-                    for field_name in personal_fields:
-                        if field_name in values:
-                            setattr(person, field_name, values[field_name])
-                    sync_person_snapshots(person)
+                person = update_canonical_person(person, values)
             except ValueError as exc:
                 _app.db.session.rollback()
                 _app.flash(str(exc), 'error')

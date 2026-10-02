@@ -2,7 +2,7 @@
 <div class="page-heading">
   <div>
     <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
-    {% set names = person_name_values('profile', profile) %}<h1>{% if session.get('language') in ['yi','he'] %}{{ names.yiddish_name or names.english_name or profile.name }}{% else %}{{ names.english_name or names.yiddish_name or profile.name }}{% endif %}</h1>{% set number=person_number('profile', profile) %}{% if number %}<small>{{ _('Person ID') }}: <bdi dir="ltr">{{ number }}</bdi></small>{% endif %}
+    {% set names = person_name_values('person', person) if person.id else person_name_values('profile', profile) %}<h1>{% if session.get('language') in ['yi','he'] %}{{ names.yiddish_name or names.english_name or person.name }}{% else %}{{ names.english_name or names.yiddish_name or person.name }}{% endif %}</h1>{% set number=person_number('person', person) if person.id else person_number('profile', profile) %}{% if number %}<small>{{ _('Person ID') }}: <bdi dir="ltr">{{ number }}</bdi></small>{% endif %}
     <p>{{ _('Changes will also update every case connected to this person.') }}</p>
   </div>
   <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Back to imported people') }}</a>
@@ -15,7 +15,7 @@
   <details><summary>{{ _('Edit person') }}</summary><form method="post">
     {{ token(csrf) }}
     <div class="form-grid">
-      <input type="hidden" name="name" value="{{ person.name }}" maxlength="160">{{ bilingual_name_fields('profile', profile, 'name') }}
+      <input type="hidden" name="name" value="{{ person.name }}" maxlength="160">{{ bilingual_name_fields('person', person, 'name') if person.id else bilingual_name_fields('profile', profile, 'name') }}
       <label>{{ _('Phone') }}<input name="phone" value="{{ person.phone }}" maxlength="80"></label>
       <label>{{ _('Home phone') }}<input name="home_phone" value="{{ person.home_phone }}" maxlength="80"></label>
       <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ person.cell_phone }}" maxlength="80"></label>

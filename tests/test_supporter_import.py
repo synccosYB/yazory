@@ -405,6 +405,10 @@ def test_people_can_be_related_without_case_or_institution(app, client):
         second = SupporterProfile(name='Yoel Hersh Roth', phone='845-555-2601',
                                   normalized_phone='8455552601', email='')
         db.session.add_all([first, second])
+        db.session.flush()
+        # Linking belongs to a write/import path, not an edit-page GET.
+        for profile in (first, second):
+            app.extensions['supporter_identity']['profile_person'](profile)
         db.session.commit()
         first_id = first.id
         client.get(f'/supporter-directory/{first.id}/edit')

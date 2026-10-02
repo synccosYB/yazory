@@ -1393,6 +1393,7 @@ def create_app(test_config=None):
                 'child', child.id, 'name' if column == 'supporter_contact_id' else 'spouse_name')
             child_person_id = owner_id if owner_kind == 'person' else None
             contact_id = getattr(child, column)
+            created_contact = False
             contact = db.session.get(Contact, contact_id) if contact_id else None
             if contact is not None and contact.family_id != child.family_id:
                 contact = None
@@ -1424,6 +1425,7 @@ def create_app(test_config=None):
                         status='To contact', monthly_cents=0,
                         pledge_frequency='Monthly')
                     db.session.add(contact)
+                    created_contact = True
                     db.session.flush()
                     if identity:
                         identity['attach'](contact)
@@ -1434,7 +1436,13 @@ def create_app(test_config=None):
             changes = {}
             if contact.name != name:
                 changes['name'] = name
-            if phone and contact.phone != phone:
+            # A child form owns home/cell fields, not an independently edited
+            # canonical primary phone. Refresh a derived primary only while it
+            # still matches the old home/cell snapshot, or on first creation.
+            if phone and contact.phone != phone and (
+                    created_contact or not contact.person_id or
+                    (contact.phone and contact.phone in (contact.cell_phone, contact.home_phone)
+                     and (cell_phone != contact.cell_phone or home_phone != contact.home_phone))):
                 changes['phone'] = phone
             if cell_phone and contact.cell_phone != cell_phone:
                 changes['cell_phone'] = cell_phone

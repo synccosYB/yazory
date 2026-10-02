@@ -179,6 +179,9 @@ def preload_family_connections(person_ids):
 
 
 def family_context(person_id, profile_model):
+    if person_id is None:
+        return dict(family_connection=None, father_connection=None,
+                    father_inlaw_connection=None, family_dependents=[])
     family = db.session.get(PersonFamilyConnection, person_id)
     refs = [getattr(family, f) for f in ('father_person_id', 'father_inlaw_person_id')] if family else []
     relatives = {}
@@ -385,6 +388,8 @@ def import_book_rows(app, profile_model, rows, default_source, family_id,
 
 
 def book_context(person_id, profile_model):
+    if person_id is None:
+        return []
     records = db.session.scalars(select(PersonBookRecord).where(
         PersonBookRecord.person_id == person_id).order_by(PersonBookRecord.source)).all()
     keys = {(r.source, ref) for r in records for ref in
