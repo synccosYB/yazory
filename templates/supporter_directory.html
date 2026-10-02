@@ -1,12 +1,14 @@
 {% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
-<a class="button secondary" href="{{ url_for('people_matching',tab='duplicates') }}">{{ _('Possible duplicates') }}</a>
 <div class="page-heading">
   <div>
     <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
     <h1>{{ _('People directory') }}</h1>
     <p>{{ _('Build the people network before they are connected to a case. Add people one at a time or import a contact sheet.') }}</p>
   </div>
-  <a class="button" href="{{ url_for('new_directory_person', next=url_for('supporter_directory')) }}">{{ _('+ Add person') }}</a>
+  <div class="row-actions">
+    <a class="button small secondary" href="{{ url_for('people_matching',tab='duplicates') }}">{{ _('Possible duplicates') }}</a>
+    <a class="button small" href="{{ url_for('new_directory_person', next=url_for('supporter_directory')) }}">{{ _('+ Add person') }}</a>
+  </div>
 </div>
 
 <section class="card padded no-print">
@@ -80,4 +82,5 @@
   <span>{{ page }}</span>
   {% if has_next %}<a class="button secondary" href="{{ url_for('supporter_directory', page=page+1, q=query or None) }}">{{ _('Next') }}</a>{% endif %}
 </nav>{% endif %}
+<script src="{{ url_for('static', filename='people-directory.js', v='1') }}" defer></script>
 {% endblock %}
