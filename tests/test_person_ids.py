@@ -115,3 +115,25 @@ def test_recreated_role_does_not_reuse_a_deleted_roles_identity(app):
             sync(replacement)
         db.session.commit()
         assert number_for('askan', replacement) != original
+
+
+def test_unrelated_update_does_not_rerun_person_identity_queries(app):
+    """Changing a non-name field must not invoke canonical name/ID maintenance."""
+    from sqlalchemy import event
+    with app.app_context():
+        child = Child(family_id=db.session.scalar(db.select(Family.id)), name='Perf child',
+                      age=12, school='', married=False)
+        db.session.add(child)
+        db.session.commit()
+        statements = []
+        def capture(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement.lower())
+        event.listen(db.engine, 'before_cursor_execute', capture)
+        try:
+            child.age = 13
+            db.session.commit()
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', capture)
+        assert not any('person_name' in statement or 'person_number' in statement
+                       or 'supporter_person' in statement or 'supporter_profile' in statement
+                       for statement in statements)

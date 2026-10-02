@@ -7,7 +7,7 @@ import re
 from markupsafe import Markup
 import app_original as core
 from flask import abort, current_app, g, has_request_context, request
-from sqlalchemy import UniqueConstraint, event, select, tuple_
+from sqlalchemy import UniqueConstraint, event, inspect, select, tuple_
 
 DB = core.db
 
@@ -236,8 +236,14 @@ def install(app, extras):
         kind = next((k for k, model in models.items() if isinstance(obj, model)), None)
         if kind is None:
             return
+        state = inspect(obj)
         for field in attributes[kind]:
             if not hasattr(obj, field):
+                continue
+            # after_update fires even when only unrelated columns changed.
+            # Name/person identity work is expensive and must only run when the
+            # corresponding legacy name field actually changed.
+            if state.persistent and not state.attrs[field].history.has_changes():
                 continue
             legacy = getattr(obj, field, '') or ''
             if not legacy:
