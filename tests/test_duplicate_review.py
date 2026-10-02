@@ -366,3 +366,41 @@ def test_review_shows_book_id_source_evidence_and_edits_canonical_names(app):
         assert names_row('person', b).yiddish_name == 'חיים הערש גאלד'
         assert db.session.get(SupporterPerson, a).name == 'אברהם גאלד'
         assert db.session.get(SupporterPerson, b).name == 'חיים הערש גאלד'
+
+
+def test_review_can_fix_duplicate_phone_fields_without_deciding_merge(app):
+    import re
+    with app.app_context():
+        one = person('One','test:phone-fix-one','7183029595')
+        two = person('Two','test:phone-fix-two','7184868929')
+        one.cell_phone = one.phone = '7183029595'
+        two.cell_phone = two.phone = '7184868929'
+        profile(one,'rid:phone-fix-one'); profile(two,'rid:phone-fix-two')
+        db.session.commit()
+        a,b = one.id,two.id
+
+    client = app.test_client()
+    url = f'/people/duplicates/{a}/{b}'
+    page = client.get(url)
+    assert page.status_code == 200
+    assert f'name="cell_phone_{a}"' in page.text
+    assert f'name="phone_{a}"' in page.text
+    assert f'data-clear-phone="phone_{a}"' in page.text
+    assert 'Same number is already in another phone field.' in page.text
+    version = re.search(rb'name="version" value="([a-f0-9]+)"', page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token = session['csrf']
+
+    response = client.post(url, data=MultiDict([
+        ('csrf', token), ('version', version), ('action', 'save_fields'),
+        (f'home_phone_{a}', ''), (f'cell_phone_{a}', '7183029595'), (f'phone_{a}', ''),
+        (f'home_phone_{b}', ''), (f'cell_phone_{b}', '7184868929'), (f'phone_{b}', ''),
+    ]))
+    assert response.status_code == 302
+    assert response.location.endswith(url)
+    with app.app_context():
+        assert db.session.get(SupporterPerson, a).cell_phone == '7183029595'
+        assert db.session.get(SupporterPerson, a).phone == ''
+        assert db.session.get(SupporterPerson, b).cell_phone == '7184868929'
+        assert db.session.get(SupporterPerson, b).phone == ''
+        assert db.session.scalar(db.select(db.func.count(PersonMerge.id))) == 0
