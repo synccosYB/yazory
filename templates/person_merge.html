@@ -1,16 +1,34 @@
 {% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
-<link rel="stylesheet" href="{{ url_for('static',filename='person-merge.css',v='20261002-rtl') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='person-merge.css',v='20261002-source-review') }}">
 <div class="page-heading"><h1>{{ _('Review merge') }}</h1><a href="{{ url_for('people_matching',tab='duplicates') }}">{{ _('Possible duplicates') }}</a></div>
 {% if error %}<div class="card padded" role="alert">{{ _(error) }}</div>{% endif %}
-<p>{{ _('Choose the surviving Person ID. Empty fields are filled from the other record. Conflicting values are retained in the merge audit. Case records and history are preserved.') }}</p>
+<p>{{ _('Compare the two Yazory records, correct their names if needed, then choose whether to keep one or both. Source information shown below is preserved import evidence; it is not automatically treated as verified person data.') }}</p>
 <form method="post" class="person-merge-form">{{ token(csrf) }}<input type="hidden" name="version" value="{{ version }}">
 <div class="card padded person-merge-comparison"><div class="network-two-column">
-{% for person in (one,two) %}{% set names=person_name_values('person',person) %}{% set display_name=names.yiddish_name if language in ('yi','he') and names.yiddish_name else names.english_name or names.yiddish_name or person.name %}
-<section class="person-merge-card"><h2 dir="auto"><a href="{{ url_for('person_hub', person_id=person.id) }}">{{ display_name }}</a></h2>
-<label class="person-merge-choice"><input type="checkbox" name="keep_id" value="{{ person.id }}" checked> {{ _('Keep this Person ID') }}: <bdi dir="ltr">{{ person_number('person',person) }}</bdi></label>
-<table class="person-merge-table"><tbody>{% for field,label in [('name','Name'),('home_phone','Home phone'),('cell_phone','Cell phone'),('phone','Phone'),('email','Email'),('home_address','Home address'),('city','City'),('state','State'),('zip_code','Zip code'),('notes','Notes')] %}<tr><th scope="row">{{ _(label) }}</th><td>{% set value=display_name if field == 'name' else person|attr(field) %}<bdi dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','zip_code') else 'auto' }}">{{ value|phone if value and field in ('home_phone','cell_phone','phone') else value or '—' }}</bdi></td></tr>{% endfor %}</tbody></table>
+{% for person in (one,two) %}{% set names=person_name_values('person',person) %}{% set books=snapshots[person.id].get('person_book_record',[]) %}
+<section class="person-merge-card">
+<div class="person-merge-heading"><h2>{{ _('Yazory record') }} <bdi dir="ltr">#{{ person.id }}</bdi></h2>{% if books %}<span>{{ _('Directory Book ID') }}: {% for book in books %}<bdi dir="ltr">{{ book.book_id }}</bdi>{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}</div>
+<label class="person-merge-choice"><input type="checkbox" name="keep_id" value="{{ person.id }}" checked> {{ _('Keep this Yazory record') }} <bdi dir="ltr">#{{ person.id }}</bdi></label>
+<div class="person-merge-name-edit">
+<label>{{ _('English name') }}<input type="text" name="name_english_{{ person.id }}" maxlength="160" value="{{ names.english_name }}"></label>
+<label>{{ _('Yiddish / Hebrew name') }}<input type="text" name="name_yiddish_{{ person.id }}" maxlength="160" value="{{ names.yiddish_name }}"></label>
+</div>
+<table class="person-merge-table"><tbody>{% for field,label in [('home_phone','Home phone'),('cell_phone','Cell phone'),('phone','Phone'),('email','Email'),('home_address','Home address'),('city','City'),('state','State'),('zip_code','Zip code'),('notes','Notes')] %}<tr><th scope="row">{{ _(label) }}</th><td>{% set value=person|attr(field) %}<bdi dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','zip_code') else 'auto' }}">{{ value|phone if value and field in ('home_phone','cell_phone','phone') else value or '—' }}</bdi></td></tr>{% endfor %}</tbody></table>
+<details class="person-source-evidence" open><summary>{{ _('Source / unapplied review information') }}</summary>
+{% for book in books %}
+<table class="person-merge-table person-source-table"><tbody>
+<tr><th>{{ _('Book source') }}</th><td><bdi dir="auto">{{ book.source or '—' }}</bdi></td></tr>
+<tr><th>{{ _('Directory Book ID') }}</th><td><bdi dir="ltr">{{ book.book_id or '—' }}</bdi></td></tr>
+<tr><th>{{ _('Source reference') }}</th><td><bdi dir="auto">{{ book.source_ref or '—' }}</bdi></td></tr>
+<tr><th>{{ _('Source first name') }}</th><td><bdi dir="auto">{{ book.first_name or '—' }}</bdi></td></tr>
+<tr><th>{{ _('Source last name') }}</th><td><bdi dir="auto">{{ book.last_name or '—' }}</bdi></td></tr>
+<tr><th>{{ _('Family detail reading') }}</th><td><bdi dir="auto">{{ book.relationship_text or '—' }}</bdi></td></tr>
+<tr><th>{{ _('Import notes') }}</th><td><bdi dir="auto">{{ book.notes or '—' }}</bdi></td></tr>
+<tr><th>{{ _('Needs review') }}</th><td><bdi dir="auto">{{ book.review or '—' }}</bdi></td></tr>
+</tbody></table>
+{% else %}<p>{{ _('No preserved book-source information for this record.') }}</p>{% endfor %}
+</details>
 {% include '_person_verification.html' %}
-{% for book in snapshots[person.id].get('person_book_record',[]) %}<p>{{ _('Book source') }}: <bdi dir="auto">{{ book.source }}</bdi> · {{ _('Book ID') }}: <bdi dir="ltr">{{ book.book_id }}</bdi></p>{% endfor %}
 <details><summary>{{ _('Linked records') }}</summary>{% for table,label in [('contact','Cases'),('person_relationship','Family connections'),('person_book_record','Optional book reference'),('person_names','Names'),('person_address_details','Addresses'),('person_name_owner','Roles')] %}<p>{{ _(label) }}: {{ snapshots[person.id].get(table,[])|length }}</p>{% endfor %}</details>
 </section>{% endfor %}</div></div>
 <label class="person-merge-choice"><input type="checkbox" name="confirm" value="yes" required> {{ _('I reviewed both records and confirm my selection.') }}</label>

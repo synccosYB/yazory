@@ -6,7 +6,7 @@ from flask import abort, flash, g, has_request_context, redirect, render_templat
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 import app_original as core
-from person_names import PersonNames
+from person_names import PersonNames, names_row, save_names
 from person_addresses import PersonAddressDetails
 from book_directory import PersonBookRecord
 
@@ -277,6 +277,34 @@ def install(app, profile_model, access):
                 abort(409, 'The records changed. Reload the merge preview.')
             if not kept or not kept.issubset({one_id, two_id}) or request.form.get('confirm') != 'yes':
                 abort(400)
+
+            # Name corrections made during duplicate review update the same
+            # canonical bilingual name record used everywhere else. Do not
+            # create a review-only copy of the name.
+            for person in (one, two):
+                english_key = f'name_english_{person.id}'
+                yiddish_key = f'name_yiddish_{person.id}'
+                # Older clients/tests that do not submit the new editable-name
+                # fields keep the existing name unchanged.
+                if english_key not in request.form and yiddish_key not in request.form:
+                    continue
+                english = request.form.get(english_key, '').strip()[:160]
+                yiddish = request.form.get(yiddish_key, '').strip()[:160]
+                if not english and not yiddish:
+                    abort(400, 'Enter at least one name for each person.')
+                current = names_row('person', person.id)
+                current_english = current.english_name if current else ''
+                current_yiddish = current.yiddish_name if current else ''
+                if (english, yiddish) != (current_english, current_yiddish):
+                    person.name = english or yiddish
+                    save_names('person', person.id, english, yiddish, legacy=person.name)
+                    profile = db.session.scalar(select(profile_model).where(
+                        profile_model.person_id == person.id))
+                    if profile is not None:
+                        profile.name = person.name
+                    sync = app.extensions.get('supporter_identity', {}).get('sync')
+                    if sync:
+                        sync(person)
 
             if kept == {one_id, two_id}:
                 # Human review confirmed that the matching signals belong to two
