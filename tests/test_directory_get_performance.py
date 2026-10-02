@@ -85,8 +85,9 @@ def test_directory_get_query_count_and_related_reads_are_page_bounded(app):
     assert len(address_reads) == 1
     assert len(address_reads[0][1]) == 100  # 50 composite (kind, person_id) keys.
     assert 'Apt 49' in page
-    # Search uses two set-based names subqueries, not one lookup per person.
-    assert sum('FROM person_names' in sql for sql, _ in large_queries) <= 2
+    # Search count + page fetch each use the set-based names subquery, and
+    # rendered bilingual names use one bounded bulk preload: never one per person.
+    assert sum('FROM person_names' in sql for sql, _ in large_queries) <= 3
     family_reads = [sql for sql, _ in large_queries if 'FROM family ' in sql]
     assert family_reads and all('family.circumstances' not in sql
                                 for sql in family_reads)
