@@ -20,17 +20,15 @@ body[data-endpoint="new_family"] .intake-applicant {
 }
 
 body[data-endpoint="family_detail"] .profile-record-main {
-  display: grid;
-  grid-template-columns: minmax(300px, max-content) minmax(0, 1fr);
-  align-items: start;
-  gap: 8px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
-  display: grid;
-  grid-template-columns: minmax(300px, max-content) minmax(0, 1fr);
-  align-items: start;
-  gap: 8px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 body[data-endpoint="family_detail"][data-page-tabs] .profile-record-identity,
@@ -79,7 +77,9 @@ body[data-endpoint="family_detail"] .profile-record-contact {
 }
 
 body[data-endpoint="family_detail"] .profile-record-identity {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 42%;
 }
 
 body[data-endpoint="family_detail"] .profile-record-contact > span {
@@ -170,6 +170,7 @@ body[data-endpoint="family_detail"] .case-denial-details > p {
 }
 
 body[data-endpoint="family_detail"] .profile-record-actions {
+  flex: 1 1 0;
   justify-content: flex-start;
   align-content: flex-start;
   flex-wrap: wrap;
@@ -402,14 +403,13 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
   }
   body[data-endpoint="family_detail"] .profile-record-main,
   body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
-    grid-template-columns: minmax(280px, max-content) minmax(0, 1fr);
+    display: flex;
   }
   body[data-endpoint="family_detail"] .profile-record-contact {
     flex-wrap: wrap;
     white-space: normal;
   }
   body[data-endpoint="family_detail"] .profile-record-actions {
-    grid-column: auto;
     flex-wrap: wrap;
   }
   body[data-endpoint="family_detail"][data-page-tabs] .profile-record-actions {
@@ -418,6 +418,16 @@ body[data-endpoint="family_detail"] .profile-summary > div:nth-of-type(5n) {
 }
 
 @media (max-width: 960px) {
+  body[data-endpoint="family_detail"] .profile-record-main,
+  body[data-endpoint="family_detail"][data-page-tabs] .profile-record-main {
+    display: block;
+  }
+  body[data-endpoint="family_detail"] .profile-record-identity {
+    max-width: none;
+  }
+  body[data-endpoint="family_detail"] .profile-record-actions {
+    margin-top: 8px;
+  }
   body[data-endpoint="edit_family"] .intake-workspace,
   body[data-endpoint="new_family"] .intake-workspace,
   body[data-endpoint="family_detail"] .profile-sheet-layout {
