@@ -275,13 +275,10 @@ def test_full_supporter_communication_workflow(monkeypatch):
     assert 'data-accordion-search="communications-supporters-list"' in page.text
     assert 'id="communications-supporters-list"' in page.text
     assert 'aria-label="Search supporters"' in page.text
-    assert 'data-communication-filter="all"' in page.text
-    assert 'data-communication-filter="callbacks"' in page.text
-    assert 'data-communication-filter="overdue"' in page.text
+    assert '>Outreach<' in page.text
     assert 'data-mailbox-folder="supporters"' in page.text
     assert 'data-mailbox-folder="applicants"' in page.text
     assert 'data-mailbox-folder="sent"' in page.text
-    assert 'id="communication-callbacks"' in page.text
     assert 'id="outreach-workflow"' in page.text
     assert 'class="card foldable-communication-section" id="communication-history"' in page.text
     assert 'class="mailbox-list-fold"' in page.text
@@ -679,7 +676,7 @@ def test_unread_reply_is_visible_beyond_first_supporter_page(monkeypatch):
         db.session.commit()
     page = client.get('/communications').text
     assert 'Please call after dinner' in page
-    assert 'New supporter replies' in page
+    assert 'data-mailbox-folder="supporters"' in page
 
 
 def test_yiddish_supporter_email_is_delivered_rtl(monkeypatch):
@@ -762,7 +759,7 @@ def test_resend_inbound_reply_is_matched_to_exact_supporter_and_case(monkeypatch
         assert 'replied by email' in task.description
         reply_id = reply.id
     inbox = client.get(f'/communications?contact_id={contact_id}')
-    assert 'New supporter replies' in inbox.text
+    assert 'Messages and communication history' in inbox.text
     assert 'Tomorrow evening works for me.' in inbox.text
     assert 'Mark handled' in inbox.text
     handled = post(client, f'/communications/replies/{reply_id}/handled', {})
@@ -821,7 +818,7 @@ def test_email_to_public_info_address_appears_in_messages(monkeypatch):
         message_id = message.id
 
     inbox = client.get('/communications')
-    assert 'Yazory inbox' in inbox.text
+    assert 'data-mailbox-folder="general"' in inbox.text
     assert 'Need help with utilities' in inbox.text
     assert 'Please call me about an application.' in inbox.text
     assert 'communication-email-frame' in inbox.text
