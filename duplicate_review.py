@@ -93,7 +93,7 @@ def snapshot(person):
     return json.loads(json.dumps(result, default=str))
 
 
-def merge_people(app, profile_model, target_id, source_id, actor=None):
+def merge_people(app, profile_model, target_id, source_id, actor=None, preserve_blank_fields=None):
     if source_id == target_id:
         raise ValueError('Choose two different people.')
     # Lock in stable order so concurrent reviews cannot merge a person twice.
@@ -124,10 +124,14 @@ def merge_people(app, profile_model, target_id, source_id, actor=None):
     if not target_profile:
         raise ValueError('The surviving person needs a directory profile.')
     # Keep populated survivor details. Archive every conflicting value for review.
+    # Fields explicitly cleared by the reviewer must stay blank; otherwise the
+    # generic fill-from-source rule would silently put a removed phone back.
+    preserve_blank_fields = set(preserve_blank_fields or ())
     for column in core.SupporterPerson.__table__.columns:
         if column.name not in ('id', 'identity_key', 'created_at'):
             old = getattr(source, column.name)
-            if not getattr(target, column.name) and old:
+            if (column.name not in preserve_blank_fields
+                    and not getattr(target, column.name) and old):
                 setattr(target, column.name, old)
     if source.notes and source.notes != target.notes:
         target.notes = '\n'.join(filter(None, [target.notes, source.notes]))
@@ -415,9 +419,15 @@ def install(app, profile_model, access):
             else:
                 target = next(iter(kept))
                 try:
+                    preserved_blanks = {
+                        field for field in ('home_phone', 'cell_phone', 'phone')
+                        if f'{field}_{target}' in request.form
+                        and not request.form.get(f'{field}_{target}', '').strip()
+                    }
                     merge_people(app, profile_model, target,
                                  two_id if target == one_id else one_id,
-                                 user.id if user else None)
+                                 user.id if user else None,
+                                 preserve_blank_fields=preserved_blanks)
                 except (ValueError, IntegrityError) as exc:
                     db.session.rollback()
                     if isinstance(exc, IntegrityError):
