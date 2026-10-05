@@ -1011,3 +1011,5 @@ html[dir="rtl"] .people-match-reasons span{
 .family-supporters-table [class*="supporter-tree-depth-"]:not(.supporter-tree-depth-0) {
   border-inline-start: 2px solid var(--border, #d8dee8);
 }
+
+.donation-balance-status{display:block;margin-top:.25rem}
