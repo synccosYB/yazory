@@ -31,7 +31,24 @@
         }
         if (data.values && field !== 'identity') {
           const flatten = value => typeof value === 'object' && value !== null ? Object.values(value).flatMap(flatten) : [value];
-          row.querySelector('[data-value]').textContent = flatten(data.values[field]).filter(Boolean).join(' · ');
+          const value = data.values[field];
+          row.querySelector('[data-value]').textContent = flatten(value).filter(Boolean).join(' · ');
+          const editors = row.querySelectorAll('[data-edit]');
+          if (field === 'name') {
+            const vals = Array.isArray(value) ? value : [];
+            editors.forEach(input => input.value = input.dataset.edit === 'english_name' ? (vals[0] || '') : (vals[1] || ''));
+          } else if (field === 'home_address') {
+            const vals = Array.isArray(value) ? value : [];
+            const extra = vals[4] || {};
+            const mapped = {street: vals[0] || '', city: vals[1] || '', state: vals[2] || '',
+              zip_code: vals[3] || '', unit: extra.unit || '', country: extra.country || ''};
+            editors.forEach(input => input.value = mapped[input.dataset.edit] || '');
+          } else if (field === 'work_address') {
+            const vals = value || {};
+            editors.forEach(input => input.value = vals[input.dataset.edit] || '');
+          } else {
+            editors.forEach(input => input.value = value || '');
+          }
         }
       });
     };
@@ -69,6 +86,7 @@
       try {
         const body = new URLSearchParams({csrf: panel.dataset.csrf, status,
           reason: reason.value, fingerprint: fields[field].fingerprint});
+        row.querySelectorAll('[data-edit]').forEach(input => body.set(input.dataset.edit, input.value));
         const response = await fetch(`${panel.dataset.url}/${field}`, {method: 'POST', body,
           headers: {'Accept': 'application/json'}});
         if (!response.ok) throw new Error();
@@ -85,6 +103,8 @@
             .filter(Boolean).join(' · ');
         row.querySelector('[data-choice]').value = item.status;
         row.querySelector('[data-reason]').value = item.reason;
+        const refreshed = await fetch(panel.dataset.url, {headers: {'Accept': 'application/json'}});
+        if (refreshed.ok) show(await refreshed.json());
         result.textContent = panel.dataset.saved;
       } catch (_) {result.textContent = panel.dataset.error;}
       finally {button.disabled = false;}
