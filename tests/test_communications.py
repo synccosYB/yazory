@@ -648,6 +648,21 @@ def test_communications_get_eager_loads_reply_relationships_without_writes(monke
                    for sql in statements)
 
 
+def test_supporter_inbound_sms_has_direct_reply_button(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        contact = db.session.get(Contact, contact_id)
+        db.session.add(SupporterCommunication(
+            contact_id=contact.id, family_id=contact.family_id,
+            kind='sms', direction='inbound', status='received',
+            subject='Incoming text message', body='Please call me.'))
+        db.session.commit()
+    page = client.get('/communications').text
+    assert f'action="/contacts/{contact_id}/communications/message/sms"' in page
+    assert '>Reply<' in page
+    assert 'Please call me.' in page
+
+
 def test_unread_reply_is_visible_beyond_first_supporter_page(monkeypatch):
     app, client, contact_id = setup_workspace(monkeypatch)
     with app.app_context():
