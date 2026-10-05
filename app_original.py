@@ -1740,19 +1740,25 @@ def create_app(test_config=None):
         charity_receipts = select(func.coalesce(func.sum(CharityDonation.net_cents), 0)).join(
             CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
             CharityCampaign.family_id == family_id).scalar_subquery()
+        charity_gross_receipts = select(func.coalesce(func.sum(CharityDonation.amount_cents), 0)).join(
+            CharityCampaign, CharityCampaign.id == CharityDonation.campaign_id).where(
+            CharityCampaign.family_id == family_id).scalar_subquery()
         paid = select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(
             Expense.family_id == family_id, Expense.status == 'Paid').scalar_subquery()
         payouts = select(func.coalesce(func.sum(ApplicantPayout.amount_cents), 0)).where(
             ApplicantPayout.family_id == family_id,
             ApplicantPayout.status != 'voided').scalar_subquery()
-        manual_collected, abcharity_collected, paid_expenses, direct_payouts = \
+        manual_collected, abcharity_collected, abcharity_gross, paid_expenses, direct_payouts = \
             db.session.execute(select(
-                manual_receipts, charity_receipts, paid, payouts)).one()
+                manual_receipts, charity_receipts, charity_gross_receipts, paid, payouts)).one()
         collected = manual_collected + abcharity_collected
+        gross_collected = manual_collected + abcharity_gross
+        collection_fees = abcharity_gross - abcharity_collected
         given_out = paid_expenses + direct_payouts
         legacy_available = collected - given_out
         available = case_payout_available(family_id, legacy_available)
-        return {'collected': collected, 'given_out': given_out,
+        return {'collected': collected, 'gross_collected': gross_collected,
+                'collection_fees': collection_fees, 'given_out': given_out,
                 'available': available,
                 'ledger_adjustments_and_holds': legacy_available - available}
 
@@ -2738,7 +2744,10 @@ def create_app(test_config=None):
                                awaiting_contact=awaiting_contact,
                                missing_profile_count=sum(not value for value in profile_values),
                                budget=budget_totals(family),
-                               collected=fund_totals['collected'], sent=fund_totals['given_out'],
+                               collected=fund_totals['collected'],
+                               gross_collected=fund_totals['gross_collected'],
+                               collection_fees=fund_totals['collection_fees'],
+                               sent=fund_totals['given_out'],
                                available_to_give=fund_totals['available'],
                                ledger_adjustments_and_holds=fund_totals['ledger_adjustments_and_holds'],
                                pledged=(db.session.scalar(select(func.coalesce(func.sum(
