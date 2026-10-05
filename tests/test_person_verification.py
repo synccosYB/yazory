@@ -105,6 +105,7 @@ def test_permission_isolation(app):
         db.session.commit()
     assert client.get(f'/people/{ident}/verification').status_code == 200
     assert verify(client, ident).status_code == 403
+    assert batch(client, ident, {'phone': {'edits': {'value': '8455552222'}}}).status_code == 403
 
 
 def test_one_batch_read_all_fields_and_locales(app):
@@ -251,3 +252,92 @@ def test_verification_without_edit_inputs_preserves_existing_canonical_values(ap
     assert after['name'] == before['name']
     assert after['phone'] == before['phone']
     assert after['home_address'] == before['home_address']
+
+
+def batch(client, ident, edits):
+    import json
+    state = client.get(f'/people/{ident}/verification').json['fields']
+    changes = {field: dict(fingerprint=state[field]['fingerprint'],
+        status=item.get('status', 'unverified'), reason=item.get('reason', ''),
+        edits=item.get('edits', {})) for field, item in edits.items()}
+    return post(client, f'/people/{ident}/verification', {'changes': json.dumps(changes)})
+
+
+def test_profile_batch_saves_edits_verification_and_role_snapshots(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    with app.app_context():
+        db.session.add(SupporterProfile(person_id=ident, name='One', phone='8455551111',
+                                       normalized_phone='batch-profile'))
+        db.session.commit()
+    response = batch(client, ident, {
+        'name': {'status': 'verified', 'edits': {'english_name': 'New name', 'yiddish_name': 'נייער נאמען'}},
+        'cell_phone': {'status': 'verified', 'edits': {'value': '8455553333'}},
+        'home_address': {'edits': {'street': '20 Main', 'unit': '2', 'city': 'Monroe', 'state': 'NY', 'zip_code': '10950', 'country': 'USA'}}})
+    assert response.status_code == 200
+    assert response.json['fields']['name']['status'] == 'verified'
+    assert response.json['fields']['cell_phone']['status'] == 'verified'
+    with app.app_context():
+        row = db.session.get(SupporterPerson, ident)
+        profile = db.session.scalar(db.select(SupporterProfile).where(SupporterProfile.person_id == ident))
+        assert row.name == profile.name == 'New name'
+        assert row.cell_phone == '8455553333'
+        assert row.home_address == '20 Main'
+
+
+def test_profile_batch_failure_rolls_back_every_edit(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    response = batch(client, ident, {'name': {'edits': {'english_name': 'Changed', 'yiddish_name': ''}},
+                                    'email': {'status': 'verified', 'edits': {'value': ''}}})
+    assert response.status_code == 400
+    with app.app_context():
+        assert db.session.get(SupporterPerson, ident).name == 'One'
+        assert db.session.scalar(db.select(db.func.count(PersonVerification.id))) == 0
+
+
+def test_profile_batch_rejects_stale_value_and_requires_csrf(app):
+    import json
+    ident = setup_person(app)
+    client = app.test_client()
+    state = client.get(f'/people/{ident}/verification').json['fields']['phone']
+    with app.app_context():
+        db.session.get(SupporterPerson, ident).phone = '8455559999'
+        db.session.commit()
+    changes = json.dumps({'phone': dict(fingerprint=state['fingerprint'], status='unverified', edits={'value': '8455553333'})})
+    assert post(client, f'/people/{ident}/verification', {'changes': changes}).status_code == 409
+    assert client.post(f'/people/{ident}/verification', data={'changes': changes}).status_code == 400
+    with app.app_context():
+        assert db.session.get(SupporterPerson, ident).phone == '8455559999'
+
+
+def test_profile_has_one_save_and_collapsed_verification_controls(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    for lang in ('en', 'he', 'yi'):
+        with client.session_transaction() as session:
+            session['language'] = lang
+        response = client.get(f'/people/{ident}/edit')
+        assert response.status_code == 200
+        assert response.text.count('data-profile-form') == 1
+        assert response.text.count('type="submit" data-save') == 1
+        assert '<details data-verification-controls>' in response.text
+        assert 'name="name_english"' not in response.text
+
+
+def test_batch_phone_alias_and_address_metadata_preserved(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    with app.app_context():
+        row = db.session.get(SupporterPerson, ident)
+        row.cell_phone = row.phone
+        db.session.add(PersonAddressDetails(person_kind='person', person_id=ident,
+            home={'mailing_name': 'Recipient'}, work={'company': 'Business'}))
+        db.session.commit()
+    response = batch(client, ident, {
+        'cell_phone': {'edits': {'value': '8455553333'}},
+        'work_address': {'edits': {'street': '10 Work', 'unit': '', 'city': 'Monroe', 'state': 'NY', 'zip_code': '10950', 'country': 'USA'}}})
+    assert response.status_code == 200
+    assert response.json['values']['phone'] == '8455553333'
+    assert response.json['values']['work_address']['company'] == 'Business'
+    assert response.json['values']['home_address'][4]['mailing_name'] == 'Recipient'

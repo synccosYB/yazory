@@ -1019,3 +1019,8 @@ CATALOG.update({
 CATALOG.update({'Verification history': {'he': 'היסטוריית אימות', 'yi': 'פריערדיגע באשטעטיגונגען'}, 'Previous value': {'he': 'ערך קודם', 'yi': 'פריערדיגער פרט'}})
 
 CATALOG.update({'Review': {'he': 'בדיקה', 'yi': 'נאכקוקן'}, 'Save': {'he': 'שמירה', 'yi': 'אפהיטן'}})
+
+
+CATALOG.update({'Person saved': {'he': 'פרטי האדם נשמרו', 'yi': 'די פרטים זענען אפגעהיטן'}})
+
+CATALOG.update({'This person changed since you opened the form. Reload before saving.': {'he': 'פרטי האדם השתנו מאז פתיחת הטופס. טענו מחדש לפני השמירה.', 'yi': 'די פרטים זענען געענדערט געווארן זינט איר האט געעפנט דעם פארעם. לאדט דעם בלאט נאכאמאל פארן אפהיטן.'}})

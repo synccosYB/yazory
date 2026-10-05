@@ -5,11 +5,17 @@ Existing profile/contact/address values are unchanged. Every existing value star
 unverified; no automatic backfill or claims about directory entries 5381/5382 occur.
 Only organization administrators can write verification; reads use directory permissions.
 
-The profile and duplicate comparison have a compact Field verification section.
-Open it to load all field statuses together; select Review to change a status.
-Verified and Incorrect require a source/reason. Identity confirmation is independent
-of contact details. Saving edits first is required: the control explicitly shows the
-persisted value it will verify, and the server rejects stale fingerprints.
+The identity editor is a single profile form shared by the person hub and supporter
+workspace. Names, contact details, home/work addresses and notes are edited directly.
+Each field has collapsed verification controls. One Save changes action posts only
+changed fields to `/people/<id>/verification` and commits edits, reviews and legacy
+role snapshots together. Failures retain entered changes; stale values return 409.
+Successful saves stay on the same screen and refresh the collapsed history.
+Verification automatically returns to Unverified when an input changes; staff may
+then explicitly verify the corrected value. Empty or duplicate legacy phone aliases
+are hidden, while distinct numbers remain editable. Updating a home/cell number also
+updates a matching legacy preferred-phone alias. Address metadata outside the edited
+components is preserved. Existing single-field endpoints remain for compatibility.
 
 Each review stores the exact checked value, reason, reviewer, UTC time and status.
 Changes through ORM imports/edits invalidate prior checks in the same transaction;
@@ -31,7 +37,7 @@ pytest -q tests/test_person_verification.py tests/test_unified_people.py tests/t
 ```
 
 The init-db hook creates only the new person_verification table and indexes; it does
-not rewrite any existing person details. Normal page loads issue no verification
-queries. Opening a section reads names, address metadata and latest field reviews
-in fixed batches, plus the most recent 30 history entries. Saves add one review;
-relevant person edits invalidate checks with one batched UPDATE per flush.
+not rewrite any existing person details. The profile editor loads names, address metadata, latest field reviews and the most
+recent 30 history entries in fixed batches. Read-only hub pages defer this until the
+editor is opened. Saving invalidates changed checks and adds reviews only for changed
+fields. This update needs no additional database migration beyond the existing table.

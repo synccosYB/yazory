@@ -67,6 +67,8 @@ def update_value(person, field, form):
             return
         english = form.get('english_name', '').strip()
         yiddish = form.get('yiddish_name', '').strip()
+        if max(len(english), len(yiddish)) > 160:
+            abort(400)
         save_names('person', person.id, english, yiddish, legacy=person.name or '')
         # Keep the legacy display column aligned without creating another source.
         person.name = english or yiddish
@@ -75,6 +77,9 @@ def update_value(person, field, form):
         edit_keys = ('street', 'unit', 'city', 'state', 'zip_code', 'country')
         if not any(key in form for key in edit_keys):
             return
+        for key, limit in {'street': 240, 'unit': 80, 'city': 120, 'state': 80, 'zip_code': 20, 'country': 120}.items():
+            if len(form.get(key, '').strip()) > limit:
+                abort(400)
         details = db.session.scalar(select(PersonAddressDetails).where(
             PersonAddressDetails.person_kind == 'person',
             PersonAddressDetails.person_id == person.id))
@@ -87,16 +92,13 @@ def update_value(person, field, form):
             person.city = form.get('city', '').strip()
             person.state = form.get('state', '').strip()
             person.zip_code = form.get('zip_code', '').strip()
-            details.home = {
-                key: form.get(key, '').strip() for key in ('unit', 'country')
-                if form.get(key, '').strip()
-            }
+            details.home = {**(details.home or {}), **{
+                key: form.get(key, '').strip() for key in ('unit', 'country')}}
         else:
-            details.work = {
+            details.work = {**(details.work or {}), **{
                 key: form.get(key, '').strip()
                 for key in ('street', 'unit', 'city', 'state', 'zip_code', 'country')
-                if form.get(key, '').strip()
-            }
+            }}
         return
     if 'value' not in form:
         return
@@ -189,6 +191,77 @@ def install(app, access):
             field=row.field, status=row.status, reason=row.reason, reviewer=row.reviewer,
             date=row.created_at.isoformat() + 'Z', expired=row.expired or row.fingerprint != fingerprint(current.get(row.field)),
             value=row.checked_value if row.field != 'identity' else '') for row in history])
+
+    @app.post('/people/<int:person_id>/verification')
+    def save_person_profile(person_id):
+        user = access()
+        if user is not None and user.role != 'organization_admin':
+            abort(403)
+        try:
+            changes = json.loads(request.form.get('changes', '{}'))
+        except (ValueError, TypeError):
+            abort(400)
+        if not isinstance(changes, dict) or not changes or set(changes) - FIELDS.keys():
+            abort(400)
+        person = db.session.scalar(select(core.SupporterPerson).where(
+            core.SupporterPerson.id == person_id).with_for_update())
+        if person is None:
+            abort(404)
+        before = values(person)
+        previous = statuses(person, before)
+        for field, item in changes.items():
+            if not isinstance(item, dict):
+                abort(400)
+            if item.get('fingerprint') != fingerprint(before[field]):
+                abort(409)
+            if item.get('status') not in ('verified', 'unverified', 'incorrect'):
+                abort(400)
+            if not isinstance(item.get('reason', ''), str) or len(item.get('reason', '')) > 1000:
+                abort(400)
+            edits = item.get('edits', {})
+            if not isinstance(edits, dict) or any(not isinstance(v, str) for v in edits.values()):
+                abort(400)
+        try:
+            for field, item in changes.items():
+                update_value(person, field, item.get('edits', {}))
+            # Maintain the legacy preferred-phone alias when it previously
+            # referred to a home/cell number; distinct numbers stay separate.
+            if 'phone' not in changes and before['phone']:
+                normalize = lambda value: ''.join(c for c in value if c.isdigit())
+                for field in ('cell_phone', 'home_phone'):
+                    if field in changes and normalize(before[field]) == normalize(before['phone']):
+                        person.phone = getattr(person, field)
+                        break
+            db.session.flush()
+            current = values(person)
+            if not any(current['name']):
+                abort(400)
+            def has_value(value):
+                if isinstance(value, dict):
+                    return any(has_value(v) for v in value.values())
+                if isinstance(value, (list, tuple)):
+                    return any(has_value(v) for v in value)
+                return bool(value)
+            for field, item in changes.items():
+                if item['status'] == 'verified' and not has_value(current[field]):
+                    abort(400)
+                # Unchanged controls never add audit noise or re-confirm a changed value.
+                if (before[field] == current[field] and item['status'] == previous[field]['status']
+                        and item.get('reason', '').strip() == previous[field]['reason']):
+                    continue
+                db.session.add(PersonVerification(person_id=person.id, field=field,
+                    status=item['status'], fingerprint=fingerprint(current[field]),
+                    checked_value=current[field], reason=item.get('reason', '').strip(),
+                    reviewed_by=user.id if user else None,
+                    reviewer=(user.name or user.email) if user else 'Demo'))
+            sync = app.extensions.get('supporter_identity', {}).get('sync')
+            if sync:
+                sync(person)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        return get_person_verification(person_id)
 
     @app.post('/people/<int:person_id>/verification/<field>')
     def set_person_verification(person_id, field):

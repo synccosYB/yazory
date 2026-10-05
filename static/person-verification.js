@@ -52,62 +52,80 @@
         }
       });
     };
-    panel.addEventListener('toggle', async () => {
-      if (!panel.open) return;
+    const form = panel.querySelector('[data-profile-form]');
+    const fieldset = panel.querySelector('[data-profile-fields]');
+    const button = panel.querySelector('[data-save]');
+    let baseline = {};
+    const snapshot = row => ({status: row.querySelector('[data-choice]')?.value,
+      reason: row.querySelector('[data-reason]')?.value || '',
+      edits: Object.fromEntries(Array.from(row.querySelectorAll('[data-edit]')).map(input => [input.dataset.edit, input.value]))});
+    const remember = () => {
+      baseline = {};
+      panel.querySelectorAll('[data-verification-field]').forEach(row => {
+        baseline[row.dataset.verificationField] = snapshot(row);
+      });
+      const phoneRow = panel.querySelector('[data-verification-field="phone"]');
+      const phone = phoneRow.querySelector('[data-edit]')?.value || phoneRow.querySelector('[data-value]').textContent || '';
+      const normalize = value => value.replace(/\D/g, '');
+      const otherPhones = ['home_phone', 'cell_phone'].map(field =>
+        panel.querySelector(`[data-verification-field="${field}"] [data-edit]`)?.value || panel.querySelector(`[data-verification-field="${field}"] [data-value]`).textContent || '');
+      // Keep a distinct legacy number visible; omit empty or duplicate aliases.
+      phoneRow.hidden = !phone || otherPhones.some(value => value && normalize(value) === normalize(phone));
+    };
+    form.addEventListener('input', event => {
+      if (!event.target.matches('[data-edit]')) return;
+      const row = event.target.closest('[data-verification-field]');
+      row.querySelector('[data-choice]').value = 'unverified';
+      row.querySelector('[data-reason]').value = '';
+      row.querySelector('[data-status]').textContent = panel.querySelector('[data-status-label="unverified"]').textContent;
+    });
+    form.addEventListener('change', event => {
+      if (!event.target.matches('[data-choice]')) return;
+      event.target.closest('[data-verification-field]').querySelector('[data-status]').textContent =
+        panel.querySelector(`[data-status-label="${event.target.value}"]`).textContent;
+    });
+    let loading = false;
+    const load = async () => {
+      if (loading) return;
+      loading = true;
       try {
         const response = await fetch(panel.dataset.url, {headers: {'Accept': 'application/json'}});
         if (!response.ok) throw new Error();
         show(await response.json());
-        result.textContent = '';
-      } catch (_) { fields = null; result.textContent = panel.dataset.error; }
-    });
-    panel.addEventListener('click', async event => {
-      const button = event.target.closest('[data-save]');
-      if (!button) return;
-      if (!fields) {
-        button.disabled = true;
-        try {
-          const response = await fetch(panel.dataset.url, {headers: {'Accept': 'application/json'}});
-          if (!response.ok) throw new Error();
-          show(await response.json());
-          result.textContent = '';
-        } catch (_) {
-          result.textContent = panel.dataset.error;
-          button.disabled = false;
-          return;
+        remember();
+        fieldset.disabled = false;
+        if (button) button.disabled = false;
+      } catch (_) { result.textContent = panel.dataset.error; }
+      finally { loading = false; }
+    };
+    panel.addEventListener('toggle', () => { if (panel.open && !fields) load(); });
+    if (button) button.disabled = true;
+    if (panel.open) load();
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!fields || !button) return;
+      const changes = {};
+      panel.querySelectorAll('[data-verification-field]').forEach(row => {
+        const field = row.dataset.verificationField;
+        const item = snapshot(row);
+        if (JSON.stringify(item) !== JSON.stringify(baseline[field])) {
+          changes[field] = {...item, fingerprint: fields[field].fingerprint};
         }
-        button.disabled = false;
-      }
-      const row = button.closest('[data-verification-field]');
-      const field = row.dataset.verificationField;
-      const status = row.querySelector('[data-choice]').value;
-      const reason = row.querySelector('[data-reason]');
+      });
+      if (!Object.keys(changes).length) { result.textContent = panel.dataset.saved; return; }
+      fieldset.disabled = true;
       button.disabled = true;
       try {
-        const body = new URLSearchParams({csrf: panel.dataset.csrf, status,
-          reason: reason.value, fingerprint: fields[field].fingerprint});
-        row.querySelectorAll('[data-edit]').forEach(input => body.set(input.dataset.edit, input.value));
-        const response = await fetch(`${panel.dataset.url}/${field}`, {method: 'POST', body,
+        const body = new URLSearchParams({csrf: panel.dataset.csrf, changes: JSON.stringify(changes)});
+        const response = await fetch(panel.dataset.url, {method: 'POST', body,
           headers: {'Accept': 'application/json'}});
+        if (response.status === 409) { result.textContent = panel.dataset.conflict; return; }
         if (!response.ok) throw new Error();
-        const saved = await response.json();
-        // Do not repaint the whole panel here. Repainting resets the other
-        // rows' unsaved dropdown/reason edits, which made their Save buttons
-        // appear not to work when reviewing several fields in sequence.
-        fields = saved.fields;
-        const item = fields[field];
-        row.querySelector('[data-status]').textContent =
-          panel.querySelector(`[data-status-label="${item.status}"]`).textContent;
-        row.querySelector('[data-review]').textContent =
-          [item.reviewer, item.date ? new Date(item.date).toLocaleString() : '', item.reason]
-            .filter(Boolean).join(' · ');
-        row.querySelector('[data-choice]').value = item.status;
-        row.querySelector('[data-reason]').value = item.reason;
-        const refreshed = await fetch(panel.dataset.url, {headers: {'Accept': 'application/json'}});
-        if (refreshed.ok) show(await refreshed.json());
+        show(await response.json());
+        remember();
         result.textContent = panel.dataset.saved;
-      } catch (_) {result.textContent = panel.dataset.error;}
-      finally {button.disabled = false;}
+      } catch (_) { result.textContent = panel.dataset.error; }
+      finally { fieldset.disabled = false; button.disabled = false; }
     });
   });
 })();

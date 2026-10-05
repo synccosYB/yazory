@@ -11,30 +11,7 @@
 <div class="person-workspace-grid">
 <section class="card padded" data-panel-exclude id="identity">
   <h2>{{ _('Person profile') }}</h2>
-  <p>{{ _('Home phone') }}: <bdi dir="ltr">{{ person.home_phone|phone if person.home_phone else '—' }}</bdi> · {{ _('Cell phone') }}: <bdi dir="ltr">{{ (person.cell_phone or person.phone)|phone if (person.cell_phone or person.phone) else '—' }}</bdi></p><p>{{ _('Email address') }}: <bdi dir="ltr">{{ person.email or '—' }}</bdi></p>
-  <details><summary>{{ _('Edit person') }}</summary><form method="post">
-    {{ token(csrf) }}
-    <div class="form-grid">
-      <input type="hidden" name="name" value="{{ person.name }}" maxlength="160">{{ bilingual_name_fields('person', person, 'name') if person.id else bilingual_name_fields('profile', profile, 'name') }}
-      <label>{{ _('Phone') }}<input name="phone" value="{{ person.phone }}" maxlength="80"></label>
-      <label>{{ _('Home phone') }}<input name="home_phone" value="{{ person.home_phone }}" maxlength="80"></label>
-      <label>{{ _('Cell phone') }}<input name="cell_phone" value="{{ person.cell_phone }}" maxlength="80"></label>
-      <label>{{ _('Email address') }}<input type="email" name="email" value="{{ person.email }}" maxlength="254"></label>
-      {% for field in ['home_address', 'city', 'state', 'zip_code', 'workplace'] %}<input type="hidden" name="{{ field }}" value="{{ person[field] }}">{% endfor %}
-      <label>{{ _('Work phone') }}<input name="work_phone" value="{{ person.work_phone }}" maxlength="80"></label>
-      <label class="full-width">{{ _('Notes') }}<textarea name="notes" rows="3">{{ person.notes }}</textarea></label>
-    </div>
-    <div class="form-actions">
-      <button type="submit">{{ _('Save changes') }}</button>
-      <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Cancel') }}</a>
-    </div>
-  </form></details>
 {% include '_person_verification.html' %}
-<div id="addresses"><h3>{{ _('Home & work addresses') }}</h3>
-<p><bdi dir="ltr">{{ address_home.get('street') or '—' }} {{ address_home.get('unit','') }}{% if address_home.get('city') %}, {{ address_home.get('city') }}{% endif %} {{ address_home.get('state','') }} {{ address_home.get('zip_code','') }}</bdi></p>
-{% if address_work.get('company') or address_work.get('street') %}<p>{{ _('Work address') }}: <bdi dir="ltr">{{ address_work.get('company','') }} {{ address_work.get('street','') }} {{ address_work.get('city','') }} {{ address_work.get('state','') }} {{ address_work.get('zip_code','') }}</bdi></p>{% endif %}
-<details><summary>{{ _('Home & work addresses') }}</summary>{% with home=address_home, work=address_work, preference=address_preference, name_kind='person', name_field='name', display_name=profile.name, omit_address_names=true, address_action=url_for('person_addresses',kind='profile',person_id=profile.id) %}{% include '_person_address_form.html' %}{% endwith %}</details>
-</div>
 </section>
 
 
@@ -142,3 +119,4 @@
   </div><button>{{ _('Connect institution') }}</button></form></details>{% endif %}
 </details>
 {% endblock %}
+
