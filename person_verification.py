@@ -7,7 +7,7 @@ import app_original as core
 from flask import abort, jsonify, request
 from sqlalchemy import event, inspect, select
 from sqlalchemy.orm import Session
-from person_names import PersonNames
+from person_names import PersonNames, save_names, detected_names
 from person_addresses import PersonAddressDetails
 
 db = core.db
@@ -45,12 +45,62 @@ def values(person):
     result = {field: getattr(person, field, '') or '' for field in FIELDS}
     # Identity confirmation is independent of the person's mutable contact details.
     result['identity'] = person.identity_key
-    result['name'] = [person.name or '', name.english_name or '' if name else '',
-                      name.yiddish_name or '' if name else '']
+    # The bilingual row is canonical for name variants. Do not render person.name
+    # beside english_name when they are the same value.
+    if name:
+        result['name'] = [name.english_name or '', name.yiddish_name or '']
+    else:
+        result['name'] = list(detected_names(person.name or ''))
     result['home_address'] = [person.home_address or '', person.city or '',
                               person.state or '', person.zip_code or '', address.home if address else {}]
     result['work_address'] = address.work if address else {}
     return result
+
+
+
+def update_value(person, field, form):
+    """Apply an in-place verification edit to the existing canonical records."""
+    if field == 'identity':
+        return
+    if field == 'name':
+        english = form.get('english_name', '').strip()
+        yiddish = form.get('yiddish_name', '').strip()
+        save_names('person', person.id, english, yiddish, legacy=person.name or '')
+        # Keep the legacy display column aligned without creating another source.
+        person.name = english or yiddish
+        return
+    if field in ('home_address', 'work_address'):
+        details = db.session.scalar(select(PersonAddressDetails).where(
+            PersonAddressDetails.person_kind == 'person',
+            PersonAddressDetails.person_id == person.id))
+        if details is None:
+            details = PersonAddressDetails(person_kind='person', person_id=person.id,
+                                           home={}, work={})
+            db.session.add(details)
+        if field == 'home_address':
+            person.home_address = form.get('street', '').strip()
+            person.city = form.get('city', '').strip()
+            person.state = form.get('state', '').strip()
+            person.zip_code = form.get('zip_code', '').strip()
+            details.home = {
+                key: form.get(key, '').strip() for key in ('unit', 'country')
+                if form.get(key, '').strip()
+            }
+        else:
+            details.work = {
+                key: form.get(key, '').strip()
+                for key in ('street', 'unit', 'city', 'state', 'zip_code', 'country')
+                if form.get(key, '').strip()
+            }
+        return
+    value = form.get('value', '').strip()
+    column = getattr(person.__table__.columns, field, None)
+    if column is None:
+        abort(400)
+    limit = getattr(column.type, 'length', None)
+    if limit and len(value) > limit:
+        abort(400)
+    setattr(person, field, value)
 
 
 def fingerprint(value):
@@ -152,7 +202,13 @@ def install(app, access):
         digest = fingerprint(current[field])
         if request.form.get('fingerprint') != digest:
             abort(409)
-        if status == 'verified' and field != 'identity' and not any(current[field] if isinstance(current[field], list) else [current[field]]):
+        update_value(person, field, request.form)
+        db.session.flush()
+        current = values(person)
+        digest = fingerprint(current[field])
+        check_values = current[field] if isinstance(current[field], list) else [current[field]]
+        if status == 'verified' and field != 'identity' and not any(
+                value for value in check_values if not isinstance(value, dict)):
             abort(400)
         db.session.add(PersonVerification(person_id=person.id, field=field, status=status,
             fingerprint=digest, checked_value=current[field], reason=reason, reviewed_by=user.id if user else None,
