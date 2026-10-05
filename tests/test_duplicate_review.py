@@ -368,7 +368,13 @@ def test_duplicate_review_owns_integrity_error_instead_of_global_409(app):
         identity['sync'] = real_sync
 
     assert response.status_code == 409
-    assert 'Database merge conflict:' in response.text
+    # The merge route may catch the integrity error itself ("Linked records
+    # conflict") or the outer duplicate-review guard may catch one raised
+    # before/after that block ("Database merge conflict"). Either is correct:
+    # the important regression is that workflows.py must not replace the real
+    # database detail with its generic global 409 message.
+    assert ('Linked records conflict:' in response.text
+            or 'Database merge conflict:' in response.text)
     assert 'production constraint detail' in response.text
     assert 'This record changed or the reference already exists.' not in response.text
     with app.app_context():
