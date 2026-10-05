@@ -40,13 +40,31 @@ def resolve_identity_alias(identity_key):
         PersonIdentityAlias.kind == 'identity_key', PersonIdentityAlias.value == identity_key))
 
 
+MERGE_VERSION_TABLES = {
+    'supporter_person',
+    'supporter_profile',
+    'person_names',
+    'person_address_details',
+    'person_book_record',
+    'person_family_connection',
+    'person_relationship',
+}
+
+
 def _snapshot_version(snapshots):
-    """Hash review state independent of database row-return order."""
+    """Hash only merge-critical identity state, never live activity/history.
+
+    Communications, receipts, tasks and other supporter_key-linked rows can be
+    written while an administrator has the review page open. Those rows are
+    transferred transactionally by merge_people and must not make the review
+    form stale. The merge itself locks both canonical people before changing
+    them and database constraints still protect linked-record collisions.
+    """
     stable = {}
     for person_id, tables in snapshots.items():
         stable[str(person_id)] = {
             table: sorted(rows, key=lambda row: json.dumps(row, sort_keys=True, default=str))
-            for table, rows in tables.items()
+            for table, rows in tables.items() if table in MERGE_VERSION_TABLES
         }
     return hashlib.sha256(json.dumps(stable, sort_keys=True, default=str).encode()).hexdigest()
 
