@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlsplit
 
 import requests
 from cryptography.fernet import Fernet, InvalidToken
-from flask import abort, flash, redirect, render_template, request, url_for, has_request_context, session
+from flask import abort, flash, jsonify, redirect, render_template, request, url_for, has_request_context, session
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError, OperationalError
 
@@ -273,6 +273,28 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         flash('Donations synced.' if run_sync(campaign) else ERROR)
         return redirect(url_for('charity_donations', family_id=family_id))
 
+    @app.get('/families/<int:family_id>/donations/people-search')
+    def charity_people_search(family_id):
+        require_capability(('family_admin', 'fundraiser'))
+        get_family(family_id)
+        q = request.args.get('q', '').strip()
+        if len(q) < 2:
+            return jsonify([])
+        from app import SupporterPerson
+        people = db.session.scalars(
+            select(SupporterPerson).where(db.or_(
+                SupporterPerson.name.contains(q, autoescape=True),
+                SupporterPerson.phone.contains(q, autoescape=True),
+                SupporterPerson.home_phone.contains(q, autoescape=True),
+                SupporterPerson.cell_phone.contains(q, autoescape=True),
+            )).order_by(SupporterPerson.name).limit(20)
+        ).all()
+        return jsonify([{
+            'id': p.id,
+            'name': p.name,
+            'phone': p.cell_phone or p.home_phone or p.phone or '',
+        } for p in people])
+
     @app.post('/families/<int:family_id>/donors/<int:donor_id>/link')
     def charity_link(family_id, donor_id):
         require_capability(('family_admin', 'fundraiser'))
@@ -280,6 +302,23 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         donor = db.session.scalar(select(Donor).join(Campaign, Campaign.id == Donor.campaign_id).where(Donor.id == donor_id, Campaign.family_id == family_id))
         if donor is None: abort(404)
         contact_id = request.form.get('contact_id', type=int)
+        person_id = request.form.get('person_id', type=int)
+        if person_id and not contact_id:
+            from app import SupporterPerson
+            person = db.session.get(SupporterPerson, person_id)
+            if person is None:
+                abort(404)
+            contact = db.session.scalar(select(Contact).where(
+                Contact.family_id == family_id, Contact.person_id == person.id))
+            if contact is None:
+                contact = Contact(
+                    family_id=family_id, person_id=person.id, name=person.name,
+                    phone=person.phone or person.cell_phone or person.home_phone or '',
+                    relationship='Other', supporter_key=person.identity_key,
+                    status='To contact')
+                db.session.add(contact)
+                db.session.flush()
+            contact_id = contact.id
         if contact_id and not db.session.scalar(select(Contact.id).where(Contact.id == contact_id, Contact.family_id == family_id)):
             abort(403)
         allowed_ids=assigned_contacts(family_id)
