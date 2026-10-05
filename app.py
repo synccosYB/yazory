@@ -3115,6 +3115,19 @@ def create_app(test_config=None):
     def task_is_admin(user):
         return bool(user and user.role == 'organization_admin')
 
+    def signed_text_message(body, user=None):
+        """Sign every staff-sent SMS/WhatsApp with the logged-in user's name."""
+        user = user or task_user()
+        sender = ' '.join(((user.name if user else '') or '').split())
+        if not sender and user:
+            sender = (user.email or '').split('@', 1)[0]
+        signature = f'{sender}\nYazory' if sender else 'Yazory'
+        clean_body = (body or '').strip()
+        if clean_body.endswith(signature):
+            return clean_body[:1600]
+        available = 1600 - len(signature) - 2
+        return f'{clean_body[:max(0, available)].rstrip()}\n\n{signature}'.strip()
+
     def communication_contact(contact_id):
         contact = _app.db.get_or_404(_app.Contact, contact_id)
         user = task_user()
@@ -3864,6 +3877,7 @@ def create_app(test_config=None):
                 _app.abort(400, 'Choose a case with eligible recipients and enter a message.')
             if channel != 'email' and len(body) > 1600:
                 _app.abort(400, 'Message is too long.')
+            delivery_body = body if channel == 'email' else signed_text_message(body, user)
             if len(recipients) > 200:
                 _app.abort(400, 'Narrow the category to 200 recipients or fewer.')
             sent = failed = 0
@@ -3880,12 +3894,12 @@ def create_app(test_config=None):
                     else:
                         provider_id, error = deliver_message(
                             app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
-                            address, body, channel=channel,
+                            address, delivery_body, channel=channel,
                             sms_from=app.config['TWILIO_SMS_FROM'],
                             whatsapp_from=app.config['TWILIO_WHATSAPP_FROM'],
                             messaging_service_sid=twilio_service_sid())
                         result = 'failed' if error else 'completed'
-                    communication_row(contact, channel, subject or channel.title(), body,
+                    communication_row(contact, channel, subject or channel.title(), delivery_body,
                                       status=result, provider_message_id=provider_id,
                                       delivery_error=error)
                 sent += result == 'completed'
@@ -4164,6 +4178,7 @@ def create_app(test_config=None):
         body = _app.request.form.get('body', '').strip()[:1600]
         if not body:
             _app.abort(400, 'Enter a message.')
+        body = signed_text_message(body, user)
         if not recipient:
             _app.abort(400, 'Choose a person or enter a mobile number.')
         try:
@@ -4476,6 +4491,7 @@ def create_app(test_config=None):
         body = _app.request.form.get('body', '').strip()[:1600]
         if not body:
             _app.abort(400, 'Enter a message.')
+        body = signed_text_message(body, user)
         if app.config['TESTING'] or app.config['DEMO']:
             provider_id, error, status = None, '', 'preview'
         else:
@@ -4860,6 +4876,7 @@ def create_app(test_config=None):
         body = _app.request.form.get('body', '').strip()[:1600]
         if not body:
             _app.abort(400, 'Enter a message.')
+        body = signed_text_message(body)
         try:
             normalized = normalize_phone(recipient)
         except ValueError as exc:
@@ -5562,6 +5579,7 @@ def create_app(test_config=None):
         body = (f'Yazory: Your ${amount_cents / 100:,.2f} donation ({reference}) '
                 f'is in your donor portal. Open your payment record here: {link} '
                 'This one-time link expires in 30 minutes. Reply STOP to opt out.')
+        body = signed_text_message(body)
         if app.config['TESTING'] or app.config['DEMO']:
             provider_id, error, status = None, '', 'preview'
         else:
