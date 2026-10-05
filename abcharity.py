@@ -318,9 +318,13 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         person = canonical_person_for_profile(profile)
         if phone and not person.cell_phone:
             person.cell_phone = phone[:80]
+        from app import Audit
+        staff = db.session.get(__import__('app').StaffUser, session.get('user_id')) if session.get('user_id') else None
+        db.session.add(Audit(
+            actor=staff.email if staff else 'Demo user',
+            action='Added person from ABCharity donation',
+            family_id=family_id))
         db.session.commit()
-        audit('person.create', 'SupporterPerson', person.id, family_id=family_id,
-              details={'source': 'ABCharity donation'})
         return jsonify({'id': person.id, 'name': person.name,
                         'phone': person.cell_phone or person.home_phone or person.phone or ''}), 201
 
