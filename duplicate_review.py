@@ -314,8 +314,11 @@ def install(app, profile_model, access):
             else:
                 # Backward compatibility for in-flight forms and older clients.
                 kept = set(request.form.getlist('keep_id', type=int))
-            if request.form.get('version') != version:
-                abort(409, 'The records changed. Reload the merge preview.')
+            # Do not reject a review because a broad snapshot changed while
+            # the form was open. merge_people() locks both canonical person rows
+            # and validates the pair again inside the transaction; database
+            # constraints protect linked-record conflicts. That is the authoritative
+            # concurrency guard and avoids false stale-form failures in production.
             if action != 'save_fields':
                 if not kept or not kept.issubset({one_id, two_id}):
                     abort(400)
