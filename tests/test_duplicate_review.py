@@ -271,6 +271,66 @@ def test_duplicate_review_retries_one_stale_sync_conflict(app):
         assert db.session.get(SupporterPerson, b) is None
 
 
+def test_merge_defers_profile_sync_until_source_profile_is_removed(app):
+    """Matching phone edits must not collide with the losing legacy profile."""
+    import re
+    with app.app_context():
+        one = person('Shared One', 'test:shared-one', '8451111111')
+        two = person('Shared Two', 'test:shared-two', '8454924998')
+        profile(one, 'rid:shared-one')
+        profile(two, 'rid:shared-two')
+        db.session.commit()
+        a, b = one.id, two.id
+
+    client = app.test_client()
+    url = f'/people/duplicates/{a}/{b}'
+    page = client.get(url)
+    version = re.search(rb'name="version" value="([a-f0-9]+)"', page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token = session['csrf']
+
+    response = client.post(url, data=MultiDict([
+        ('csrf', token), ('version', version), ('decision', str(a)),
+        (f'home_phone_{a}', ''), (f'cell_phone_{a}', ''), (f'phone_{a}', '8454924998'),
+        (f'home_phone_{b}', ''), (f'cell_phone_{b}', ''), (f'phone_{b}', '8454924998'),
+    ]))
+    assert response.status_code == 302
+    with app.app_context():
+        assert db.session.get(SupporterPerson, b) is None
+        survivor = db.session.get(SupporterPerson, a)
+        assert survivor.phone == '8454924998'
+
+
+def test_merge_preserves_explicitly_cleared_survivor_phone(app):
+    """A phone cleared on the review form must not be backfilled from the losing record."""
+    import re
+    with app.app_context():
+        one = person('Clear One', 'test:clear-one', '8451111111')
+        two = person('Clear Two', 'test:clear-two', '8454924998')
+        profile(one, 'rid:clear-one')
+        profile(two, 'rid:clear-two')
+        db.session.commit()
+        a, b = one.id, two.id
+
+    client = app.test_client()
+    url = f'/people/duplicates/{a}/{b}'
+    page = client.get(url)
+    version = re.search(rb'name="version" value="([a-f0-9]+)"', page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token = session['csrf']
+
+    response = client.post(url, data=MultiDict([
+        ('csrf', token), ('version', version), ('decision', str(a)),
+        (f'home_phone_{a}', ''), (f'cell_phone_{a}', ''), (f'phone_{a}', ''),
+        (f'home_phone_{b}', ''), (f'cell_phone_{b}', ''), (f'phone_{b}', '8454924998'),
+    ]))
+    assert response.status_code == 302
+    with app.app_context():
+        survivor = db.session.get(SupporterPerson, a)
+        assert survivor.phone == ''
+        assert db.session.get(SupporterPerson, b) is None
+
+
 def test_duplicate_review_owns_integrity_error_instead_of_global_409(app):
     """Duplicate review must expose its DB conflict instead of workflows' generic 409."""
     from sqlalchemy.exc import IntegrityError
