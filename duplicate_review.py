@@ -350,9 +350,17 @@ def install(app, profile_model, access):
                         profile_model.person_id == person.id))
                     if profile is not None:
                         profile.name = person.name
-                    sync = app.extensions.get('supporter_identity', {}).get('sync')
-                    if sync:
-                        sync(person)
+                    # During a merge, do not synchronize legacy profile/contact
+                    # snapshots yet. Two records being reviewed as duplicates can
+                    # intentionally share the same phone, while SupporterProfile
+                    # still enforces a unique normalized_phone. merge_people()
+                    # removes/moves the losing profile first and synchronizes the
+                    # survivor once at the end. Standalone field saves still sync
+                    # immediately because both people remain separate.
+                    if action == 'save_fields':
+                        sync = app.extensions.get('supporter_identity', {}).get('sync')
+                        if sync:
+                            sync(person)
 
             # Phone corrections on the review screen write directly to the
             # canonical person record. Empty values intentionally clear a bad
@@ -367,7 +375,7 @@ def install(app, profile_model, access):
                     if getattr(person, field) != value:
                         setattr(person, field, value)
                         phone_changed = True
-                if phone_changed:
+                if phone_changed and action == 'save_fields':
                     sync = app.extensions.get('supporter_identity', {}).get('sync')
                     if sync:
                         sync(person)
