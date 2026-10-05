@@ -2675,7 +2675,7 @@ def create_app(test_config=None):
         activity = db.session.scalars(select(Audit).where(Audit.family_id==family.id).order_by(Audit.id.desc()).limit(30)).all()
         # The case profile is a summary, not the full supporter directory. Keep
         # its database work bounded even when a case has hundreds of connections.
-        supporter_preview_limit = 30
+        supporter_preview_limit = 50
         supporter_total, awaiting_contact = db.session.execute(select(
             func.count(Contact.id),
             func.count(Contact.id).filter(Contact.status == 'To contact')
