@@ -543,7 +543,7 @@ def test_named_sms_and_pledge_changes_stay_on_the_selected_case(monkeypatch):
         message = db.session.scalar(db.select(SupporterCommunication).where(
             SupporterCommunication.contact_id == contact_id,
             SupporterCommunication.kind == 'sms'))
-        assert message.body == 'Can we speak tomorrow?'
+        assert message.body == 'Can we speak tomorrow?\n\nowner\nYazory'
         assert db.session.scalar(db.select(GeneralSmsMessage).where(
             GeneralSmsMessage.body == 'Can we speak tomorrow?')) is None
         assert db.session.get(Contact, contact_id).phone == '8455551212'
@@ -1253,7 +1253,7 @@ def test_general_sms_can_be_sent_and_replied_to(monkeypatch):
             GeneralSmsMessage.id)).all()
         assert [row.direction for row in rows] == ['outbound', 'inbound', 'outbound']
         assert rows[1].status == 'unread'
-        assert rows[2].body == 'You are welcome'
+        assert rows[2].body == 'You are welcome\n\nowner\nYazory'
 
 
 def test_incoming_sms_resolves_person_and_shows_chronological_thread(monkeypatch):
