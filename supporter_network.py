@@ -13,6 +13,11 @@ PARENT_RELATIONS={'Child of sibling':{'Sibling',"Spouse’s sibling"},'Nephew':{
 ANCESTOR_RELATIONS={'Sibling',"Spouse’s sibling"}
 
 
+def supporter_grade(depth):
+    """Grade follows the actual supporter-tree generation: root=A, child=B, etc."""
+    return chr(ord('A') + depth) if 0 <= depth < 26 else ''
+
+
 def install_network(app,db,entities,helpers):
     Family=entities['Family'];Contact=entities['Contact'];User=entities['StaffUser'];Assignment=entities['FamilyAssignment']
     Institution=entities['Institution'];PersonAffiliation=entities['PersonAffiliation']
@@ -244,7 +249,7 @@ def install_network(app,db,entities,helpers):
                 pid=link.parent_id if link else c.parent_contact_id
                 if (pid if pid in visible else None)!=parent or c.id in seen:continue
                 seen.add(c.id);rows.append({'contact':c,'link':link,'depth':depth,'through':visible.get(pid),
-                  'grade':'A' if link and link.relationship=='Sibling' else 'B' if link and link.relationship in ('Nephew','Child of sibling','Uncle / aunt',*UNCLE_RELATIONS) else 'C' if link and link.relationship=='First cousin' else 'D' if link and link.relationship=='Second cousin' else ''})
+                  'grade':supporter_grade(depth)})
                 walk(c.id,depth+1,seen)
         walk(None,0,set())
         staff=[u for u in db.session.scalars(select(User).order_by(User.email)) if u.role in ('fundraiser','family_admin','organization_admin') and
