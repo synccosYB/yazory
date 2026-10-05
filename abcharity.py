@@ -303,7 +303,7 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         phone = request.form.get('phone', '').strip()
         if not name:
             return jsonify({'error': 'Enter the person’s name.'}), 400
-        from app import SupporterPerson, create_neutral_directory_person, canonical_person_for_profile
+        from app import SupporterPerson
         from duplicate_watch import contact_identity_map, row_contact_matches
         submitted = {'name': name, 'phone': phone, 'cell_phone': phone}
         matches = row_contact_matches(submitted, contact_identity_map())
@@ -313,13 +313,14 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
                 'matches': [{'id': p.id, 'name': p.name,
                              'phone': p.cell_phone or p.home_phone or p.phone or ''} for p in matches[:10]],
             }), 409
+        from app import SupporterProfile, Audit, StaffUser
+        from app import create_neutral_directory_person, canonical_person_for_profile
         profile = create_neutral_directory_person(name=name, phone=phone, email='')
         db.session.flush()
         person = canonical_person_for_profile(profile)
         if phone and not person.cell_phone:
             person.cell_phone = phone[:80]
-        from app import Audit
-        staff = db.session.get(__import__('app').StaffUser, session.get('user_id')) if session.get('user_id') else None
+        staff = db.session.get(StaffUser, session.get('user_id')) if session.get('user_id') else None
         db.session.add(Audit(
             actor=staff.email if staff else 'Demo user',
             action='Added person from ABCharity donation',
