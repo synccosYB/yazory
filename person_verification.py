@@ -63,6 +63,8 @@ def update_value(person, field, form):
     if field == 'identity':
         return
     if field == 'name':
+        if 'english_name' not in form and 'yiddish_name' not in form:
+            return
         english = form.get('english_name', '').strip()
         yiddish = form.get('yiddish_name', '').strip()
         save_names('person', person.id, english, yiddish, legacy=person.name or '')
@@ -70,6 +72,9 @@ def update_value(person, field, form):
         person.name = english or yiddish
         return
     if field in ('home_address', 'work_address'):
+        edit_keys = ('street', 'unit', 'city', 'state', 'zip_code', 'country')
+        if not any(key in form for key in edit_keys):
+            return
         details = db.session.scalar(select(PersonAddressDetails).where(
             PersonAddressDetails.person_kind == 'person',
             PersonAddressDetails.person_id == person.id))
@@ -92,6 +97,8 @@ def update_value(person, field, form):
                 for key in ('street', 'unit', 'city', 'state', 'zip_code', 'country')
                 if form.get(key, '').strip()
             }
+        return
+    if 'value' not in form:
         return
     value = form.get('value', '').strip()
     column = getattr(person.__table__.columns, field, None)
