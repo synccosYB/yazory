@@ -16,6 +16,13 @@ def test_numbers_format():
     assert [formatted(n) for n in (1, 2, 9, 10, 99, 100)] == ['01', '02', '09', '10', '99', '100']
 
 
+def test_canonical_person_number_uses_person_id_directly(app):
+    with app.app_context():
+        person = db.session.scalar(db.select(SupporterPerson).order_by(SupporterPerson.id))
+        issued = db.session.scalar(db.select(PersonNumber.id).where(PersonNumber.person_id == person.id))
+        assert number_for('person', person) == formatted(issued)
+
+
 def test_roles_and_edits_keep_one_number(app):
     with app.app_context():
         family = Family(name='ID applicant', spouse='ID spouse')
