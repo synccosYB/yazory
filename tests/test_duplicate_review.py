@@ -22,9 +22,23 @@ def test_review_version_ignores_database_row_order():
     assert _snapshot_version(first) == _snapshot_version(second)
 
 
-def test_review_version_still_detects_real_changes():
-    before = {10: {'contact': [{'id': 1, 'name': 'A'}]}}
-    after = {10: {'contact': [{'id': 1, 'name': 'Changed'}]}}
+def test_review_version_ignores_live_activity_changes():
+    before = {10: {
+        'supporter_person': [{'id': 10, 'name': 'A'}],
+        'contact': [{'id': 1, 'name': 'A'}],
+        'supporter_communication': [{'id': 5, 'body': 'old'}],
+    }}
+    after = {10: {
+        'supporter_person': [{'id': 10, 'name': 'A'}],
+        'contact': [{'id': 1, 'name': 'Changed while review was open'}],
+        'supporter_communication': [{'id': 5, 'body': 'old'}, {'id': 6, 'body': 'new'}],
+    }}
+    assert _snapshot_version(before) == _snapshot_version(after)
+
+
+def test_review_version_still_detects_identity_changes():
+    before = {10: {'supporter_person': [{'id': 10, 'name': 'A'}]}}
+    after = {10: {'supporter_person': [{'id': 10, 'name': 'Changed'}]}}
     assert _snapshot_version(before) != _snapshot_version(after)
 
 
