@@ -302,8 +302,8 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
         name = request.form.get('name', '').strip()
         phone = request.form.get('phone', '').strip()
         if not name:
-            return jsonify({'error': 'Enter the person’s name.'}), 400
-        from app import SupporterPerson
+            return jsonify({'error': 'Enter the person name.'}), 400
+        from app import SupporterPerson, Audit, StaffUser
         from duplicate_watch import contact_identity_map, row_contact_matches
         submitted = {'name': name, 'phone': phone, 'cell_phone': phone}
         matches = row_contact_matches(submitted, contact_identity_map())
@@ -313,13 +313,16 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
                 'matches': [{'id': p.id, 'name': p.name,
                              'phone': p.cell_phone or p.home_phone or p.phone or ''} for p in matches[:10]],
             }), 409
-        from app import SupporterProfile, Audit, StaffUser
-        from app import create_neutral_directory_person, canonical_person_for_profile
-        profile = create_neutral_directory_person(name=name, phone=phone, email='')
-        db.session.flush()
-        person = canonical_person_for_profile(profile)
-        if phone and not person.cell_phone:
-            person.cell_phone = phone[:80]
+        digits = ''.join(ch for ch in phone if ch.isdigit())
+        identity_key = 'phone:' + digits if digits else 'abcharity:' + os.urandom(16).hex()
+        person = db.session.scalar(select(SupporterPerson).where(
+            SupporterPerson.identity_key == identity_key))
+        if person is None:
+            person = SupporterPerson(
+                identity_key=identity_key, name=name[:160],
+                phone=phone[:80], cell_phone=phone[:80])
+            db.session.add(person)
+            db.session.flush()
         staff = db.session.get(StaffUser, session.get('user_id')) if session.get('user_id') else None
         db.session.add(Audit(
             actor=staff.email if staff else 'Demo user',
