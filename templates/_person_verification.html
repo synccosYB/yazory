@@ -1,11 +1,27 @@
 <details class="person-verification" data-person-verification="{{ person.id }}" data-url="{{ url_for('get_person_verification',person_id=person.id) }}" data-csrf="{{ csrf }}" data-error="{{ _('Could not save verification. Reopen to refresh and try again.') }}" data-expired="{{ _('Previous value') }}" data-saved="{{ _('Verification saved') }}">
 <summary>{{ _('Field verification') }}</summary>
-<p class="field-hint">{{ _('Verification applies to the saved value. Save edits before verifying.') }}</p>
+<p class="field-hint">{{ _('Review or correct the information here, then save it together with its verification status.') }}</p>
 <div class="verification-grid">
 {% for field,label in verification_fields.items() %}<div data-verification-field="{{ field }}">
 <strong data-field-label>{{ _(label) }}</strong> <span data-status>{{ _('Unverified') }}</span>
 <small data-review></small><small data-value dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','work_phone') else 'auto' }}"></small>
 {% if not current_staff or current_staff.role == 'organization_admin' %}<details><summary>{{ _('Review') }}</summary>
+<div data-editor>
+{% if field == 'name' %}
+<label>{{ _('English name') }}<input data-edit="english_name" maxlength="160" dir="ltr"></label>
+<label>{{ _('Yiddish name') }}<input data-edit="yiddish_name" maxlength="160" dir="rtl"></label>
+{% elif field == 'home_address' %}
+<label>{{ _('Home address') }}<input data-edit="street" dir="ltr"></label><label>{{ _('Unit') }}<input data-edit="unit" dir="ltr"></label>
+<label>{{ _('City') }}<input data-edit="city" dir="ltr"></label><label>{{ _('State') }}<input data-edit="state" dir="ltr"></label>
+<label>{{ _('ZIP') }}<input data-edit="zip_code" dir="ltr"></label><label>{{ _('Country') }}<input data-edit="country" dir="ltr"></label>
+{% elif field == 'work_address' %}
+<label>{{ _('Work address') }}<input data-edit="street" dir="ltr"></label><label>{{ _('Unit') }}<input data-edit="unit" dir="ltr"></label>
+<label>{{ _('City') }}<input data-edit="city" dir="ltr"></label><label>{{ _('State') }}<input data-edit="state" dir="ltr"></label>
+<label>{{ _('ZIP') }}<input data-edit="zip_code" dir="ltr"></label><label>{{ _('Country') }}<input data-edit="country" dir="ltr"></label>
+{% elif field != 'identity' %}
+<label>{{ _(label) }}<input data-edit="value" dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','work_phone') else 'auto' }}"></label>
+{% endif %}
+</div>
 <label>{{ _('Status') }}<select data-choice><option value="unverified">{{ _('Unverified') }}</option><option value="verified">{{ _('Verified') }}</option><option value="incorrect">{{ _('Incorrect') }}</option></select></label>
 <label>{{ _('How was this checked?') }}<input data-reason maxlength="1000" dir="auto"></label>
 <button type="button" class="small" data-save>{{ _('Save') }}</button></details>{% endif %}
@@ -29,7 +45,7 @@
 .verification-grid>div>details>summary{display:inline-block;cursor:pointer;font-weight:600;font-size:.86rem;color:#173e66;white-space:nowrap}
 .verification-grid>div>details[open]>summary{margin-bottom:.4rem}
 .verification-grid label{display:block;margin-top:.4rem;font-size:.82rem;color:#53687d}
-.verification-grid select,.verification-grid input{display:block;width:100%;max-width:100%;box-sizing:border-box;margin-top:.2rem}
+.verification-grid select,.verification-grid input{display:block;width:100%;max-width:100%;box-sizing:border-box;margin-top:.2rem}\n.verification-grid [data-editor]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem .55rem;margin-bottom:.45rem}\n.verification-grid [data-editor] label{margin-top:0}\n.verification-grid [data-editor] label:only-child{grid-column:1/-1}
 .verification-grid button[data-save]{margin-top:.5rem}
 [dir="rtl"] .verification-grid>div{text-align:right}
 .verification-grid [dir="ltr"]{text-align:left;unicode-bidi:plaintext}
