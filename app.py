@@ -1886,6 +1886,12 @@ def create_app(test_config=None):
                 _app.Contact.id)).all():
             attach_supporter_person(contact)
         _app.db.session.commit()
+        # Contact repair can create canonical people after the person-number
+        # migration hook has already run. Reconcile the permanent public-number
+        # ledger now so every person/supporter/helper screen has the same ID.
+        migrate_person_ids = app.extensions.get('migrate_person_ids')
+        if migrate_person_ids is not None:
+            migrate_person_ids()
 
         # Keep the import staging directory populated for the existing UI.
         existing_profiles = {
