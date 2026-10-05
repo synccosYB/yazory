@@ -295,6 +295,35 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
             'phone': p.cell_phone or p.home_phone or p.phone or '',
         } for p in people])
 
+    @app.post('/families/<int:family_id>/donations/people-create')
+    def charity_people_create(family_id):
+        require_capability(('family_admin', 'fundraiser'))
+        get_family(family_id)
+        name = request.form.get('name', '').strip()
+        phone = request.form.get('phone', '').strip()
+        if not name:
+            return jsonify({'error': 'Enter the person’s name.'}), 400
+        from app import SupporterPerson, create_neutral_directory_person, canonical_person_for_profile
+        from duplicate_watch import contact_identity_map, row_contact_matches
+        submitted = {'name': name, 'phone': phone, 'cell_phone': phone}
+        matches = row_contact_matches(submitted, contact_identity_map())
+        if matches:
+            return jsonify({
+                'error': 'possible_duplicate',
+                'matches': [{'id': p.id, 'name': p.name,
+                             'phone': p.cell_phone or p.home_phone or p.phone or ''} for p in matches[:10]],
+            }), 409
+        profile = create_neutral_directory_person(name=name, phone=phone, email='')
+        db.session.flush()
+        person = canonical_person_for_profile(profile)
+        if phone and not person.cell_phone:
+            person.cell_phone = phone[:80]
+        db.session.commit()
+        audit('person.create', 'SupporterPerson', person.id, family_id=family_id,
+              details={'source': 'ABCharity donation'})
+        return jsonify({'id': person.id, 'name': person.name,
+                        'phone': person.cell_phone or person.home_phone or person.phone or ''}), 201
+
     @app.post('/families/<int:family_id>/donors/<int:donor_id>/link')
     def charity_link(family_id, donor_id):
         require_capability(('family_admin', 'fundraiser'))
