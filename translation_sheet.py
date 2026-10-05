@@ -17,9 +17,10 @@ from pathlib import Path
 
 
 DEFAULT_SHEET_ID = "1mP1T1v7ExJxN6zzt3A7-qGStNN9DCVOfw8sgju-VlTg"
-SHEET_RANGE = "Sheet1!A:J"
+DEFAULT_SHEET_TAB = "Sheet1"
 OVERRIDES_PATH = Path(__file__).with_name("translation_sheet_overrides.json")
 _JINJA_TRANSLATION = re.compile(r"(?:_|translate)\(\s*(['\"])(.*?)\1\s*\)")
+_SHEET_ERROR = re.compile(r"^#(?:NULL!|DIV/0!|VALUE!|REF!|NAME\?|NUM!|N/A|ERROR!|SPILL!|CALC!)$", re.I)
 
 
 def translation_key(source: str, used: set[str]) -> str:
@@ -59,6 +60,11 @@ def discover_sources(root: Path) -> dict[str, str]:
     return found
 
 
+def _valid_sheet_text(value: str) -> bool:
+    value = value.strip()
+    return bool(value) and not _SHEET_ERROR.match(value)
+
+
 def approved_yiddish(rows: list[list[str]]) -> tuple[dict[str, str], list[tuple[int, str]]]:
     """Select live wording and return Approved proposals needing promotion."""
     output: dict[str, str] = {}
@@ -66,25 +72,32 @@ def approved_yiddish(rows: list[list[str]]) -> tuple[dict[str, str], list[tuple[
     for sheet_row, row in enumerate(rows[1:], start=2):
         padded = [*row, *([""] * (10 - len(row)))]
         source, production, proposed, status = padded[1:5]
+        source = source.strip()
+        production = production.strip()
+        proposed = proposed.strip()
         status = status.strip().lower()
-        if status == "approved" and proposed.strip():
-            production = proposed.strip()
+        if status == "approved" and _valid_sheet_text(proposed):
+            production = proposed
             promotions.append((sheet_row, production))
-        if status in {"current", "approved"} and source.strip() and production.strip():
-            output[source.strip()] = production.strip()
+        if status in {"current", "approved"} and _valid_sheet_text(source) and _valid_sheet_text(production):
+            output[source] = production
     return output, promotions
 
 
 def _credentials_info() -> dict:
-    raw = os.environ.get("GOOGLE_TRANSLATIONS_CREDENTIALS_JSON", "").strip()
+    raw = (
+        os.environ.get("GOOGLE_TRANSLATIONS_CREDENTIALS_JSON", "").strip()
+        or os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    )
     if raw:
         return json.loads(raw)
     filename = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
     if filename:
         return json.loads(Path(filename).read_text(encoding="utf-8"))
     raise RuntimeError(
-        "Set GOOGLE_TRANSLATIONS_CREDENTIALS_JSON or GOOGLE_APPLICATION_CREDENTIALS "
-        "to a service account that can edit the translation Sheet."
+        "Set GOOGLE_TRANSLATIONS_CREDENTIALS_JSON, GOOGLE_SERVICE_ACCOUNT_JSON, "
+        "or GOOGLE_APPLICATION_CREDENTIALS to a service account that can edit "
+        "the translation Sheet."
     )
 
 
@@ -99,12 +112,25 @@ def _session():
 
 
 def _sheet_id() -> str:
-    return os.environ.get("GOOGLE_TRANSLATION_SHEET_ID", DEFAULT_SHEET_ID).strip()
+    return (
+        os.environ.get("GOOGLE_TRANSLATION_SHEET_ID", "").strip()
+        or os.environ.get("TRANSLATION_SHEET_ID", "").strip()
+        or DEFAULT_SHEET_ID
+    )
+
+
+def _sheet_tab() -> str:
+    tab = os.environ.get("TRANSLATION_SHEET_TAB", DEFAULT_SHEET_TAB).strip() or DEFAULT_SHEET_TAB
+    return "'" + tab.replace("'", "''") + "'"
+
+
+def _sheet_range(columns: str) -> str:
+    return f"{_sheet_tab()}!{columns}"
 
 
 def read_rows() -> list[list[str]]:
     response = _session().get(
-        f"https://sheets.googleapis.com/v4/spreadsheets/{_sheet_id()}/values/{SHEET_RANGE}"
+        f"https://sheets.googleapis.com/v4/spreadsheets/{_sheet_id()}/values/{_sheet_range('A:J')}"
     )
     response.raise_for_status()
     return response.json().get("values", [])
@@ -139,7 +165,7 @@ def push_missing(catalog: dict[str, dict[str, str]], root: Path | None = None) -
         return 0
     session = _session()
     response = session.post(
-        f"https://sheets.googleapis.com/v4/spreadsheets/{_sheet_id()}/values/Sheet1!A:J:append",
+        f"https://sheets.googleapis.com/v4/spreadsheets/{_sheet_id()}/values/{_sheet_range('A:J')}:append",
         params={"valueInputOption": "USER_ENTERED", "insertDataOption": "INSERT_ROWS"},
         json={"majorDimension": "ROWS", "values": additions},
     )
@@ -160,9 +186,9 @@ def pull_approved() -> tuple[int, int]:
         data = []
         for row_number, wording in promotions:
             data.extend([
-                {"range": f"Sheet1!C{row_number}:C{row_number}", "values": [[wording]]},
-                {"range": f"Sheet1!D{row_number}:E{row_number}", "values": [["", "Current"]]},
-                {"range": f"Sheet1!H{row_number}:I{row_number}", "values": [[today, version]]},
+                {"range": _sheet_range(f"C{row_number}:C{row_number}"), "values": [[wording]]},
+                {"range": _sheet_range(f"D{row_number}:E{row_number}"), "values": [["", "Current"]]},
+                {"range": _sheet_range(f"H{row_number}:I{row_number}"), "values": [[today, version]]},
             ])
         response = _session().post(
             f"https://sheets.googleapis.com/v4/spreadsheets/{_sheet_id()}/values:batchUpdate",
@@ -170,4 +196,3 @@ def pull_approved() -> tuple[int, int]:
         )
         response.raise_for_status()
     return len(translations), len(promotions)
-
