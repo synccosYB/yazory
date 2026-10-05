@@ -977,3 +977,11 @@ html[dir="rtl"] .people-match-reasons span{
   direction:rtl;
   unicode-bidi:isolate;
 }
+
+/* Family supporter tree: logical indentation works in both LTR and RTL. */
+.supporter-tree-name{display:block;position:relative}
+.supporter-tree-name[class*="depth-"]:not(.depth-0){padding-inline-start:1.75rem}
+.supporter-tree-name.depth-2{padding-inline-start:3.5rem}
+.supporter-tree-name.depth-3{padding-inline-start:5.25rem}
+.supporter-tree-name.depth-4{padding-inline-start:7rem}
+.supporter-tree-branch{display:inline-block;margin-inline-end:.35rem;font-weight:700}
