@@ -83,6 +83,34 @@ def test_anonymous_donor_can_be_named_and_collapsed_details_are_copy_safe(setup,
     post(client, '/families/1/donations/sync')
     assert 'יוסף כהן' in client.get('/families/1/donations').text
 
+def test_terminal_donation_requires_person_link_and_linked_person_replaces_label(setup, monkeypatch):
+    app, client = setup
+    monkeypatch.setattr('abcharity.fetch_donations', lambda key: [{
+        **ROW, 'name': 'Terminal Donation', 'email': '', 'phone': ''
+    }])
+    assert connect(client).status_code == 302
+
+    body = client.get('/families/1/donations').text
+    assert 'Unlinked terminal donation' in body
+    assert 'Open Details and link this donation to the correct person.' in body
+    assert 'class="donation-balance-status"' in body
+
+    with app.app_context():
+        supporter = Contact(family_id=1, name='Actual Donor', relationship='Friend')
+        db.session.add(supporter)
+        db.session.commit()
+        supporter_id = supporter.id
+        donor_id = CharityDonor.query.one().id
+
+    assert post(client, f'/families/1/donors/{donor_id}/link', {
+        'contact_id': supporter_id,
+    }).status_code == 302
+    body = client.get('/families/1/donations').text
+    assert 'Actual Donor' in body
+    assert 'ABCharity: Terminal Donation' in body
+    assert 'Unlinked terminal donation' not in body
+
+
 def test_profile_accepts_and_masks_campaign_key(setup):
     _,client=setup
     body=client.get('/families/1/donations').text
