@@ -206,9 +206,13 @@ def install(app, access):
         db.session.flush()
         current = values(person)
         digest = fingerprint(current[field])
-        check_values = current[field] if isinstance(current[field], list) else [current[field]]
-        if status == 'verified' and field != 'identity' and not any(
-                value for value in check_values if not isinstance(value, dict)):
+        def has_value(value):
+            if isinstance(value, dict):
+                return any(has_value(item) for item in value.values())
+            if isinstance(value, (list, tuple)):
+                return any(has_value(item) for item in value)
+            return bool(value)
+        if status == 'verified' and field != 'identity' and not has_value(current[field]):
             abort(400)
         db.session.add(PersonVerification(person_id=person.id, field=field, status=status,
             fingerprint=digest, checked_value=current[field], reason=reason, reviewed_by=user.id if user else None,
