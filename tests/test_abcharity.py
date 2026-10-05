@@ -152,8 +152,12 @@ def test_profile_collected_total_uses_abcharity_net(setup):
     assert connect(client).status_code==302
     assert post(client,'/families/1/donations/sync').status_code==302
     body=client.get('/families/1').text
+    assert 'Gross donations received' in body
+    assert '$18.50' in body
+    assert 'ABCharity fees / deductions' in body
+    assert '$0.55' in body
+    assert 'Already collected' in body
     assert '$17.95' in body
-    assert '$18.50' not in body
     assert 'data-panel-href="/families/1/donations"' in body
     assert 'ABCharity donations' in body
     assert connect(client).status_code==302
