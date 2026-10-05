@@ -251,7 +251,8 @@ def test_family_supporter_contact_actions_open_the_existing_workflow(monkeypatch
     assert f'href="/contacts/{contact_id}/edit"' not in page.text
     assert f'action="/contacts/{contact_id}"' in page.text
     assert f'action="/contacts/{contact_id}/communications/message/sms"' in page.text
-    assert f'action="/contacts/{contact_id}/communications/callback"' in page.text
+    assert f'action="/contacts/{contact_id}/communications/callback"' not in page.text
+    assert 'What is a good time for me to call you?' in page.text
     assert f'href="/communications?contact_id={contact_id}"' in page.text
     assert f'href="/contacts/{contact_id}/edit"' in client.get(f'/supporters/{contact_id}').text
     supporter = client.get(f'/supporters/{contact_id}').text
