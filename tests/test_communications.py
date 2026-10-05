@@ -1304,8 +1304,10 @@ def test_incoming_sms_resolves_person_and_shows_chronological_thread(monkeypatch
     notifications = client.get('/notifications')
     assert 'Incoming SMS from' in notifications.text
     assert 'יואל ברייער' in notifications.text
-    assert f'href="/supporter-directory/{profile_id}/edit"' in notifications.text
-    assert f'/communications#sms-{inbound_id}' in notifications.text
+    assert f'<a class="notification-item" href="/communications#sms-{inbound_id}">' in notifications.text
+    assert 'role="link"' not in notifications.text
+    assert 'window.location.hash' in page.text
+    assert f'id="sms-{inbound_id}" data-mailbox-category="general-sms" tabindex="-1"' in page.text
 
     for language, label in (
             ('he', 'שיחת SMS'), ('yi', 'SMS שמועס')):
