@@ -16,6 +16,24 @@ def profile(p, key):
     return row
 
 
+def test_duplicate_review_does_not_reject_stale_snapshot_token(client, admin_login, app):
+    """The merge transaction, not a broad form snapshot, is the concurrency guard."""
+    with app.app_context():
+        import app_original as core
+        one = core.SupporterPerson(name='Version One', phone='8455550101')
+        two = core.SupporterPerson(name='Version Two', phone='8455550101')
+        core.db.session.add_all([one, two])
+        core.db.session.commit()
+        one_id, two_id = one.id, two.id
+    admin_login()
+    response = client.post(
+        f'/people/duplicates/{one_id}/{two_id}',
+        data={'version': 'deliberately-stale', 'decision': 'both', 'confirm': 'yes'},
+        follow_redirects=False,
+    )
+    assert response.status_code != 409
+
+
 def test_review_version_ignores_database_row_order():
     first = {10: {'contact': [{'id': 2, 'name': 'B'}, {'id': 1, 'name': 'A'}]}}
     second = {10: {'contact': [{'name': 'A', 'id': 1}, {'name': 'B', 'id': 2}]}}
