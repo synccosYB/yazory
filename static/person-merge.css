@@ -150,3 +150,44 @@
   flex-wrap: wrap;
 }
 .person-merge-actions button { width: auto; }
+
+/* Keep native radio controls beside their text in all three locales. */
+.person-merge-decision-block {
+  width: 100%;
+  max-width: 42rem;
+  margin: 1rem auto 0;
+  min-width: 0;
+}
+.person-merge-decision {
+  min-width: 0;
+  margin: 0 0 .75rem;
+  padding: .75rem 1rem;
+  border: 1px solid var(--line, #dfe5eb);
+  border-radius: 7px;
+  background: var(--surface, #fff);
+}
+.person-merge-decision legend {
+  max-width: 100%;
+  padding-inline: .35rem;
+}
+.person-merge-decision .person-merge-choice {
+  align-items: flex-start;
+  margin: .5rem 0;
+  cursor: pointer;
+}
+.person-merge-decision .person-merge-choice input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  margin: .2rem 0 0;
+}
+.person-merge-choice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.person-merge-decision-block .person-merge-actions {
+  justify-content: flex-start;
+}
+.person-merge-decision-block .person-merge-actions button {
+  white-space: normal;
+}

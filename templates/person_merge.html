@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% from 'macros.html' import token with context %}{% block content %}
-<link rel="stylesheet" href="{{ url_for('static',filename='person-merge.css',v='20261002-source-review-compact') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='person-merge.css',v='20261005-decision-layout') }}">
 <div class="page-heading"><h1>{{ _('Review merge') }}</h1><a href="{{ url_for('people_matching',tab='duplicates') }}">{{ _('Possible duplicates') }}</a></div>
 {% if error %}<div class="card padded" role="alert">{{ _(error) }}</div>{% endif %}
 <p>{{ _('Compare the two Yazory records, correct their names if needed, then choose whether to keep one or both. Source information shown below is preserved import evidence; it is not automatically treated as verified person data.') }}</p>
@@ -37,13 +37,14 @@
 </details>
 <details><summary>{{ _('Linked records') }}</summary>{% for table,label in [('contact','Cases'),('person_relationship','Family connections'),('person_book_record','Optional book reference'),('person_names','Names'),('person_address_details','Addresses'),('person_name_owner','Roles')] %}<p>{{ _(label) }}: {{ snapshots[person.id].get(table,[])|length }}</p>{% endfor %}</details>
 </section>{% endfor %}</div></div>
+<div class="person-merge-decision-block">
 <fieldset class="person-merge-decision">
 <legend>{{ _('Choose what to do with these records') }}</legend>
-<label><input type="radio" name="decision" value="both" required> <span>{{ _('Keep both records — these are two different people') }}</span></label>
-<label><input type="radio" name="decision" value="{{ one.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('into it') }}</span></label>
-<label><input type="radio" name="decision" value="{{ two.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('into it') }}</span></label>
+<label class="person-merge-choice"><input type="radio" name="decision" value="both" required> <span>{{ _('Keep both records — these are two different people') }}</span></label>
+<label class="person-merge-choice"><input type="radio" name="decision" value="{{ one.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('into it') }}</span></label>
+<label class="person-merge-choice"><input type="radio" name="decision" value="{{ two.id }}"> <span>{{ _('Keep Yazory record') }} <bdi dir="ltr">#{{ two.id }}</bdi> {{ _('and merge') }} <bdi dir="ltr">#{{ one.id }}</bdi> {{ _('into it') }}</span></label>
 </fieldset>
-<div class="person-merge-actions"><button type="submit" name="action" value="save_fields" formnovalidate class="secondary">{{ _('Save corrections') }}</button><button type="submit">{{ _('Save decision & continue') }}</button></div></form>
+<div class="person-merge-actions"><button type="submit" name="action" value="save_fields" formnovalidate class="secondary">{{ _('Save corrections') }}</button><button type="submit">{{ _('Save decision & continue') }}</button></div></div></form>
 <script>
 document.querySelectorAll('[data-clear-phone]').forEach(function(button){
   button.addEventListener('click',function(){
