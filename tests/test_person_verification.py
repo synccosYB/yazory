@@ -179,3 +179,59 @@ def test_schema_migration_is_idempotent_preserves_verification(app):
         assert row.name == 'One'
         assert row.home_address == '12 Main St'
         assert statuses(row)['identity']['status'] == 'verified'
+
+
+def test_verification_can_edit_canonical_value_and_verify_new_value(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    state = client.get(f'/people/{ident}/verification').json['fields']['phone']
+    response = post(client, f'/people/{ident}/verification/phone', dict(
+        status='verified', reason='Corrected while checking',
+        fingerprint=state['fingerprint'], value='8455553333'))
+    assert response.status_code == 200
+    with app.app_context():
+        row = db.session.get(SupporterPerson, ident)
+        assert row.phone == '8455553333'
+        assert statuses(row)['phone']['status'] == 'verified'
+        audit = db.session.scalar(db.select(PersonVerification).where(
+            PersonVerification.person_id == ident,
+            PersonVerification.field == 'phone').order_by(PersonVerification.id.desc()))
+        assert audit.checked_value == '8455553333'
+
+
+def test_verification_name_has_no_duplicate_english_and_edits_bilingual_name(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    with app.app_context():
+        save_names('person', ident, 'One', 'איינער', legacy='One')
+        db.session.commit()
+    data = client.get(f'/people/{ident}/verification').json
+    assert data['values']['name'] == ['One', 'איינער']
+    state = data['fields']['name']
+    response = post(client, f'/people/{ident}/verification/name', dict(
+        status='verified', reason='Checked name', fingerprint=state['fingerprint'],
+        english_name='Abraham Falkowitz', yiddish_name='אברהם פאלקאוויטש'))
+    assert response.status_code == 200
+    data = client.get(f'/people/{ident}/verification').json
+    assert data['values']['name'] == ['Abraham Falkowitz', 'אברהם פאלקאוויטש']
+    assert data['fields']['name']['status'] == 'verified'
+
+
+def test_verification_can_edit_home_address_components(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    state = client.get(f'/people/{ident}/verification').json['fields']['home_address']
+    response = post(client, f'/people/{ident}/verification/home_address', dict(
+        status='verified', reason='Checked address', fingerprint=state['fingerprint'],
+        street='20 Main St', unit='4B', city='Monroe', state='NY',
+        zip_code='10950', country='USA'))
+    assert response.status_code == 200
+    with app.app_context():
+        row = db.session.get(SupporterPerson, ident)
+        assert (row.home_address, row.city, row.state, row.zip_code) == (
+            '20 Main St', 'Monroe', 'NY', '10950')
+        details = db.session.scalar(db.select(PersonAddressDetails).where(
+            PersonAddressDetails.person_kind == 'person',
+            PersonAddressDetails.person_id == ident))
+        assert details.home == {'unit': '4B', 'country': 'USA'}
+        assert statuses(row)['home_address']['status'] == 'verified'
