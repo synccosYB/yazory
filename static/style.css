@@ -996,3 +996,13 @@ html[dir="rtl"] .people-match-reasons span{
 .person-address-actions>label{width:320px;max-width:100%;margin:0}
 .person-address-actions>button{margin:0}
 @media(max-width:750px){.person-address-cards{grid-template-columns:1fr}.person-address-names{grid-template-columns:1fr}.person-address-actions>label{width:100%}}
+
+
+/* Family supporter preview: indent names by their real tree generation. */
+.family-supporters-table .supporter-tree-depth-1 { padding-inline-start: 1.5rem; }
+.family-supporters-table .supporter-tree-depth-2 { padding-inline-start: 3rem; }
+.family-supporters-table .supporter-tree-depth-3 { padding-inline-start: 4.5rem; }
+.family-supporters-table .supporter-tree-depth-4 { padding-inline-start: 6rem; }
+.family-supporters-table [class*="supporter-tree-depth-"]:not(.supporter-tree-depth-0) {
+  border-inline-start: 2px solid var(--border, #d8dee8);
+}
