@@ -16,23 +16,24 @@ def profile(p, key):
     return row
 
 
-def test_duplicate_review_does_not_reject_stale_snapshot_token(client, admin_login, app):
+def test_duplicate_review_does_not_reject_stale_snapshot_token(app):
     """The merge transaction, not a broad form snapshot, is the concurrency guard."""
     with app.app_context():
-        import app_original as core
-        one = core.SupporterPerson(name='Version One', phone='8455550101')
-        two = core.SupporterPerson(name='Version Two', phone='8455550101')
-        core.db.session.add_all([one, two])
-        core.db.session.commit()
+        one = person('Version One', 'test:version-one', '8455550101')
+        two = person('Version Two', 'test:version-two', '8455550101')
+        db.session.commit()
         one_id, two_id = one.id, two.id
-    admin_login()
+    client = app.test_client()
+    client.get(f'/people/duplicates/{one_id}/{two_id}')
+    with client.session_transaction() as session:
+        token = session['csrf']
     response = client.post(
         f'/people/duplicates/{one_id}/{two_id}',
-        data={'version': 'deliberately-stale', 'decision': 'both', 'confirm': 'yes'},
+        data={'csrf': token, 'version': 'deliberately-stale',
+              'decision': 'both', 'confirm': 'yes'},
         follow_redirects=False,
     )
-    assert response.status_code != 409
-
+    assert response.status_code == 302
 
 def test_review_version_ignores_database_row_order():
     first = {10: {'contact': [{'id': 2, 'name': 'B'}, {'id': 1, 'name': 'A'}]}}
@@ -202,7 +203,7 @@ def test_add_person_checks_home_phone_and_allows_distinct_person(app):
             PersonMatchDecision.kind == 'duplicate')).decision == 'not_duplicate'
 
 
-def test_changed_preview_is_rejected_and_confirmed_merge_persists(app):
+def test_changed_preview_is_merged_using_current_transaction_state(app):
     import re
     with app.app_context():
         one, two = person('One','test:one'), person('Two','test:two')
@@ -219,9 +220,6 @@ def test_changed_preview_is_rejected_and_confirmed_merge_persists(app):
     with app.app_context():
         db.session.get(SupporterPerson,b).email = 'changed@example.test'
         db.session.commit()
-    assert client.post(url,data=data).status_code == 409
-    page = client.get(url)
-    data['version'] = re.search(rb'name="version" value="([a-f0-9]+)"',page.data).group(1).decode()
     assert client.post(url,data=data).status_code == 302
     with app.app_context():
         assert db.session.get(SupporterPerson,b) is None
