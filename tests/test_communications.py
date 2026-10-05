@@ -766,8 +766,9 @@ def test_resend_inbound_reply_is_matched_to_exact_supporter_and_case(monkeypatch
     assert handled.status_code == 302
     with app.app_context():
         assert db.session.get(SupporterCommunication, reply_id).status == 'handled'
-    assert 'Tomorrow evening works for me.' not in client.get(handled.location).text.split(
-        'New supporter replies', 1)[1].split('Outreach workflow', 1)[0]
+    handled_page = client.get(handled.location).text
+    assert 'Tomorrow evening works for me.' in handled_page
+    assert f'/communications/replies/{reply_id}/handled' not in handled_page
 
 
 def test_email_to_public_info_address_appears_in_messages(monkeypatch):
