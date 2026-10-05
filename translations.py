@@ -28,7 +28,7 @@ _EXTRA = {
     'same full name': {'he': 'אותו שם מלא', 'yi': 'זעלבער פולער נאמען'},
     'Possible duplicate. Review the existing person before adding another.': {'he': 'כפילות אפשרית. בדקו את האדם הקיים לפני הוספת אדם נוסף.', 'yi': 'מעגליך א דאפלטער רעקארד. קוק איבער דעם עקזיסטירנדן מענטש פארן צולייגן נאך איינעם.'},
 
-    'Person ID': {'he': 'מספר אדם', 'yi': 'מענטש נומער'},
+    'Person ID': {'he': 'ID', 'yi': 'ID'},
     'On this page': {'he': 'בעמוד זה', 'yi': 'אויף דעם בלאט'},
     'People directory pages': {'he': 'עמודי ספריית האנשים', 'yi': 'בלעטער פון דער מענטשן ליסטע'},
     'Child-in-law': {'he': 'חתן או כלה', 'yi': 'איידעם אדער שנור'},
