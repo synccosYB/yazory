@@ -2683,16 +2683,42 @@ def create_app(test_config=None):
         preview_contacts = db.session.scalars(select(Contact).options(
             selectinload(Contact.parent_supporter),
             selectinload(Contact.children),
-        ).where(Contact.family_id == family.id).order_by(
-            Contact.parent_contact_id.is_not(None), Contact.parent_contact_id,
-            Contact.id).limit(supporter_preview_limit)).all()
+        ).where(Contact.family_id == family.id).order_by(Contact.id).limit(
+            supporter_preview_limit)).all()
+        # Render the case preview as the same parent/child tree used by the
+        # supporter network.  Sorting merely by parent_contact_id grouped all
+        # descendants away from their actual parent and made the indentation
+        # appear under the wrong names.
+        preview_by_parent = {}
+        preview_ids = {contact.id for contact in preview_contacts}
+        for contact in preview_contacts:
+            parent_id = contact.parent_contact_id if contact.parent_contact_id in preview_ids else None
+            preview_by_parent.setdefault(parent_id, []).append(contact)
+        for children in preview_by_parent.values():
+            children.sort(key=lambda contact: contact.id)
+
+        ordered_preview = []
+        visited_preview = set()
+        def append_preview_branch(contact, depth=0):
+            if contact.id in visited_preview:
+                return
+            visited_preview.add(contact.id)
+            ordered_preview.append((contact, depth))
+            for child in preview_by_parent.get(contact.id, ()):
+                append_preview_branch(child, depth + 1)
+
+        for contact in preview_by_parent.get(None, ()):
+            append_preview_branch(contact)
+        for contact in preview_contacts:
+            append_preview_branch(contact)
+        preview_contacts = [contact for contact, _depth in ordered_preview]
         supporter_keys = {contact.supporter_key for contact in preview_contacts if contact.supporter_key}
         connected_counts = dict(db.session.execute(select(
             Contact.supporter_key, func.count(func.distinct(Contact.family_id))
         ).where(Contact.supporter_key.in_(supporter_keys)).group_by(Contact.supporter_key)).all()) if supporter_keys else {}
         for contact in preview_contacts:
             contact.connected_cases = connected_counts.get(contact.supporter_key, 1)
-        contact_rows = [(contact, bool(contact.parent_contact_id)) for contact in preview_contacts]
+        contact_rows = ordered_preview
         # Localized supporter names are rendered throughout the preview. Batch-load
         # only the rows that will actually be sent to the browser.
         from person_names import preload_names
