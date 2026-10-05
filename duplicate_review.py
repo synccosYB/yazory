@@ -411,7 +411,17 @@ def install(app, profile_model, access):
                                  user.id if user else None)
                 except (ValueError, IntegrityError) as exc:
                     db.session.rollback()
-                    error = str(exc) if isinstance(exc, ValueError) else 'Linked records conflict. Merge was cancelled; all records remain intact.'
+                    if isinstance(exc, IntegrityError):
+                        detail = str(getattr(exc, 'orig', exc))
+                        core.app.logger.exception(
+                            'Duplicate merge integrity conflict one_id=%s two_id=%s target_id=%s detail=%s',
+                            one_id, two_id, target, detail)
+                        error = f'Linked records conflict: {detail}'
+                    else:
+                        core.app.logger.warning(
+                            'Duplicate merge rejected one_id=%s two_id=%s target_id=%s reason=%s',
+                            one_id, two_id, target, exc)
+                        error = str(exc)
                 else:
                     flash(translate('People merged.'))
 
