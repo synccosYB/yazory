@@ -271,6 +271,51 @@ def test_duplicate_review_retries_one_stale_sync_conflict(app):
         assert db.session.get(SupporterPerson, b) is None
 
 
+def test_duplicate_review_owns_integrity_error_instead_of_global_409(app):
+    """Duplicate review must expose its DB conflict instead of workflows' generic 409."""
+    from sqlalchemy.exc import IntegrityError
+    import re
+    with app.app_context():
+        one, two = person('Integrity One', 'test:integrity-one'), person('Integrity Two', 'test:integrity-two')
+        profile(one, 'rid:integrity-one'); profile(two, 'rid:integrity-two')
+        db.session.commit()
+        a, b = one.id, two.id
+
+    client = app.test_client()
+    url = f'/people/duplicates/{a}/{b}'
+    page = client.get(url)
+    version = re.search(rb'name="version" value="([a-f0-9]+)"', page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token = session['csrf']
+
+    identity = app.extensions['supporter_identity']
+    real_sync = identity['sync']
+
+    def integrity_conflict(person):
+        raise IntegrityError(
+            'duplicate review write', {'person_id': person.id},
+            Exception('production constraint detail'))
+
+    identity['sync'] = integrity_conflict
+    try:
+        response = client.post(url, data=dict(
+            csrf=token, decision=str(a), version=version,
+            **{f'name_english_{a}': 'Integrity One Changed',
+               f'name_yiddish_{a}': '',
+               f'name_english_{b}': 'Integrity Two',
+               f'name_yiddish_{b}': ''}))
+    finally:
+        identity['sync'] = real_sync
+
+    assert response.status_code == 409
+    assert 'Database merge conflict:' in response.text
+    assert 'production constraint detail' in response.text
+    assert 'This record changed or the reference already exists.' not in response.text
+    with app.app_context():
+        assert db.session.get(SupporterPerson, a).name == 'Integrity One'
+        assert db.session.get(SupporterPerson, b) is not None
+
+
 def test_conflict_rolls_back_partial_field_updates(app):
     from book_directory import PersonFamilyConnection
     import re
