@@ -1514,8 +1514,13 @@ def test_full_name_greeting_in_sms_and_whatsapp_all_locales(monkeypatch):
                                  form, re.S)
                 text = unescape(body.group(1)).strip()
                 assert text.startswith(f'Hi {name},')
-                if 'What is a good time for me to call you?' in text:
-                    assert text == f'Hi {name},\n\nWhat is a good time for me to call you?'
+                ask_to_call = {
+                    'en': 'What is a good time for me to call you?',
+                    'he': 'מתי נוח שאוכל להתקשר אליך?',
+                    'yi': 'ווען איז א גוטע צייט איך זאל דיר רופן?',
+                }[language]
+                if ask_to_call in text:
+                    assert text == f'Hi {name},\n\n{ask_to_call}'
                 else:
                     assert text == f'Hi {name},'
     with app.app_context():
