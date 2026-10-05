@@ -227,6 +227,50 @@ def test_changed_preview_is_merged_using_current_transaction_state(app):
     assert client.get('/people/merge-history').status_code == 200
 
 
+def test_duplicate_review_retries_one_stale_sync_conflict(app):
+    """A transient legacy snapshot conflict retries the whole POST once."""
+    from sqlalchemy.orm.exc import StaleDataError
+    import re
+    with app.app_context():
+        one, two = person('Retry One', 'test:retry-one'), person('Retry Two', 'test:retry-two')
+        profile(one, 'rid:retry-one'); profile(two, 'rid:retry-two')
+        db.session.commit()
+        a, b = one.id, two.id
+
+    client = app.test_client()
+    url = f'/people/duplicates/{a}/{b}'
+    page = client.get(url)
+    version = re.search(rb'name="version" value="([a-f0-9]+)"', page.data).group(1).decode()
+    with client.session_transaction() as session:
+        token = session['csrf']
+
+    identity = app.extensions['supporter_identity']
+    real_sync = identity['sync']
+    calls = {'count': 0}
+
+    def stale_once(person):
+        calls['count'] += 1
+        if calls['count'] == 1:
+            raise StaleDataError('transient duplicate review sync')
+        return real_sync(person)
+
+    identity['sync'] = stale_once
+    try:
+        response = client.post(url, data=dict(
+            csrf=token, decision=str(a), version=version,
+            **{f'name_english_{a}': 'Retry One Changed',
+               f'name_yiddish_{a}': '',
+               f'name_english_{b}': 'Retry Two',
+               f'name_yiddish_{b}': ''}))
+    finally:
+        identity['sync'] = real_sync
+
+    assert response.status_code == 302
+    assert calls['count'] >= 2
+    with app.app_context():
+        assert db.session.get(SupporterPerson, b) is None
+
+
 def test_conflict_rolls_back_partial_field_updates(app):
     from book_directory import PersonFamilyConnection
     import re
