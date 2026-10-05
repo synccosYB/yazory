@@ -33,7 +33,9 @@ def number_for(kind, obj, field='name'):
     if obj is None or not getattr(obj, 'id', None):
         return ''
     from person_names import resolve_name_owner
-    if kind in ('profile', 'supporter') and obj.person_id:
+    if kind == 'person':
+        person_id = obj.id
+    elif kind in ('profile', 'supporter') and obj.person_id:
         person_id = obj.person_id
     else:
         key = (kind, obj.id, field)
