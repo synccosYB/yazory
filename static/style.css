@@ -985,3 +985,14 @@ html[dir="rtl"] .people-match-reasons span{
 .supporter-tree-name.depth-3{padding-inline-start:5.25rem}
 .supporter-tree-name.depth-4{padding-inline-start:7rem}
 .supporter-tree-branch{display:inline-block;margin-inline-end:.35rem;font-weight:700}
+
+/* Keep names, address cards and save controls in separate aligned rows. */
+.person-address-form{width:100%;max-width:1200px;margin-inline:auto}
+.person-address-names>.field-hint{grid-column:1/-1}
+.person-address-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;margin-block:12px}
+.person-address-cards>fieldset{min-width:0;margin:0;padding:10px 14px 14px;border:1px solid var(--line);border-radius:6px}
+.person-address-cards legend{padding-inline:6px;color:var(--navy);font-weight:700}
+.person-address-actions{display:flex;align-items:end;gap:16px;flex-wrap:wrap;margin-block-start:12px}
+.person-address-actions>label{width:320px;max-width:100%;margin:0}
+.person-address-actions>button{margin:0}
+@media(max-width:750px){.person-address-cards{grid-template-columns:1fr}.person-address-names{grid-template-columns:1fr}.person-address-actions>label{width:100%}}

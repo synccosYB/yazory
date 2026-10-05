@@ -1,5 +1,8 @@
-  <form method="post" action="{{ address_action if address_action is defined else request.path }}">{{ token(csrf) }}
-    <div class="form-grid">{% if not omit_address_names|default(false) %}{{ bilingual_name_fields(name_kind, person, name_field, display_name) }}{% endif %}
+  <form class="person-address-form" method="post" action="{{ address_action if address_action is defined else request.path }}">{{ token(csrf) }}
+    {% if not omit_address_names|default(false) %}
+    <div class="form-grid person-address-names">{{ bilingual_name_fields(name_kind, person, name_field, display_name) }}</div>
+    {% endif %}
+    <div class="person-address-cards">
       <fieldset><legend>{{ _('Home address') }}</legend><div class="form-grid">
         {% for field, label, limit in [('street','Street address',300),('unit','Apartment / suite',80),('city','City',120),('state','State / province',80),('zip_code','ZIP / postal code',20),('country','Country',80)] %}
         <label>{{ _(label) }}<input name="home_{{ field }}" value="{{ home.get(field, '') }}" maxlength="{{ limit }}" dir="auto"></label>
@@ -11,10 +14,12 @@
         {% endfor %}
       </div></fieldset>
     </div>
+    <div class="person-address-actions">
     <label>{{ _('Preferred mailing address') }}<select name="mailing_preference">
       <option value="" {% if not preference %}selected{% endif %}>{{ _('Not selected') }}</option>
       <option value="home" {% if preference == 'home' %}selected{% endif %}>{{ _('Home address') }}</option>
       <option value="work" {% if preference == 'work' %}selected{% endif %}>{{ _('Work address') }}</option>
     </select></label>
     <button>{{ _('Save addresses') }}</button>
+    </div>
   </form>
