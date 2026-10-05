@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from flask import abort, flash, g, has_request_context, redirect, render_template, request, url_for
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 import app_original as core
 from person_names import PersonNames, names_row, save_names
 from person_addresses import PersonAddressDetails
@@ -446,6 +447,39 @@ def install(app, profile_model, access):
                                one=one, two=two, error=error,
                                snapshots=snapshots, version=version,
                                next_one_id=next_one_id, next_two_id=next_two_id), 409 if error else 200
+
+    # A stale ORM snapshot can be raised by legacy compatibility rows while
+    # canonical people are being synchronized.  The whole merge transaction is
+    # safe to retry because merge_people() commits only at the end.  Retry once
+    # from a clean session; if it is a real conflict, keep the reviewer on this
+    # pair and expose/log the exact reason instead of the application's generic
+    # workflow 409 page.
+    review_handler = app.view_functions['review_person_merge']
+
+    def guarded_review_person_merge(one_id, two_id):
+        for attempt in range(2):
+            try:
+                return review_handler(one_id, two_id)
+            except StaleDataError as exc:
+                db.session.rollback()
+                app.logger.error(
+                    'Duplicate review stale conflict one_id=%s two_id=%s attempt=%s',
+                    one_id, two_id, attempt + 1,
+                    exc_info=(type(exc), exc, exc.__traceback__))
+                if request.method == 'POST' and attempt == 0:
+                    continue
+                one = db.get_or_404(core.SupporterPerson, one_id)
+                two = db.get_or_404(core.SupporterPerson, two_id)
+                current_snapshots = {one.id: snapshot(one), two.id: snapshot(two)}
+                return render_template(
+                    'person_merge.html', title='Review merge', one=one, two=two,
+                    error=f'Record synchronization conflict: {exc}',
+                    snapshots=current_snapshots,
+                    version=_snapshot_version(current_snapshots),
+                    next_one_id=request.args.get('next_one_id', type=int),
+                    next_two_id=request.args.get('next_two_id', type=int)), 409
+
+    app.view_functions['review_person_merge'] = guarded_review_person_merge
 
     @app.get('/people/merge-history')
     def person_merge_history():
