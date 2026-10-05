@@ -413,12 +413,12 @@ def install(app, profile_model, access):
                     db.session.rollback()
                     if isinstance(exc, IntegrityError):
                         detail = str(getattr(exc, 'orig', exc))
-                        core.app.logger.exception(
+                        app.logger.exception(
                             'Duplicate merge integrity conflict one_id=%s two_id=%s target_id=%s detail=%s',
                             one_id, two_id, target, detail)
                         error = f'Linked records conflict: {detail}'
                     else:
-                        core.app.logger.warning(
+                        app.logger.warning(
                             'Duplicate merge rejected one_id=%s two_id=%s target_id=%s reason=%s',
                             one_id, two_id, target, exc)
                         error = str(exc)
