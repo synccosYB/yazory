@@ -1512,7 +1512,12 @@ def test_full_name_greeting_in_sms_and_whatsapp_all_locales(monkeypatch):
             for form in forms:
                 body = re.search(r'<textarea\b[^>]*name="body"[^>]*>(.*?)</textarea>',
                                  form, re.S)
-                assert unescape(body.group(1)).strip() == f'Hi {name},'
+                text = unescape(body.group(1)).strip()
+                assert text.startswith(f'Hi {name},')
+                if 'What is a good time for me to call you?' in text:
+                    assert text == f'Hi {name},\n\nWhat is a good time for me to call you?'
+                else:
+                    assert text == f'Hi {name},'
     with app.app_context():
         assert app.jinja_env.globals['message_greeting']('') == ''
 
