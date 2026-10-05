@@ -216,8 +216,10 @@ def register_abcharity(app, db, Campaign, Donor, Donation, Family, Contact, Expe
             paid = db.session.scalar(select(func.coalesce(func.sum(Expense.amount_cents), 0)).where(Expense.family_id == family_id, Expense.status == 'Paid'))
         contacts = db.session.scalars(select(Contact).where(Contact.family_id == family_id).order_by(Contact.name)).all()
         if allowed_ids is not None:contacts=[c for c in contacts if c.id in allowed_ids]
+        contacts_by_id = {contact.id: contact for contact in contacts}
         return render_template('donations.html', title='ABCharity donations', family=family,
-                               campaign=campaign, pagination=pagination, totals=totals, paid=paid, contacts=contacts)
+                               campaign=campaign, pagination=pagination, totals=totals, paid=paid,
+                               contacts=contacts, contacts_by_id=contacts_by_id)
 
     @app.post('/families/<int:family_id>/campaign')
     def charity_connect(family_id):
