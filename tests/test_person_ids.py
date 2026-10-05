@@ -144,3 +144,16 @@ def test_unrelated_update_does_not_rerun_person_identity_queries(app):
         assert not any('person_name' in statement or 'person_number' in statement
                        or 'supporter_person' in statement or 'supporter_profile' in statement
                        for statement in statements)
+
+
+def test_person_id_migration_repairs_missing_number_for_existing_canonical_person(app):
+    with app.app_context():
+        person = db.session.scalar(db.select(SupporterPerson).order_by(SupporterPerson.id))
+        db.session.execute(db.delete(PersonNumber).where(PersonNumber.person_id == person.id))
+        db.session.commit()
+        assert number_for('person', person) == ''
+        app.extensions['migrate_person_ids']()
+        assert number_for('person', person)
+        contact = db.session.scalar(db.select(Contact).where(Contact.person_id == person.id))
+        if contact is not None:
+            assert number_for('supporter', contact) == number_for('person', person)
