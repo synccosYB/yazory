@@ -266,4 +266,4 @@ def test_helper_can_send_inline_and_see_only_selected_history():
     with app.app_context():
         record = db.session.scalar(db.select(SupporterCommunication).where(
             SupporterCommunication.contact_id == first_id))
-        assert record.kind == 'sms' and record.body == 'Checking in today'
+        assert record.kind == 'sms' and record.body == 'Checking in today\n\nadmin\nYazory'

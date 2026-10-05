@@ -5,6 +5,12 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Group text': {'he': 'הודעה לקבוצה', 'yi': 'שיק א טעקסט צו א גרופע'},
+    'Send group text': {'he': 'שליחת הודעה לקבוצה', 'yi': 'שיק דעם טעקסט צו דער גרופע'},
+    'Each recipient receives a private SMS. Replies stay in their own conversation.': {'he': 'כל נמען מקבל הודעה פרטית. התשובות נשמרות בשיחה שלו.', 'yi': 'יעדער באקומט א פריוואטע טעקסט. די ענטפערס בלייבן אין זיין אייגענעם שמועס.'},
+    'Choose up to 75 supporters. Missing mobile numbers are skipped.': {'he': 'בחרו עד 75 תומכים. מי שאין לו מספר נייד ידולג.', 'yi': 'קלויב אויס ביז 75 העלפערס. אן א סעל נומער ווערט נישט געשיקט.'},
+    'Prepared': {'he': 'הוכן', 'yi': 'צוגעגרייט'},
+    'Skipped': {'he': 'דולג', 'yi': 'איבערגעהיפט'},
     'Names': {'he': 'שמות', 'yi': 'נעמען'},
     'What is a good time for me to call you?': {'he': 'מתי נוח שאוכל להתקשר אליך?', 'yi': 'ווען איז א גוטע צייט איך זאל דיר רופן?'},
     'Addresses': {'he': 'כתובות', 'yi': 'אדרעסן'},

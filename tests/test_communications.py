@@ -771,6 +771,7 @@ def test_resend_inbound_reply_is_matched_to_exact_supporter_and_case(monkeypatch
     assert f'/communications/replies/{reply_id}/handled' not in handled_page
 
 
+
 def test_email_to_public_info_address_appears_in_messages(monkeypatch):
     app, client, _ = setup_workspace(monkeypatch)
     app.config.update(

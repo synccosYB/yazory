@@ -1013,3 +1013,9 @@ html[dir="rtl"] .people-match-reasons span{
 }
 
 .donation-balance-status{display:block;margin-top:.25rem}
+
+.group-text { margin-block: 1rem; }
+.group-text form { display: grid; gap: .75rem; margin-top: 1rem; }
+.group-text-recipients { max-height: 16rem; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .5rem; }
+.group-text-recipients label { display: flex; align-items: center; gap: .5rem; }
+.group-text-recipients input { width: auto; }

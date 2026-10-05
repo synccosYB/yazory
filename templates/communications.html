@@ -94,6 +94,7 @@
   </div>
 </section>{% endif %}
 
+{% from '_group_text.html' import group_text with context %}{{ group_text(contacts) }}
 <details class="communication-tools" id="communication-tools" {% if selected_contact or ai_contact %}open{% endif %}><summary><span><strong>{{ _('Outreach') }}</strong><small>{{ _('Calls, callbacks, messages, pledges, and supporter follow-up.') }}</small></span><span>{{ _('Open outreach') }}</span></summary><div class="communication-tools-content">
 
 

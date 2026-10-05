@@ -1,0 +1,14 @@
+{% from 'macros.html' import token with context %}
+{% macro group_text(contacts, family_id=none) %}
+<details class="card padded group-text"><summary class="button">{{ _('Group text') }}</summary>
+<form method="post" action="{{ url_for('send_group_sms') }}" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+{{ token(csrf) }}<input type="hidden" name="group_sms_token" value="{{ group_sms_token() }}">{% if family_id %}<input type="hidden" name="family_id" value="{{ family_id }}">{% endif %}
+<p>{{ _('Each recipient receives a private SMS. Replies stay in their own conversation.') }}</p>
+<p>{{ _('Choose up to 75 supporters. Missing mobile numbers are skipped.') }}</p>
+<div class="group-text-recipients">
+{% for contact in contacts %}<label><input type="checkbox" name="contact_ids" value="{{ contact.id }}" {% if not supporter_mobile(contact) %}disabled{% endif %}> {{ contact.name }} · <bdi dir="ltr">{{ supporter_mobile(contact)|phone if supporter_mobile(contact) else '—' }}</bdi></label>{% endfor %}
+</div>
+<label>{{ _('Message') }}<textarea name="body" dir="auto" rows="4" maxlength="1600" required></textarea></label>
+<button type="submit">{{ _('Send group text') }}</button>
+</form></details>
+{% endmacro %}

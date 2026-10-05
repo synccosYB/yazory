@@ -4865,6 +4865,76 @@ def create_app(test_config=None):
                                               _anchor='record-call'))
         return communication_return(contact.id)
 
+    def group_sms_token():
+        token = os.urandom(24).hex()
+        _app.session['group_sms_token'] = token
+        return token
+
+    app.jinja_env.globals['group_sms_token'] = group_sms_token
+
+    @app.post('/communications/group-sms')
+    def send_group_sms():
+        user = task_user()
+        if not user or user.role not in ('organization_admin', 'family_admin', 'fundraiser'):
+            _app.abort(403)
+        raw_ids = _app.request.form.getlist('contact_ids')
+        try:
+            ids = list(dict.fromkeys(int(value) for value in raw_ids))
+        except ValueError:
+            _app.abort(400)
+        body = _app.request.form.get('body', '').strip()
+        if not ids or len(ids) > 75 or not body or len(body) > 1600:
+            _app.abort(400, 'Choose 1 to 75 supporters and enter a message of up to 1600 characters.')
+        family_id = _app.request.form.get('family_id', type=int)
+        # Resolve the entire selection before any provider request.
+        contacts = [communication_contact(contact_id) for contact_id in ids]
+        if family_id is not None and any(contact.family_id != family_id for contact in contacts):
+            _app.abort(400)
+        recipients = {}
+        skipped = 0
+        for contact in contacts:
+            try:
+                phone = normalize_phone(contact_mobile(contact))
+            except ValueError:
+                skipped += 1
+                continue
+            recipients.setdefault(phone, []).append(contact)
+        if not recipients:
+            _app.abort(400, 'No selected supporters have a valid mobile number.')
+        token = _app.request.form.get('group_sms_token', '')
+        if not token or not hmac.compare_digest(token, _app.session.get('group_sms_token', '')):
+            _app.abort(400, 'Reopen the group text form before sending again.')
+        _app.session.pop('group_sms_token', None)
+        body = signed_text_message(body, user)
+        counts = {'completed': 0, 'failed': 0, 'preview': 0}
+        for phone, linked_contacts in recipients.items():
+            if app.config['TESTING'] or app.config['DEMO']:
+                provider_id, error, status = None, '', 'preview'
+            else:
+                provider_id, error = deliver_message(
+                    app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'],
+                    phone, body, channel='sms',
+                    sms_from=app.config['TWILIO_SMS_FROM'],
+                    messaging_service_sid=twilio_service_sid())
+                status = 'failed' if error else 'completed'
+            # Shared numbers receive one SMS, with history in every selected case.
+            for contact in linked_contacts:
+                communication_row(contact, 'sms', 'Text message', body,
+                                  status=status, provider_message_id=provider_id,
+                                  delivery_error=error)
+            _app.db.session.commit()
+            counts[status] += 1
+        add_audit(f'Group SMS: {counts["completed"]} sent, {counts["failed"]} failed, '
+                  f'{counts["preview"]} prepared, {skipped} skipped')
+        _app.db.session.commit()
+        translate = app.jinja_env.globals['_']
+        _app.flash(' · '.join(f'{translate(label)}: {count}' for label, count in (
+            ('Sent', counts['completed']), ('Failed', counts['failed']),
+            ('Prepared', counts['preview']), ('Skipped', skipped))))
+        if family_id is not None:
+            return _app.redirect(_app.url_for('case_helper_roster', family_id=family_id))
+        return _app.redirect(_app.url_for('communications', _anchor='communication-history'))
+
     @app.post('/contacts/<int:contact_id>/communications/message/<channel>')
     def send_supporter_message(contact_id, channel, force_contact_phone=False):
         if channel not in ('sms', 'whatsapp'):
