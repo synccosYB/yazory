@@ -6,6 +6,7 @@ from translations_original import CATALOG, LANGUAGES, translate as _translate, t
 
 _EXTRA = {
     'Names': {'he': 'שמות', 'yi': 'נעמען'},
+    'What is a good time for me to call you?': {'he': 'מתי נוח שאוכל להתקשר אליך?', 'yi': 'ווען איז א גוטע צייט איך זאל דיר רופן?'},
     'Addresses': {'he': 'כתובות', 'yi': 'אדרעסן'},
     'Roles': {'he': 'תפקידים', 'yi': 'תפקידים'},
     'I checked the matches. This is a different person.': {'he': 'בדקתי את ההתאמות. זה אדם אחר.', 'yi': 'איך האב איבערגעקוקט די רעקארדס. דאס איז אן אנדערער מענטש.'},
