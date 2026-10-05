@@ -61,6 +61,7 @@ def test_supporter_tree_names_link_to_profiles_and_table_is_searchable():
     assert 'data-tree-depth="{{ row.depth }}"' in template
     assert "person_name_values('supporter', row.contact)" in template
     assert "bilingual_name_fields('supporter', edit, 'name')" in template
+    assert "person_number('supporter', row.contact)" in template
     assert '.supporter-tree-name[class*="depth-"]:not(.depth-0)' in (root / 'static/style.css').read_text()
 
 
