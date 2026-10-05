@@ -94,6 +94,9 @@
   </div>
 </section>{% endif %}
 
+{% set group_replies = shared_text_inbox() %}
+<section class="card padded"><div class="section-heading"><a class="button" href="{{ url_for('text_groups') }}">{{ _('Shared text groups') }}</a>{% if group_replies %}<span>{{ group_replies|length }} {{ _('Recent group replies') }}</span>{% endif %}</div>
+{% if group_replies %}<details><summary>{{ _('Recent group replies') }}</summary>{% for item in group_replies %}<p><a href="{{ url_for('text_group_detail', group_id=item.group.id) }}"><strong>{{ item.group.name }} · {{ item.message.author }}</strong></a><br><span dir="auto">{{ item.message.body|truncate(120) }}</span> · <time>{{ item.message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></p>{% endfor %}</details>{% endif %}</section>
 {% from '_group_text.html' import group_text with context %}{{ group_text(contacts) }}
 <details class="communication-tools" id="communication-tools" {% if selected_contact or ai_contact %}open{% endif %}><summary><span><strong>{{ _('Outreach') }}</strong><small>{{ _('Calls, callbacks, messages, pledges, and supporter follow-up.') }}</small></span><span>{{ _('Open outreach') }}</span></summary><div class="communication-tools-content">
 

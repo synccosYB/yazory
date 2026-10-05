@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<section class="card padded"><div class="section-heading"><h1>{{ _('Shared text groups') }}</h1><a class="button secondary" href="{{ url_for('communications') }}">{{ _('Communications') }}</a></div>
+<p>{{ _('Everyone sees the group members and every reply. Choose 2 to 9 people with US/Canada mobile numbers.') }}</p>
+<p>{{ _('The group name is saved in Yazory. Phone apps may display their own group name.') }}</p>
+<details {% if not groups %}open{% endif %}><summary class="button">{{ _('Create shared text group') }}</summary>
+<form method="get" class="filters">{% if family_id %}<input type="hidden" name="family_id" value="{{ family_id }}">{% endif %}<label>{{ _('Search supporters') }}<input name="q" value="{{ query }}" type="search"></label><button>{{ _('Search') }}</button></form>
+<form method="post" class="group-text">{{ token(csrf) }}{% if family_id %}<input type="hidden" name="family_id" value="{{ family_id }}">{% endif %}
+<label>{{ _('Group name') }}<input name="name" maxlength="120" required></label>
+<div class="group-text-recipients">{% for contact in contacts %}<label><input type="checkbox" name="contact_ids" value="{{ contact.id }}" {% if not mobile(contact) %}disabled{% endif %}> {{ contact.name }} · {{ contact.family.name }} · <bdi dir="ltr">{{ mobile(contact)|phone if mobile(contact) else '—' }}</bdi></label>{% endfor %}</div>
+<button>{{ _('Create shared text group') }}</button></form></details>
+</section>
+<section class="card padded"><h2>{{ _('Conversations') }}</h2>{% for group in groups %}<p><a href="{{ url_for('text_group_detail', group_id=group.id) }}"><strong>{{ group.name }}</strong></a> · {{ group.members|length }} {{ _('Members') }} · {{ _(group.state.title()) }}</p>{% else %}<p>{{ _('No shared text groups yet.') }}</p>{% endfor %}</section>
+{% endblock %}

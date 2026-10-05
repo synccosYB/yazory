@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% from 'macros.html' import token with context %}
+{% block content %}
+<section class="card padded"><div class="section-heading"><h1>{{ group.name }}</h1><a class="button secondary" href="{{ url_for('text_groups', family_id=group.family_id) }}">{{ _('Shared text groups') }}</a></div>
+<p>{{ _('Everyone sees the group members and every reply. Choose 2 to 9 people with US/Canada mobile numbers.') }}</p>
+<details><summary>{{ _('Members') }} · {{ group.members|length }}</summary>{% for member in group.members %}<p><a href="{{ url_for('supporter_detail', contact_id=member.contact_id) }}">{{ member.contact.name }}</a> · <bdi dir="ltr">{{ member.phone|phone }}</bdi></p>{% endfor %}</details>
+{% if group.error %}<p class="flash error" dir="auto">{{ group.error }}</p>{% endif %}
+{% if group.state not in ('active','preview') %}<p>{{ _('The text group is not ready. Finish setup and try again.') }}</p><form method="post">{{ token(csrf) }}<input type="hidden" name="action" value="setup"><button>{{ _('Finish group setup') }}</button></form>{% else %}
+{% if group.state == 'preview' %}<p class="flash">{{ _('Preview only. No messages are sent.') }}</p>{% endif %}
+<form method="post" class="group-text">{{ token(csrf) }}<input type="hidden" name="send_key" value="{{ send_key }}"><label>{{ _('Message to everyone') }}<textarea name="body" dir="auto" maxlength="1600" rows="4" required></textarea></label><button>{{ _('Send to group') }}</button></form>{% endif %}
+</section>
+<section class="card padded"><h2>{{ _('Conversation history') }}</h2>{% for message in messages %}<article class="text-group-message {{ message.direction }}"><div class="section-heading"><strong>{{ _('Yazory') if message.direction == 'outbound' else message.author }}</strong><time>{{ message.created_at|eastern_time('%m/%d/%Y %I:%M %p') }}</time></div><p dir="auto" style="white-space:pre-wrap">{{ message.body }}</p><small>{{ _(message.status.title()) }}</small>{% if message.media_count %}<p>{{ _('Attachments received in the group phone conversation.') }}</p>{% endif %}{% if message.error %}<p class="flash error">{{ message.error }}</p>{% endif %}</article>{% else %}<p>{{ _('No messages yet.') }}</p>{% endfor %}
+<nav>{% if more %}<a href="{{ url_for('text_group_detail', group_id=group.id, page=page+1) }}">{{ _('Older messages') }}</a>{% endif %}{% if page > 1 %} <a href="{{ url_for('text_group_detail', group_id=group.id, page=page-1) }}">{{ _('Newer messages') }}</a>{% endif %}</nav></section>
+{% endblock %}

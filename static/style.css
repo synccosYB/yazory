@@ -1019,3 +1019,5 @@ html[dir="rtl"] .people-match-reasons span{
 .group-text-recipients { max-height: 16rem; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .5rem; }
 .group-text-recipients label { display: flex; align-items: center; gap: .5rem; }
 .group-text-recipients input { width: auto; }
+.text-group-message { padding: 1rem; margin-block: .75rem; border: 1px solid var(--line, #ddd); border-radius: .5rem; }
+.text-group-message.outbound { background: var(--soft, #f5f7fa); }

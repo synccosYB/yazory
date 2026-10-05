@@ -1,6 +1,6 @@
 {% from 'macros.html' import token with context %}
 {% macro group_text(contacts, family_id=none) %}
-<details class="card padded group-text"><summary class="button">{{ _('Group text') }}</summary>
+<details class="card padded group-text"><summary class="button">{{ _('Private group text') }}</summary>
 <form method="post" action="{{ url_for('send_group_sms') }}" onsubmit="this.querySelector('button[type=submit]').disabled=true">
 {{ token(csrf) }}<input type="hidden" name="group_sms_token" value="{{ group_sms_token() }}">{% if family_id %}<input type="hidden" name="family_id" value="{{ family_id }}">{% endif %}
 <p>{{ _('Each recipient receives a private SMS. Replies stay in their own conversation.') }}</p>

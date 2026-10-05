@@ -1599,7 +1599,7 @@ def create_app(test_config=None):
                             'public_sponsors_directory', 'privacy',
                             'terms', 'donation_policy', 'robots_txt', 'sitemap_xml',
                             'localized_public_page', 'stripe_webhook', 'resend_webhook',
-                            'twilio_incoming_message',
+                            'twilio_incoming_message', 'text_group_webhook',
                             'stripe_success', 'stripe_cancel', 'sms_consent', 'supporter_login',
                             'supporter_login_link', 'supporter_portal',
                             'supporter_logout', 'supporter_portal_update_pledge',
@@ -1612,7 +1612,7 @@ def create_app(test_config=None):
         if request.endpoint in ('static', 'health', 'set_language'):
             return
         if request.method == 'POST' and request.endpoint not in ('stripe_webhook', 'resend_webhook',
-                                                       'twilio_incoming_message'):
+                                                       'twilio_incoming_message', 'text_group_webhook'):
             if not session.get('csrf') or not hmac.compare_digest(
                     session.get('csrf', ''), request.form.get('csrf', '')):
                 abort(400, 'Your form expired. Reload the page and try again.')

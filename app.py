@@ -11,6 +11,7 @@ from io import BytesIO, StringIO
 from zoneinfo import ZoneInfo
 
 import app_original as _app
+from text_groups import install as install_text_groups
 from person_addresses import install as install_person_addresses
 from person_names import install as install_person_names
 from person_ids import PersonNumber, install as install_person_ids
@@ -5737,6 +5738,8 @@ def create_app(test_config=None):
     install_duplicate_review(app, SupporterProfile, require_supporter_directory_access)
     from person_verification import install as install_person_verification
     install_person_verification(app, require_supporter_directory_access)
+    install_text_groups(app, task_user, task_is_admin, communication_contact,
+                        contact_mobile, communication_row, signed_text_message, add_audit)
     register_supporter_portal(app)
     register_applicant_portal(app)
     return register_native_payments(app)
