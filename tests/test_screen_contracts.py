@@ -58,6 +58,10 @@ def test_supporter_tree_names_link_to_profiles_and_table_is_searchable():
     assert 'id="supporter-network-table"' in template
     assert "url_for('supporter_detail',contact_id=row.contact.id)" in template
     assert "url_for('supporter_detail',contact_id=row.through.id)" in template
+    assert 'data-tree-depth="{{ row.depth }}"' in template
+    assert "person_name_values('supporter', row.contact)" in template
+    assert "bilingual_name_fields('supporter', edit, 'name')" in template
+    assert '.supporter-tree-name[class*="depth-"]:not(.depth-0)' in (root / 'static/style.css').read_text()
 
 
 def test_supporter_directory_uses_expandable_records_without_table_pagination():
