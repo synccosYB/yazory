@@ -664,6 +664,8 @@ _EXTRA = {
     'Organization': {'he': 'הארגון', 'yi': 'דער ארגון'},
     'Nothing needs attention right now.': {'he': 'אין כרגע פריטים שדורשים טיפול.', 'yi': 'יעצט איז נישטא גארנישט וואס דארף באהאנדלט ווערן.'},
     'Included in case balance': {'he': 'נכלל ביתרת התיק', 'yi': 'שוין אריינגערעכנט אינעם קעיס באלאנס'},
+    'Unlinked terminal donation': {'he': 'תרומת מסוף שעדיין לא קושרה', 'yi': 'טערמינאל נדבה נאך נישט פארבונדן'},
+    'Open Details and link this donation to the correct person.': {'he': 'פתחו את הפרטים וקשרו את התרומה לאדם הנכון.', 'yi': 'עפן פרטים און פארבינד די נדבה צום ריכטיגן מענטש.'},
     'This donation is already included in the case balance.': {'he': 'התרומה כבר נכללת ביתרת התיק.', 'yi': 'די נדבה איז שוין אריינגערעכנט אינעם קעיס באלאנס.'},
     'Start': {'he': 'פתיחת', 'yi': 'הייב אן'},
     'Workflow': {'he': 'תהליך עבודה', 'yi': 'ארבעטס פראצעס'},
