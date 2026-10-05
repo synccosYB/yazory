@@ -460,20 +460,26 @@ def install(app, profile_model, access):
         for attempt in range(2):
             try:
                 return review_handler(one_id, two_id)
-            except StaleDataError as exc:
+            except (IntegrityError, StaleDataError) as exc:
                 db.session.rollback()
+                detail = str(getattr(exc, 'orig', exc))
+                kind = 'integrity' if isinstance(exc, IntegrityError) else 'stale'
                 app.logger.error(
-                    'Duplicate review stale conflict one_id=%s two_id=%s attempt=%s',
-                    one_id, two_id, attempt + 1,
+                    'Duplicate review %s conflict one_id=%s two_id=%s attempt=%s detail=%s',
+                    kind, one_id, two_id, attempt + 1, detail,
                     exc_info=(type(exc), exc, exc.__traceback__))
-                if request.method == 'POST' and attempt == 0:
+                # Stale ORM state can be transient, so retry it once. A database
+                # integrity violation is deterministic for the submitted merge;
+                # retrying it only repeats the same failed write.
+                if (request.method == 'POST' and attempt == 0
+                        and isinstance(exc, StaleDataError)):
                     continue
                 one = db.get_or_404(core.SupporterPerson, one_id)
                 two = db.get_or_404(core.SupporterPerson, two_id)
                 current_snapshots = {one.id: snapshot(one), two.id: snapshot(two)}
                 return render_template(
                     'person_merge.html', title='Review merge', one=one, two=two,
-                    error=f'Record synchronization conflict: {exc}',
+                    error=f'Database merge conflict: {detail}',
                     snapshots=current_snapshots,
                     version=_snapshot_version(current_snapshots),
                     next_one_id=request.args.get('next_one_id', type=int),
