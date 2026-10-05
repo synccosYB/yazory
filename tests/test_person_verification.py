@@ -235,3 +235,19 @@ def test_verification_can_edit_home_address_components(app):
             PersonAddressDetails.person_id == ident))
         assert details.home == {'unit': '4B', 'country': 'USA'}
         assert statuses(row)['home_address']['status'] == 'verified'
+
+
+def test_verification_without_edit_inputs_preserves_existing_canonical_values(app):
+    ident = setup_person(app)
+    client = app.test_client()
+    before = client.get(f'/people/{ident}/verification').json['values']
+    for field in ('name', 'phone', 'home_address'):
+        state = client.get(f'/people/{ident}/verification').json['fields'][field]
+        response = post(client, f'/people/{ident}/verification/{field}', dict(
+            status='verified', reason='Verified without editing',
+            fingerprint=state['fingerprint']))
+        assert response.status_code == 200
+    after = client.get(f'/people/{ident}/verification').json['values']
+    assert after['name'] == before['name']
+    assert after['phone'] == before['phone']
+    assert after['home_address'] == before['home_address']
