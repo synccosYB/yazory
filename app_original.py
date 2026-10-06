@@ -2516,6 +2516,35 @@ def create_app(test_config=None):
         for sync_people in app.extensions.get('askan_profile_person_sync', ()):
             sync_people(askan)
 
+    @app.post('/families/<int:family_id>/household-field/<field_name>/remove')
+    def remove_family_household_field(family_id, field_name):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        removable_fields = {
+            'spouse': 'Spouse',
+            'father': 'Father',
+            'inlaws': 'Father-in-law',
+            'inlaws_maiden_name': 'Mother-in-law’s maiden name',
+            'inlaws_family': 'Mother-in-law’s family / network',
+            'rabbi': 'Rabbi',
+        }
+        label = removable_fields.get(field_name)
+        if label is None:
+            abort(404)
+        old_value = getattr(family, field_name, '') or ''
+        if not old_value:
+            abort(404)
+        setattr(family, field_name, '')
+        if field_name == 'rabbi':
+            family.rabbi_phone = ''
+        for sync_people in app.extensions.get('family_profile_person_sync', ()):
+            sync_people(family)
+        audit(f'Removed {label} from case: {old_value}', family.id)
+        db.session.commit()
+        flash(f'{label} removed from this case.')
+        return redirect(url_for('family_detail', family_id=family.id,
+                                _anchor='household-community'))
+
     @app.post('/families/<int:family_id>/designated-askan/remove')
     def remove_designated_family_askan(family_id):
         require_capability(('family_admin', 'office_employee'))
