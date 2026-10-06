@@ -6,31 +6,87 @@
 {%- else -%}{{ names.yiddish_name or names.english_name or person.name }}
 {%- endif -%}
 {%- endmacro %}{% block content %}
-<section class="card profile-record-header">
-  <div class="profile-record-main">
-    <div class="profile-record-identity">
-      <div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} {{ _("· FAMILY PROFILE") }}</div>
-      <h1><bdi dir="auto">{{ family.name }}</bdi> {{ pencil(family.id, 'name', 'Family / individual name') }} <span class="profile-inline-status">{{ badge(family.status) }}{% if family.status=='Declined' and family.denial_reason %}<details class="case-denial-details"><summary>{{ _('Reason for denial') }}</summary><p>{{ family.denial_reason }}</p></details>{% endif %}</span></h1>
-      <div class="profile-record-contact">
-        <span class="profile-contact-email"><bdi dir="ltr" title="{{ family.email or _('Email not entered') }}">{{ family.email or _('Email not entered') }}</bdi> {{ pencil(family.id, 'email', 'Applicant email') }}</span>
-        <span class="profile-contact-address"><bdi dir="ltr" title="{{ family.full_address or _('Address not entered') }}">{{ family.full_address or _('Address not entered') }}</bdi> {{ pencil(family.id, 'address', 'Address') }}</span>
-        {% set profile_phones=family_phone_values(family) %}<span class="profile-contact-phones">{% if profile_phones %}<bdi dir="ltr">{{ profile_phones[0] }}</bdi>{{ pencil(family.id, 'phone', 'Phone') }}{% if profile_phones|length > 1 %}<details class="profile-extra-phones"><summary aria-label="{{ _('Phone') }}">+{{ profile_phones|length - 1 }}</summary><div>{% for phone in profile_phones[1:] %}<a href="tel:{{ phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}"><bdi dir="ltr">{{ phone }}</bdi></a>{% endfor %}</div></details>{% endif %}{% else %}{{ _('Phone not entered') }} {{ pencil(family.id, 'phone', 'Phone') }}{% endif %}</span>
-      </div>
+<section class="case-workspace-header">
+  <a class="case-back-link" href="{{ url_for('families') }}">← {{ _('All cases') }}</a>
+  <div class="case-workspace-title-row">
+    <div class="case-workspace-identity">
+      <span class="case-number">YZ-{{ '%04d'|format(family.id) }}</span>
+      <h1><bdi dir="auto">{{ family.name }}</bdi></h1>
+      {{ badge(family.status) }}
     </div>
-    <div class="profile-record-actions">{% if can_manage_household %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='family', person_id=family.id) }}">{{ _('Home & work addresses') }}</a>{% endif %}
-      <a class="button secondary" href="{{ url_for('staff_applicant_messages', family_id=family.id) }}">{{ _('Applicant messages') }}</a>
-      {% if is_org_admin or (family.email and current_staff.role in ('family_admin', 'fundraiser')) %}<a class="button secondary" href="{{ url_for('communications', recipient_email=family.email if family.email else None, sms_phone=(profile_phones[0] if profile_phones else '') if is_org_admin else None, sms_name=family.name if is_org_admin else None, family_id=family.id if is_org_admin else None, _anchor='mailbox-inbox') }}">{{ _('Message applicant') }}</a>{% endif %}
-      <a class="button" href="{{ url_for('person_role_hub', kind='family', role_id=family.id) }}">{{ _('Person profile') }}</a><a class="button secondary" href="/families/{{ family.id }}/edit">{{ _("Case / household details") }}</a>
-      <details class="profile-more-actions"><summary class="button secondary">{{ _('More actions') }}</summary><div>
+    <div class="case-workspace-actions no-print">
+      {% set profile_phones=family_phone_values(family) %}
+      {% if is_org_admin or (family.email and current_staff.role in ('family_admin', 'fundraiser')) %}<a class="button primary" href="{{ url_for('communications', recipient_email=family.email if family.email else None, sms_phone=(profile_phones[0] if profile_phones else '') if is_org_admin else None, sms_name=family.name if is_org_admin else None, family_id=family.id if is_org_admin else None) }}">{{ _('Message') }}</a>{% endif %}
+      <a class="button secondary" href="{{ url_for('tasks', family_id=family.id) }}">{{ _('Add task') }}</a>
+      <a class="button secondary" href="#expense-requests">{{ _('Request expense') }}</a>
+      <details class="case-more-actions"><summary class="button secondary">{{ _('More') }}</summary><div>
+        <a href="/families/{{ family.id }}/edit">{{ _('Case / household details') }}</a>
+        <a href="{{ url_for('person_role_hub', kind='family', role_id=family.id) }}">{{ _('Person profile') }}</a>
         <a href="{{ url_for('family_print_report',family_id=family.id) }}">{{ _('Print profile / PDF') }}</a>
         <a href="{{ url_for('family_coordination',family_id=family.id) }}">{{ _('Partner coordination') }}</a>
-        {% if is_org_admin %}<a href="{{ url_for('case_sponsorship_new',family_id=family.id) }}">{{ _('Case sponsorship') }}</a>{% endif %}
-        <a href="{{ url_for('family_expense_report',family_id=family.id) }}">{{ _('Monthly expense report') }}</a>
-        {% if workflow_active %}<a href="{{ url_for('operations',family_id=family.id) }}">{{ _('Case workflows') }}</a><a href="{{ url_for('case_ledger',family_id=family.id) }}">{{ _('Case ledger') }}</a>{% endif %}<a href="{{ url_for('charity_donations',family_id=family.id) }}">{{ _('ABCharity donations') }}</a>
+        {% if workflow_active %}<a href="{{ url_for('operations',family_id=family.id) }}">{{ _('Case workflows') }}</a><a href="{{ url_for('case_ledger',family_id=family.id) }}">{{ _('Case ledger') }}</a>{% endif %}
+        <a href="{{ url_for('charity_donations',family_id=family.id) }}">{{ _('ABCharity donations') }}</a>
       </div></details>
-      {% if is_org_admin and not workflow_enforced %}<form method="post" action="/families/{{ family.id }}/status" class="profile-status-control">{{ token(csrf) }}<label for="case-status">{{ _("Move case to") }}</label><select id="case-status" name="status" onchange="this.form.querySelector('[name=denial_reason]').required=this.value==='Declined'">{% for status in family_transitions[family.status] %}<option value="{{ status }}">{{ _(status) }}</option>{% endfor %}</select><label>{{ _('Reason for denial') }}<textarea name="denial_reason" rows="2" maxlength="5000"></textarea></label><button>{{ _("Update status") }}</button></form>{% endif %}
     </div>
   </div>
+  <div class="case-workspace-meta">
+    {% if profile_phones %}<span><bdi dir="ltr">{{ profile_phones[0] }}</bdi></span>{% endif %}
+    {% if family.email %}<span><bdi dir="ltr">{{ family.email }}</bdi></span>{% endif %}
+    {% if family.full_address %}<span><bdi dir="auto">{{ family.full_address }}</bdi></span>{% endif %}
+    {% if family.designated_askan %}<span>{{ _('Askan') }}: {{ family.designated_askan.name }}</span>{% endif %}
+  </div>
+</section>
+
+<nav class="workspace-tabs case-tabs no-print" aria-label="{{ _('Case sections') }}">
+  <a class="selected" href="#case-overview">{{ _('Overview') }}</a>
+  <a href="#household-community">{{ _('Household') }}</a>
+  <a href="#circle-of-support">{{ _('Support') }}</a>
+  <a href="#case-financials">{{ _('Financials') }}</a>
+  <a href="{{ url_for('staff_applicant_messages', family_id=family.id) }}">{{ _('Communications') }}</a>
+  <a href="#case-documents">{{ _('Documents') }}</a>
+  <a href="#case-activity">{{ _('Activity') }}</a>
+</nav>
+
+<section id="case-overview" class="case-overview-grid">
+  <article class="card padded case-status-card">
+    <small>{{ _('Current status') }}</small>
+    <div class="case-status-line">{{ badge(family.status) }}</div>
+    <div class="case-kpi-grid">
+      <div><span>{{ _('Monthly need') }}</span><strong>{{ budget.shortfall|money }}</strong></div>
+      <div><span>{{ _('Support raised') }}</span><strong>{{ collected|money }}</strong></div>
+      <div><span>{{ _('Available funds') }}</span><strong>{{ available_to_give|money }}</strong></div>
+      <div><span>{{ _('Monthly pledged') }}</span><strong>{{ pledged|money }}</strong></div>
+    </div>
+  </article>
+  <article class="card padded case-attention-card">
+    <div class="case-card-heading"><h2>{{ _('Needs attention') }}</h2><span class="count">{{ missing_profile_count + awaiting_contact + (family.expenses|selectattr('status', 'equalto', 'Requested')|list|length) }}</span></div>
+    <a href="/families/{{ family.id }}/edit"><span>{{ _('Missing profile information') }}</span><strong>{{ missing_profile_count }}</strong></a>
+    <a href="{{ url_for('supporters', family_id=family.id) }}"><span>{{ _('Supporters awaiting contact') }}</span><strong>{{ awaiting_contact }}</strong></a>
+    <a href="#expense-requests"><span>{{ _('Pending expense requests') }}</span><strong>{{ family.expenses|selectattr('status', 'equalto', 'Requested')|list|length }}</strong></a>
+  </article>
+  <article class="card padded case-work-card">
+    <div class="case-card-heading"><h2>{{ _('Upcoming work') }}</h2></div>
+    <a href="{{ url_for('tasks', family_id=family.id) }}">{{ _('Open case tasks') }} →</a>
+    {% if workflow_active %}<a href="{{ url_for('operations',family_id=family.id) }}">{{ _('Open case workflow') }} →</a>{% endif %}
+    <a href="{{ url_for('case_helper_roster', family_id=family.id) }}">{{ _('Supporter work') }} →</a>
+  </article>
+  <article class="card padded case-household-summary">
+    <div class="case-card-heading"><h2>{{ _('Household') }}</h2></div>
+    <strong>{{ family.name }}</strong>
+    <p>{{ budget.children_count if budget.children_count is not none else _('Not entered') }} {{ _('children') }}</p>
+    <a href="#household-community">{{ _('View household details') }} →</a>
+  </article>
+  <article class="card padded case-support-summary">
+    <div class="case-card-heading"><h2>{{ _('Support network') }}</h2></div>
+    <strong>{{ supporter_total }} {{ _('supporters') }}</strong>
+    {% if family.designated_askan %}<p>{{ _('Askan') }}: {{ family.designated_askan.name }}</p>{% endif %}
+    <a href="#circle-of-support">{{ _('View support network') }} →</a>
+  </article>
+  <article class="card padded case-activity-summary">
+    <div class="case-card-heading"><h2>{{ _('Recent activity') }}</h2></div>
+    {% for a in activity[:4] %}<div class="case-activity-item"><span>{{ _audit(a.action) }}</span><time>{{ a.at|eastern_time }}</time></div>{% else %}<p>{{ _('No activity recorded.') }}</p>{% endfor %}
+    <a href="#case-activity">{{ _('View full activity') }} →</a>
+  </article>
 </section>
 {% include '_case_sponsor_panel.html' %}
 <section class="card padded profile-household-sheet" id="household-community"><h2>{{ _("Household & community") }}</h2><div class="profile-sheet-layout"><dl class="details">
@@ -49,7 +105,7 @@
 <h3>{{ _('Monthly summary') }}</h3><div><span>{{ _('Monthly income') }}</span><strong>{{ budget.income|money }}</strong></div><div><span>{{ _('Monthly expenses') }}</span><strong>{{ budget.bills|money }}</strong></div><div><span>{{ _('Monthly assistance') }}</span><strong>{{ budget.assistance|money }}</strong></div><div><span>{{ _('Monthly pledged') }}</span><strong><bdi class="money-value" dir="ltr">{{ pledged|money }}</bdi></strong></div><div><span>{{ _('Gross donations received') }}</span><strong><bdi class="money-value" dir="ltr">{{ gross_collected|money }}</bdi></strong></div><div><span>{{ _('ABCharity fees / deductions') }}</span><strong><bdi class="money-value" dir="ltr">{{ collection_fees|money }}</bdi></strong></div><div><span>{{ _('Already collected') }}</span><strong><bdi class="money-value" dir="ltr">{{ collected|money }}</bdi></strong></div><div><span>{{ _('Already sent') }}</span><strong><bdi class="money-value" dir="ltr">{{ sent|money }}</bdi></strong></div><div><span>{{ _('Available to give out') }}</span><strong><bdi class="money-value" dir="ltr">{{ available_to_give|money }}</bdi></strong></div>{% if ledger_adjustments_and_holds %}<div><span>{{ _('Other ledger adjustments and holds') }}</span><strong><bdi class="money-value" dir="ltr">{{ ledger_adjustments_and_holds|money }}</bdi></strong></div>{% endif %}<div class="need"><span>{{ _('Remaining monthly need') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.shortfall|money }}</bdi></strong></div><div><span>{{ _('Number of children') }}</span><strong>{{ budget.children_count if budget.children_count is not none else _('Not entered') }}</strong></div></aside></div></section>
 <section class="card padded no-print family-parent-picker"><h2>{{ _('Family connections') }}</h2><p>{{ _('Choose a supporter to review or edit who is connected under whom.') }}</p><label>{{ _('Whose son or son-in-law is he?') }}<span class="field-hint">{{ _('Search supporters') }}</span><input type="search" class="select-search" data-select-filter="family-parent-contact" aria-label="{{ _('Search supporters') }}" placeholder="{{ _('Search names') }}" autocomplete="off"><select id="family-parent-contact" onchange="if(this.value){window.location.href='/contacts/'+this.value+'/edit'}"><option value="">{{ _('Choose supporter') }}</option>{% for c, is_nested in contact_rows %}<option value="{{ c.id }}">{{ c.name }} · {{ _(c.relationship) }}</option>{% endfor %}</select></label></section>
 {% include '_children.html' %}
-{% include '_household_budget.html' %}
+<div id="case-financials">{% include '_household_budget.html' %}</div>
 <section class="card padded" id="circle-of-support">
   <div class="section-heading supporter-summary-heading"><div><h2>{{ _( "Circle of support" ) }}</h2><p>{{ _( "Track relatives, friends, and recurring or one-time commitments. A supporter connected to multiple cases is charged only once." ) }}</p></div><div><strong>{{ supporter_total }}</strong> {{ _( "Supporters" ) }}</div></div>
   <nav class="list-switcher no-print" aria-label="{{ _('Supporter views') }}"><a class="button" href="#circle-of-support" aria-current="page">{{ _('List') }}</a>{% if workflow_active %}<a class="button secondary" href="{{ url_for('supporter_network', family_id=family.id) }}">{{ _('Tree') }}</a>{% endif %}<a class="button secondary" href="{{ url_for('case_helper_roster', family_id=family.id) }}">{{ _('Work') }}</a></nav>
@@ -79,6 +135,6 @@
   <p><a href="{{ url_for('supporters', family_id=family.id) }}">{{ _( "Manage supporters" ) }}</a></p>
 </section><section class="card padded">
 <h2 id="expense-requests">{{ _("Expense requests") }}</h2><p>{{ _("Approval and payment recording are available in") }} <a href="/expenses">{{ _("Expenses & approvals") }}</a>.</p>{{ expense_table(family.expenses, csrf, expense_transitions, is_org_admin) }}{% if family.status not in ['Closed','Declined'] %}<details><summary>{{ _("+ Request expense") }}</summary><form method="post" action="/families/{{ family.id }}/expenses">{{ token(csrf) }}<div class="form-grid"><label>{{ _("Category") }}<select name="category">{% for s in categories %}<option value="{{ s }}">{{ _(s) }}</option>{% endfor %}</select></label><label>{{ _("Payee *") }}<input name="payee" required maxlength="160"></label><label>{{ _("Amount ($) *") }}<input type="number" name="amount" min="0.01" max="1000000" step="0.01" required></label><label>{{ _("Budget month *") }}<input type="month" name="month" value="{{ current_month }}" required></label></div><label>{{ _("Notes") }}<textarea name="note" maxlength="5000" rows="3"></textarea></label><button>{{ _("Submit request") }}</button></form></details>{% endif %}</section>
-{% include '_documents.html' %}
+<div id="case-documents">{% include '_documents.html' %}</div>
 <section class="card padded" data-panel-href="{{ url_for('charity_donations', family_id=family.id) }}"><h2>{{ _('ABCharity donations') }}</h2></section>
-<section class="card padded"><h2>{{ _("Case activity") }}</h2>{% for a in activity %}<div class="activity-row"><div>{{ _audit(a.action) }}<small>{{ a.actor }}</small></div><time>{{ a.at|eastern_time }}</time></div>{% else %}<p>{{ _("No activity recorded.") }}</p>{% endfor %}</section>{% endblock %}
+<section class="card padded" id="case-activity"><h2>{{ _("Case activity") }}</h2>{% for a in activity %}<div class="activity-row"><div>{{ _audit(a.action) }}<small>{{ a.actor }}</small></div><time>{{ a.at|eastern_time }}</time></div>{% else %}<p>{{ _("No activity recorded.") }}</p>{% endfor %}</section>{% endblock %}
