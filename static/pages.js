@@ -396,3 +396,38 @@ document.querySelectorAll('[data-case-tabs]').forEach((tabs)=>{
   const initial=links.find((link)=>link.getAttribute('href')===('#'+hash))?.dataset.caseTab||'overview';
   show(initial,false);
 });
+
+
+/* Financial workspace: split finance jobs without duplicating finance data. */
+document.querySelectorAll('[data-financial-tabs]').forEach((tabs)=>{
+  const workspace=tabs.closest('.case-financial-workspace');
+  const links=[...tabs.querySelectorAll('[data-financial-tab]')];
+  const panels=[...workspace.querySelectorAll('[data-financial-panel]')];
+  const show=(key)=>{
+    links.forEach((link)=>{
+      const active=link.dataset.financialTab===key;
+      link.classList.toggle('selected',active);
+      if(active) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current');
+    });
+    panels.forEach((panel)=>{
+      const active=panel.dataset.financialPanel===key;
+      panel.hidden=!active;
+      panel.classList.toggle('is-active',active);
+      if(active) panel.scrollTop=0;
+    });
+  };
+  links.forEach((link)=>link.addEventListener('click',(event)=>{
+    event.preventDefault();
+    show(link.dataset.financialTab);
+  }));
+  workspace.querySelectorAll('[data-financial-jump]').forEach((link)=>link.addEventListener('click',(event)=>{
+    event.preventDefault();
+    show(link.dataset.financialJump);
+  }));
+  show('overview');
+});
+document.querySelectorAll('[data-case-jump]').forEach((link)=>link.addEventListener('click',(event)=>{
+  event.preventDefault();
+  const key=link.dataset.caseJump;
+  document.querySelector('[data-case-tab="'+key+'"]')?.click();
+}));
