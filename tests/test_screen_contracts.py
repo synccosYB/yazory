@@ -234,3 +234,17 @@ def test_case_workspace_keeps_existing_logo_asset_untouched():
     root = Path(__file__).resolve().parents[1]
     base = (root / 'templates/base.html').read_text()
     assert base.count("filename='yazory-logo-corrected.png'") >= 2
+
+
+def test_case_workspace_panels_are_siblings_and_abcharity_is_financial_action():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+
+    financial = template.index('id="case-financials"')
+    support = template.index('data-case-panel="support"')
+    documents = template.index('id="case-documents"')
+    assert support < financial < documents
+    assert 'data-panel-href="{{ url_for(\'charity_donations\'' not in template
+    financial_chunk = template[financial:documents]
+    assert "href="{{ url_for('charity_donations', family_id=family.id) }}"" in financial_chunk
+    assert "{{ _('ABCharity donations') }}" in financial_chunk
