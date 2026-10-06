@@ -324,3 +324,10 @@ def test_case_workspace_has_complete_shared_multilingual_contract():
     assert 'html[dir="ltr"] :is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:ltr}' in css
     assert 'unicode-bidi:isolate' in css
     assert 'body[data-endpoint="family_detail"] :is(.case-tabs,.financial-tabs,.expense-tabs){overflow:hidden}' in css
+
+
+def test_case_workspace_stylesheet_uses_current_cache_key():
+    root = Path(__file__).resolve().parents[1]
+    base = (root / 'templates/base.html').read_text()
+    assert "v='20261006-case-workspace-i18n1'" in base
+    assert "v='20261002-people-match-rtl2'" not in base
