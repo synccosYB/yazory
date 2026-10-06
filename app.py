@@ -3797,8 +3797,16 @@ def create_app(test_config=None):
             [('supporters', row) for row in email_replies] +
             [('applicants', row) for row in applicant_replies] +
             [('sent', row) for row in outbound_history])
+        # Communication rows come from several legacy tables.  Keep the
+        # unified inbox resilient when an older row has no timestamp or when
+        # database drivers return mixed naive/aware datetime values.  ISO text
+        # gives one comparable key without letting one malformed legacy row
+        # take down the entire Communications page.
         mailbox_records.sort(
-            key=lambda item: (item[1].created_at, item[1].id, item[0]), reverse=True)
+            key=lambda item: (
+                item[1].created_at.isoformat() if item[1].created_at else '',
+                item[1].id or 0, item[0]),
+            reverse=True)
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
             mailbox_records=mailbox_records,
