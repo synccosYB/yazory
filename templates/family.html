@@ -137,14 +137,60 @@
   <p><a href="{{ url_for('supporters', family_id=family.id) }}">{{ _( "Manage supporters" ) }}</a></p>
 </section>
 </section>
-<section id="case-financials" class="case-workspace-panel" data-case-panel="financials" hidden>
-<div>{% include '_household_budget.html' %}</div>
-<nav class="case-financial-actions no-print" aria-label="{{ _('Financial actions') }}">
-  <a class="button secondary" href="{{ url_for('charity_donations', family_id=family.id) }}">{{ _('ABCharity donations') }}</a>
-  {% if workflow_active %}<a class="button secondary" href="{{ url_for('case_ledger', family_id=family.id) }}">{{ _('Case ledger') }}</a>{% endif %}
-</nav>
-<section class="card padded">
+<section id="case-financials" class="case-workspace-panel case-financial-workspace" data-case-panel="financials" hidden>
+  <nav class="financial-tabs no-print" aria-label="{{ _('Financial sections') }}" data-financial-tabs>
+    <a class="selected" href="#financial-overview" data-financial-tab="overview">{{ _('Overview') }}</a>
+    <a href="{{ url_for('charity_donations', family_id=family.id) }}">{{ _('Donations') }}</a>
+    <a href="#financial-pledges" data-financial-tab="pledges">{{ _('Pledges') }}</a>
+    <a href="#financial-expenses" data-financial-tab="expenses">{{ _('Expenses') }}</a>
+    <a href="#financial-payouts" data-financial-tab="payouts">{{ _('Payouts') }}</a>
+    {% if workflow_active %}<a href="{{ url_for('case_ledger', family_id=family.id) }}">{{ _('Ledger') }}</a>{% endif %}
+  </nav>
+
+  <section id="financial-overview" class="financial-panel financial-overview is-active" data-financial-panel="overview">
+    <div class="financial-kpi-grid">
+      <article class="card padded"><span>{{ _('Monthly income') }}</span><strong>{{ budget.income|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Monthly expenses') }}</span><strong>{{ budget.bills|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Monthly need') }}</span><strong>{{ budget.shortfall|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Monthly pledged') }}</span><strong>{{ pledged|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Support raised') }}</span><strong>{{ collected|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Available funds') }}</span><strong>{{ available_to_give|money }}</strong></article>
+    </div>
+    <div class="financial-overview-lower">
+      <article class="card padded">
+        <div class="case-card-heading"><h2>{{ _('Donations') }}</h2></div>
+        <div class="financial-summary-row"><span>{{ _('Gross donations received') }}</span><strong>{{ gross_collected|money }}</strong></div>
+        <div class="financial-summary-row"><span>{{ _('ABCharity fees / deductions') }}</span><strong>{{ collection_fees|money }}</strong></div>
+        <a href="{{ url_for('charity_donations', family_id=family.id) }}">{{ _('Open donations') }} →</a>
+      </article>
+      <article class="card padded">
+        <div class="case-card-heading"><h2>{{ _('Expenses') }}</h2></div>
+        <div class="financial-summary-row"><span>{{ _('Pending expense requests') }}</span><strong>{{ family.expenses|selectattr('status', 'equalto', 'Requested')|list|length }}</strong></div>
+        <div class="financial-summary-row"><span>{{ _('Monthly household bills') }}</span><strong>{{ budget.bills|money }}</strong></div>
+        <a href="#financial-expenses" data-financial-jump="expenses">{{ _('Open expenses') }} →</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="financial-pledges" class="financial-panel" data-financial-panel="pledges" hidden>
+    <div class="financial-kpi-grid financial-kpi-grid-compact">
+      <article class="card padded"><span>{{ _('Monthly pledged') }}</span><strong>{{ pledged|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Support raised') }}</span><strong>{{ collected|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Available funds') }}</span><strong>{{ available_to_give|money }}</strong></article>
+    </div>
+    <article class="card padded"><p>{{ _('Pledges are managed from this case’s support network so supporter commitments keep one source of truth.') }}</p><a href="#circle-of-support" data-case-jump="support">{{ _('Open support network') }} →</a></article>
+  </section>
+
+  <section id="financial-expenses" class="financial-panel" data-financial-panel="expenses" hidden>
+    {% include '_household_budget.html' %}
+    <section class="card padded">
 <h2 id="expense-requests">{{ _("Expense requests") }}</h2><p>{{ _("Approval and payment recording are available in") }} <a href="/expenses">{{ _("Expenses & approvals") }}</a>.</p>{{ expense_table(family.expenses, csrf, expense_transitions, is_org_admin) }}{% if family.status not in ['Closed','Declined'] %}<details><summary>{{ _("+ Request expense") }}</summary><form method="post" action="/families/{{ family.id }}/expenses">{{ token(csrf) }}<div class="form-grid"><label>{{ _("Category") }}<select name="category">{% for s in categories %}<option value="{{ s }}">{{ _(s) }}</option>{% endfor %}</select></label><label>{{ _("Payee *") }}<input name="payee" required maxlength="160"></label><label>{{ _("Amount ($) *") }}<input type="number" name="amount" min="0.01" max="1000000" step="0.01" required></label><label>{{ _("Budget month *") }}<input type="month" name="month" value="{{ current_month }}" required></label></div><label>{{ _("Notes") }}<textarea name="note" maxlength="5000" rows="3"></textarea></label><button>{{ _("Submit request") }}</button></form></details>{% endif %}</section>
+
+  </section>
+
+  <section id="financial-payouts" class="financial-panel" data-financial-panel="payouts" hidden>
+    <article class="card padded"><h2>{{ _('Payouts') }}</h2><p>{{ _('Approved expense payments and payout work stay in the existing expenses and approvals workflow.') }}</p><a class="button secondary" href="/expenses">{{ _('Open expenses & approvals') }}</a></article>
+  </section>
 </section>
 <section id="case-documents" class="case-workspace-panel" data-case-panel="documents" hidden>{% include '_documents.html' %}</section>
 
