@@ -94,7 +94,7 @@
   <div class="household-summary-grid" id="household-community">
     <article class="card padded household-summary-card">
       <div class="case-card-heading"><h2>{{ _('Household') }}</h2><a href="/families/{{ family.id }}/edit">{{ _('Edit') }} →</a></div>
-      <div class="household-primary-person"><strong><bdi dir="auto">{{ family.name }}</bdi></strong>{% if family.spouse %}<span>{{ _('Spouse') }}: <bdi dir="auto">{{ family.spouse }}</bdi></span>{% endif %}</div>
+      <div class="household-primary-person"><strong><bdi dir="auto">{{ family.name }}</bdi></strong>{% if family.spouse %}<span>{{ _('Spouse') }}: <bdi dir="auto">{{ family.spouse }}</bdi> <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='spouse') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form></span>{% endif %}</div>
       <dl class="household-compact-details">
         <div><dt>{{ _('Address') }}</dt><dd><bdi dir="auto">{{ family.full_address or _('Not entered') }}</bdi></dd></div>
         <div><dt>{{ _('Phone') }}</dt><dd>{% if profile_phones %}<bdi dir="ltr">{{ profile_phones[0]|phone }}</bdi>{% else %}{{ _('Not entered') }}{% endif %}</dd></div>
@@ -106,11 +106,11 @@
     <article class="card padded household-summary-card">
       <div class="case-card-heading"><h2>{{ _('Family & community') }}</h2><a href="/families/{{ family.id }}/edit#family-community">{{ _('Edit') }} →</a></div>
       <dl class="household-compact-details community-details">
-        <div><dt>{{ _('Father') }}</dt><dd><bdi dir="auto">{{ family.father or _('Not entered') }}</bdi></dd></div>
-        <div><dt>{{ _('Father-in-law') }}</dt><dd><bdi dir="auto">{{ family.inlaws or _('Not entered') }}</bdi></dd></div>
-        <div><dt>{{ _('Mother-in-law’s maiden name') }}</dt><dd><bdi dir="auto">{{ family.inlaws_maiden_name or _('Not entered') }}</bdi></dd></div>
-        <div><dt>{{ _('Mother-in-law’s family / network') }}</dt><dd><bdi dir="auto">{{ family.inlaws_family or _('Not entered') }}</bdi></dd></div>
-        <div><dt>{{ _('Rabbi') }}</dt><dd><bdi dir="auto">{{ family.rabbi or _('Not entered') }}</bdi></dd></div>
+        <div><dt>{{ _('Father') }}</dt><dd><bdi dir="auto">{{ family.father or _('Not entered') }}</bdi>{% if family.father %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='father') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
+        <div><dt>{{ _('Father-in-law') }}</dt><dd><bdi dir="auto">{{ family.inlaws or _('Not entered') }}</bdi>{% if family.inlaws %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='inlaws') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
+        <div><dt>{{ _('Mother-in-law’s maiden name') }}</dt><dd><bdi dir="auto">{{ family.inlaws_maiden_name or _('Not entered') }}</bdi>{% if family.inlaws_maiden_name %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='inlaws_maiden_name') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
+        <div><dt>{{ _('Mother-in-law’s family / network') }}</dt><dd><bdi dir="auto">{{ family.inlaws_family or _('Not entered') }}</bdi>{% if family.inlaws_family %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='inlaws_family') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
+        <div><dt>{{ _('Rabbi') }}</dt><dd><bdi dir="auto">{{ family.rabbi or _('Not entered') }}</bdi>{% if family.rabbi %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='rabbi') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
         <div><dt>{{ _('Weekday shul') }}</dt><dd><bdi dir="auto">{{ family.weekday_shul or _('Not entered') }}</bdi></dd></div>
         <div><dt>{{ _('Shabbos shul') }}</dt><dd><bdi dir="auto">{{ family.shabbos_shul or _('Not entered') }}</bdi></dd></div>
       </dl>
