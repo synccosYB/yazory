@@ -331,3 +331,13 @@ def test_case_workspace_stylesheet_uses_current_cache_key():
     base = (root / 'templates/base.html').read_text()
     assert "v='20261006-case-workspace-i18n1'" in base
     assert "v='20261002-people-match-rtl2'" not in base
+
+
+def test_case_workspace_script_uses_current_cache_key():
+    root = Path(__file__).resolve().parents[1]
+    base = (root / 'templates/base.html').read_text()
+    script = (root / 'static/pages.js').read_text()
+    assert "v='20261006-case-workspace-tabs1'" in base
+    assert "v='20260930-imported-person-autofill'" not in base
+    assert "data-case-tab" in script
+    assert "event.preventDefault()" in script
