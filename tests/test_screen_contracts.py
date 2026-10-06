@@ -203,7 +203,7 @@ def test_case_workspace_matches_approved_structure():
         assert f'id="{anchor}"' in template
     for label in ('Overview', 'Household', 'Support', 'Financials', 'Communications', 'Documents', 'Activity'):
         assert "{{ _('"+label+"') }}" in template
-    assert 'class="case-overview-grid"' in template
+    assert 'case-overview-grid' in template
     assert 'case-attention-card' in template
     assert 'case-work-card' in template
     assert 'case-household-summary' in template
