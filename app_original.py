@@ -2516,6 +2516,20 @@ def create_app(test_config=None):
         for sync_people in app.extensions.get('askan_profile_person_sync', ()):
             sync_people(askan)
 
+    @app.post('/families/<int:family_id>/designated-askan/remove')
+    def remove_designated_family_askan(family_id):
+        require_capability(('family_admin', 'office_employee'))
+        family = accessible_family_or_404(family_id)
+        askan = family.designated_askan
+        if askan is None:
+            abort(404)
+        family.designated_askan = None
+        audit(f'Removed designated askan: {askan.name}', family.id)
+        db.session.commit()
+        flash('Designated askan removed from this case.')
+        return redirect(url_for('family_detail', family_id=family.id,
+                                _anchor='household-community'))
+
     @app.post('/families/<int:family_id>/additional-askanim')
     def add_family_askan(family_id):
         require_capability(('family_admin', 'office_employee'))
