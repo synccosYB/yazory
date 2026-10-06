@@ -341,3 +341,15 @@ def test_case_workspace_script_uses_current_cache_key():
     assert "v='20260930-imported-person-autofill'" not in base
     assert "data-case-tab" in script
     assert "event.preventDefault()" in script
+
+
+def test_applicant_communications_preserves_case_workspace_navigation():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/applicant_messages.html').read_text()
+    assert 'class="case-workspace-header case-communications-header"' in template
+    assert 'class="workspace-tabs case-tabs' in template
+    for label in ('Overview', 'Household', 'Support', 'Financials', 'Communications', 'Documents', 'Activity'):
+        assert "{{ _('"+label+"') }}" in template
+    assert 'aria-current="page"' in template
+    assert "url_for('staff_applicant_messages',family_id=family.id)" in template
+    assert "url_for('family_detail',family_id=family.id)" in template
