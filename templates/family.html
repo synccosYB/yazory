@@ -1,8 +1,8 @@
 {% extends 'base.html' %}{% from 'macros.html' import token, badge, expense_table, pencil with context %}
 {% macro localized_supporter_name(person) -%}
 {%- set names = person_name_values('supporter', person) -%}
-{%- if session.get('lang') == 'yi' and names.yiddish_name -%}{{ names.yiddish_name }}
-{%- elif session.get('lang') == 'en' and names.english_name -%}{{ names.english_name }}
+{%- if session.get('language', 'en') == 'yi' and names.yiddish_name -%}{{ names.yiddish_name }}
+{%- elif session.get('language', 'en') == 'en' and names.english_name -%}{{ names.english_name }}
 {%- else -%}{{ names.yiddish_name or names.english_name or person.name }}
 {%- endif -%}
 {%- endmacro %}{% block content %}
@@ -52,10 +52,10 @@
     <small>{{ _('Current status') }}</small>
     <div class="case-status-line">{{ badge(family.status) }}</div>
     <div class="case-kpi-grid">
-      <div><span>{{ _('Monthly need') }}</span><strong>{{ budget.shortfall|money }}</strong></div>
-      <div><span>{{ _('Support raised') }}</span><strong>{{ collected|money }}</strong></div>
-      <div><span>{{ _('Available funds') }}</span><strong>{{ available_to_give|money }}</strong></div>
-      <div><span>{{ _('Monthly pledged') }}</span><strong>{{ pledged|money }}</strong></div>
+      <div><span>{{ _('Monthly need') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.shortfall|money }}</bdi></strong></div>
+      <div><span>{{ _('Support raised') }}</span><strong><bdi class="money-value" dir="ltr">{{ collected|money }}</bdi></strong></div>
+      <div><span>{{ _('Available funds') }}</span><strong><bdi class="money-value" dir="ltr">{{ available_to_give|money }}</bdi></strong></div>
+      <div><span>{{ _('Monthly pledged') }}</span><strong><bdi class="money-value" dir="ltr">{{ pledged|money }}</bdi></strong></div>
     </div>
   </article>
   <article class="card padded case-attention-card">
@@ -79,7 +79,7 @@
   <article class="card padded case-support-summary">
     <div class="case-card-heading"><h2>{{ _('Support network') }}</h2></div>
     <strong>{{ supporter_total }} {{ _('supporters') }}</strong>
-    {% if family.designated_askan %}<p class="profile-linked-row">{{ _('Askan') }}: <a href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}"><bdi dir="auto">{{ family.designated_askan.name }}</bdi></a> <form method="post" action="{{ url_for('remove_designated_family_askan', family_id=family.id) }}" style="display:inline" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form></p>{% endif %}
+    {% if family.designated_askan %}<p class="profile-linked-row">{{ _('Askan') }}: <a href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}"><bdi dir="auto">{{ family.designated_askan.name }}</bdi></a>{% if family.designated_askan.phone %} · <bdi dir="ltr">{{ family.designated_askan.phone|phone }}</bdi>{% endif %}{% if family.designated_askan.cell_phone %} · <bdi dir="ltr">{{ family.designated_askan.cell_phone|phone }}</bdi>{% endif %}{% if family.designated_askan.email %} · <a href="mailto:{{ family.designated_askan.email }}"><bdi dir="ltr">{{ family.designated_askan.email }}</bdi></a>{% endif %} <form method="post" action="{{ url_for('remove_designated_family_askan', family_id=family.id) }}" style="display:inline" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form></p>{% endif %}
     {% if is_org_admin and family.designated_askan and (family.designated_askan.cell_phone or family.designated_askan.phone) %}<a class="button small secondary" href="{{ url_for('communications', sms_phone=family.designated_askan.cell_phone or family.designated_askan.phone, sms_name=family.designated_askan.name, family_id=family.id, _anchor='mailbox-general-sms-compose') }}">{{ _('Send SMS') }}</a>{% endif %}
     <a href="#circle-of-support" data-case-jump="support">{{ _('View support network') }} →</a>
   </article>
@@ -103,16 +103,22 @@
     </article>
 
     <article class="card padded household-summary-card">
-      <div class="case-card-heading"><h2>{{ _('Family & community') }}</h2><a href="/families/{{ family.id }}/edit#family-community">{{ _('Edit') }} →</a></div>
+      <div class="case-card-heading"><h2>{{ _('Family & community') }}</h2><a href="/families/{{ family.id }}/edit?step=0">{{ _('Edit') }} →</a></div>
       <dl class="household-compact-details community-details">
         <div><dt>{{ _('Father') }}</dt><dd><bdi dir="auto">{{ family.father or _('Not entered') }}</bdi>{% if family.father %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='father') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
         <div><dt>{{ _('Father-in-law') }}</dt><dd><bdi dir="auto">{{ family.inlaws or _('Not entered') }}</bdi>{% if family.inlaws %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='inlaws') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
         <div><dt>{{ _('Mother-in-law’s maiden name') }}</dt><dd><bdi dir="auto">{{ family.inlaws_maiden_name or _('Not entered') }}</bdi>{% if family.inlaws_maiden_name %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='inlaws_maiden_name') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
         <div><dt>{{ _('Mother-in-law’s family / network') }}</dt><dd><bdi dir="auto">{{ family.inlaws_family or _('Not entered') }}</bdi>{% if family.inlaws_family %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='inlaws_family') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
-        <div><dt>{{ _('Rabbi') }}</dt><dd><bdi dir="auto">{{ family.rabbi or _('Not entered') }}</bdi>{% if family.rabbi %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='rabbi') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
+        <div><dt>{{ _('Rabbi') }}</dt><dd><bdi dir="auto">{{ family.rabbi or _('Not entered') }}</bdi>{% if family.rabbi_phone %}<small>{{ _('Rabbi phone') }}: <bdi dir="ltr">{{ family.rabbi_phone }}</bdi></small>{% endif %}{% if family.rabbi %} <form method="post" action="{{ url_for('remove_family_household_field', family_id=family.id, field_name='rabbi') }}" class="household-remove-form" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form>{% endif %}</dd></div>
         <div><dt>{{ _('Weekday shul') }}</dt><dd><bdi dir="auto">{{ family.weekday_shul or _('Not entered') }}</bdi></dd></div>
         <div><dt>{{ _('Shabbos shul') }}</dt><dd><bdi dir="auto">{{ family.shabbos_shul or _('Not entered') }}</bdi></dd></div>
       </dl>
+      <details class="profile-linked-contacts"><summary>{{ _('Shul contacts') }}</summary>
+      <dl class="household-compact-details">
+        <div><dt>{{ _('Shul gabbais') }}</dt><dd>{% for gabbai in family_gabbai_contacts(family.id) %}<span class="profile-linked-row"><strong>{{ gabbai.name }}</strong>{% for phone in gabbai.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</span>{% else %}{{ _('Not entered') }}{% endfor %}</dd></div>
+        <div><dt>{{ _('Rabbi assistant') }}</dt><dd>{% for assistant in family_rabbi_assistant_contacts(family) %}<span class="profile-linked-row">{{ assistant.name }}{% for phone in assistant.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</span>{% else %}{{ _('Not entered') }}{% endfor %}</dd></div>
+      </dl></details>
+      <details><summary>{{ _('Additional askanim') }}</summary>{% for link in family.additional_askanim %}<p><a href="{{ url_for('askan_detail', askan_id=link.askan_id) }}">{{ link.askan.name }}</a>{% if link.askan.phone %} · <bdi dir="ltr">{{ link.askan.phone|phone }}</bdi>{% endif %}{% if link.askan.cell_phone %} · <bdi dir="ltr">{{ link.askan.cell_phone|phone }}</bdi>{% endif %}{% if link.askan.email %} · <a href="mailto:{{ link.askan.email }}"><bdi dir="ltr">{{ link.askan.email }}</bdi></a>{% endif %}</p>{% else %}<p>{{ _('None yet') }}</p>{% endfor %}<details><summary class="button small secondary">+ {{ _('Add another askan') }}</summary><form method="post" action="{{ url_for('add_family_askan', family_id=family.id) }}">{{ token(csrf) }}<input type="hidden" name="name" maxlength="160">{{ bilingual_name_fields('askan', none, 'name') }}<label>{{ _('Email') }}<input name="email" type="email" maxlength="254"></label><label>{{ _('Phone') }}<input name="phone" type="tel" maxlength="80"></label><label>{{ _('Cell phone') }}<input name="cell_phone" type="tel" maxlength="80"></label><button>{{ _('Add askan') }}</button></form></details></details>
     </article>
 
     <article class="card padded household-summary-card household-circumstances-card">
@@ -124,7 +130,7 @@
   <section class="card padded household-children-card">
     <div class="section-heading household-children-heading">
       <div><h2>{{ _('Children') }}</h2><p>{{ _('Household children and married children.') }}</p></div>
-      <a class="button small secondary no-print" href="/families/{{ family.id }}/edit#children">+ {{ _('Add child') }}</a>
+      <a class="button small secondary no-print" href="#add-child-record">+ {{ _('Add child') }}</a>
     </div>
     <div class="table-wrap household-children-table-wrap">
       <table class="data-table household-children-table">
@@ -137,7 +143,7 @@
             <td><bdi dir="auto">{{ child.grade or '—' }}</bdi></td>
             <td><bdi dir="auto">{{ child.school or '—' }}</bdi></td>
             <td>{% if child.married %}{{ _('Married') }}{% else %}{{ _('At home') }}{% endif %}</td>
-            <td class="no-print"><a class="button small secondary" href="/families/{{ family.id }}/edit#children">{{ _('View') }} →</a></td>
+            <td class="no-print"><a class="button small secondary" href="#child-record-{{ child.id }}">{{ _('View') }} →</a></td>
           </tr>
         {% else %}
           <tr><td colspan="6" class="empty-state">{{ _('No children entered yet.') }}</td></tr>
@@ -146,6 +152,7 @@
       </table>
     </div>
   </section>
+  <details class="household-child-editor"><summary>{{ _('Edit') }} · {{ _('Children') }}</summary>{% include '_children.html' %}</details>
 </section>
 <section class="case-workspace-panel" data-case-panel="support" hidden>
 <section class="card padded" id="circle-of-support">
@@ -158,7 +165,7 @@
     <td>{% if c.parent_supporter %}{% if c.parent_connection == 'Son' %}{{ _('Son of') }}{% elif c.parent_connection == 'Son-in-law' %}{{ _('Son-in-law of') }}{% else %}{{ _('Son or son-in-law of') }}{% endif %} {{ c.parent_supporter.name }}, {{ _(c.parent_supporter.relationship) }} {{ _('of the applicant') }}{% else %}{{ _(c.relationship) }}{% endif %}</td>
     <td class="supporter-phone"><bdi dir="ltr">{{ c.home_phone|phone if c.home_phone else '—' }}</bdi></td>
     <td class="supporter-phone"><bdi dir="ltr">{{ c.cell_phone|phone if c.cell_phone else '—' }}</bdi></td>
-    <td class="supporter-pledge"><bdi dir="ltr">{{ c.monthly_cents|money }}</bdi> · {{ _(c.pledge_frequency) }}<small>{{ _(c.status) }}</small>{% if c.status == 'Declined' and c.decline_reason %}<small class="preserve">{{ c.decline_reason }}</small>{% endif %}</td>
+    <td class="supporter-pledge"><bdi dir="ltr"><bdi class="money-value" dir="ltr">{{ c.monthly_cents|money }}</bdi></bdi> · {{ _(c.pledge_frequency) }}<small>{{ _(c.status) }}</small>{% if c.status == 'Declined' and c.decline_reason %}<small class="preserve">{{ c.decline_reason }}</small>{% endif %}</td>
     <td class="supporter-actions"><div class="supporter-action-buttons">
       <details class="supporter-workflow-popup"><summary class="button small secondary">{{ _('Send text') }} / {{ _('Task') }}</summary>
         <form method="post" action="{{ url_for('send_supporter_message', contact_id=c.id, channel='sms') }}">{{ token(csrf) }}<h3>{{ _('Send text') }}</h3>{% set mobile=supporter_mobile(c) %}{% if mobile %}<p>{{ _('Mobile number') }}: <bdi dir="ltr">{{ mobile }}</bdi></p>{% else %}<label>{{ _('Mobile number') }}<input name="recipient_phone" type="tel" dir="ltr" required></label>{% endif %}<label>{{ _('Message') }}<textarea name="body" maxlength="1600" rows="3" required>{{ message_greeting(c) }}
@@ -190,24 +197,25 @@
   <section id="financial-overview" class="financial-panel financial-overview is-active" data-financial-panel="overview">
     {% include '_case_sponsor_panel.html' %}
     <div class="financial-kpi-grid">
-      <article class="card padded"><span>{{ _('Monthly income') }}</span><strong>{{ budget.income|money }}</strong></article>
-      <article class="card padded"><span>{{ _('Monthly expenses') }}</span><strong>{{ budget.bills|money }}</strong></article>
-      <article class="card padded"><span>{{ _('Monthly need') }}</span><strong>{{ budget.shortfall|money }}</strong></article>
-      <article class="card padded"><span>{{ _('Monthly pledged') }}</span><strong>{{ pledged|money }}</strong></article>
-      <article class="card padded"><span>{{ _('Support raised') }}</span><strong>{{ collected|money }}</strong></article>
-      <article class="card padded"><span>{{ _('Available funds') }}</span><strong>{{ available_to_give|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Monthly income') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.income|money }}</bdi></strong></article>
+      <article class="card padded"><span>{{ _('Monthly expenses') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.bills|money }}</bdi></strong></article>
+      <article class="card padded"><span>{{ _('Monthly need') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.shortfall|money }}</bdi></strong></article>
+      <article class="card padded"><span>{{ _('Monthly pledged') }}</span><strong><bdi class="money-value" dir="ltr">{{ pledged|money }}</bdi></strong></article>
+      <article class="card padded"><span>{{ _('Support raised') }}</span><strong><bdi class="money-value" dir="ltr">{{ collected|money }}</bdi></strong></article>
+      <article class="card padded"><span>{{ _('Available funds') }}</span><strong><bdi class="money-value" dir="ltr">{{ available_to_give|money }}</bdi></strong></article>
     </div>
     <div class="financial-overview-lower">
       <article class="card padded">
         <div class="case-card-heading"><h2>{{ _('Donations') }}</h2></div>
-        <div class="financial-summary-row"><span>{{ _('Gross donations received') }}</span><strong>{{ gross_collected|money }}</strong></div>
-        <div class="financial-summary-row"><span>{{ _('ABCharity fees / deductions') }}</span><strong>{{ collection_fees|money }}</strong></div>
+        <div class="financial-summary-row"><span>{{ _('Gross donations received') }}</span><strong><bdi class="money-value" dir="ltr">{{ gross_collected|money }}</bdi></strong></div>
+        <div class="financial-summary-row"><span>{{ _('ABCharity fees / deductions') }}</span><strong><bdi class="money-value" dir="ltr">{{ collection_fees|money }}</bdi></strong></div>
+        {% if ledger_adjustments_and_holds %}<div class="financial-summary-row"><span>{{ _('Other ledger adjustments and holds') }}</span><strong><bdi class="money-value" dir="ltr">{{ ledger_adjustments_and_holds|money }}</bdi></strong></div>{% endif %}
         <a href="{{ url_for('charity_donations', family_id=family.id) }}">{{ _('Open donations') }} →</a>
       </article>
       <article class="card padded">
         <div class="case-card-heading"><h2>{{ _('Expenses') }}</h2></div>
         <div class="financial-summary-row"><span>{{ _('Pending expense requests') }}</span><strong>{{ family.expenses|selectattr('status', 'equalto', 'Requested')|list|length }}</strong></div>
-        <div class="financial-summary-row"><span>{{ _('Monthly household bills') }}</span><strong>{{ budget.bills|money }}</strong></div>
+        <div class="financial-summary-row"><span>{{ _('Monthly household bills') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.bills|money }}</bdi></strong></div>
         <a href="#financial-expenses" data-financial-jump="expenses">{{ _('Open expenses') }} →</a>
       </article>
     </div>
@@ -215,15 +223,15 @@
 
   <section id="financial-pledges" class="financial-panel" data-financial-panel="pledges" hidden>
     <div class="financial-kpi-grid financial-kpi-grid-compact">
-      <article class="card padded"><span>{{ _('Monthly pledged') }}</span><strong>{{ pledged|money }}</strong></article>
-      <article class="card padded"><span>{{ _('Support raised') }}</span><strong>{{ collected|money }}</strong></article>
-      <article class="card padded"><span>{{ _('Available funds') }}</span><strong>{{ available_to_give|money }}</strong></article>
+      <article class="card padded"><span>{{ _('Monthly pledged') }}</span><strong><bdi class="money-value" dir="ltr">{{ pledged|money }}</bdi></strong></article>
+      <article class="card padded"><span>{{ _('Support raised') }}</span><strong><bdi class="money-value" dir="ltr">{{ collected|money }}</bdi></strong></article>
+      <article class="card padded"><span>{{ _('Available funds') }}</span><strong><bdi class="money-value" dir="ltr">{{ available_to_give|money }}</bdi></strong></article>
     </div>
     <article class="card padded"><p>{{ _('Pledges are managed from this case’s support network so supporter commitments keep one source of truth.') }}</p><a href="#circle-of-support" data-case-jump="support">{{ _('Open support network') }} →</a></article>
   </section>
 
   <section id="financial-expenses" class="financial-panel expense-workspace" data-financial-panel="expenses" hidden>
-    {% if family.intake_record %}{% set b=family.intake_record.data %}
+    {% set b=family.intake_record.data if family.intake_record else {} %}
     <nav class="expense-tabs no-print" aria-label="{{ _('Expense sections') }}" data-expense-tabs>
       <a class="selected" href="#expense-summary" data-expense-tab="summary">{{ _('Summary') }}</a>
       <a href="#expense-household" data-expense-tab="household">{{ _('Household Budget') }}</a>
@@ -233,10 +241,10 @@
 
     <section id="expense-summary" class="expense-panel expense-summary is-active" data-expense-panel="summary">
       <div class="financial-kpi-grid">
-        <article class="card padded"><span>{{ _('Monthly household bills') }}</span><strong>{{ budget.bills|money }}</strong></article>
-        <article class="card padded"><span>{{ _('Child age-based estimates') }}</span><strong>{{ budget.child_estimates|money }}</strong></article>
-        <article class="card padded"><span>{{ _('Actual child amounts entered') }}</span><strong>{{ budget.actual_children|money }}</strong></article>
-        <article class="card padded"><span>{{ _('Monthly need') }}</span><strong>{{ budget.shortfall|money }}</strong></article>
+        <article class="card padded"><span>{{ _('Monthly household bills') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.bills|money }}</bdi></strong></article>
+        <article class="card padded"><span>{{ _('Child age-based estimates') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.child_estimates|money }}</bdi></strong></article>
+        <article class="card padded"><span>{{ _('Actual child amounts entered') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.actual_children|money }}</bdi></strong></article>
+        <article class="card padded"><span>{{ _('Monthly need') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.shortfall|money }}</bdi></strong></article>
         <article class="card padded"><span>{{ _('Bills & Providers') }}</span><strong>{{ b.get('accounts', [])|length }}</strong></article>
         <article class="card padded"><span>{{ _('Pending expense requests') }}</span><strong>{{ family.expenses|selectattr('status', 'equalto', 'Requested')|list|length }}</strong></article>
       </div>
@@ -253,14 +261,14 @@
         <dl class="details">
           <div><dt>{{ _('Number of children') }}</dt><dd>{{ b.get('children_count') if b.get('children_count') is not none else _('Not entered') }}</dd></div>
           {% for key,label in [('rent','Monthly rent or mortgage ($)'),('food','Monthly food costs ($)'),('his_income','His monthly income ($)'),('her_income','Her monthly income ($)'),('other_income','Other monthly income ($)'),('foodstamps_amount','Monthly food stamps ($)')] %}<div><dt>{{ _(label) }}</dt><dd>{{ b[key]|money if b.get(key) is not none else _('Not entered') }}</dd></div>{% endfor %}
-          <div><dt>{{ _('Total monthly income') }}</dt><dd>{{ budget.income|money }}</dd></div>
-          <div><dt>{{ _('Monthly household bills') }}</dt><dd>{{ budget.bills|money }}</dd></div>
-          <div><dt>{{ _('Total shortfall') }}</dt><dd><strong>{{ budget.shortfall|money }}</strong></dd></div>
+          <div><dt>{{ _('Total monthly income') }}</dt><dd><bdi class="money-value" dir="ltr">{{ budget.income|money }}</bdi></dd></div>
+          <div><dt>{{ _('Monthly household bills') }}</dt><dd><bdi class="money-value" dir="ltr">{{ budget.bills|money }}</bdi></dd></div>
+          <div><dt>{{ _('Total shortfall') }}</dt><dd><strong><bdi class="money-value" dir="ltr">{{ budget.shortfall|money }}</bdi></strong></dd></div>
         </dl>
       </article>
     </section>
 
-    <section id="expense-providers" class="expense-panel" data-expense-panel="providers" hidden>
+    <section id="expense-providers" class="expense-panel" data-expense-panel="providers" hidden><span id="provider-expenses"></span>
       <article class="card padded expense-record-card">
         <div class="section-heading"><div><h2>{{ _('Bills & Providers') }}</h2><p>{{ _('Bills and recurring providers for this family.') }}</p></div><button class="secondary" type="button" data-dialog-open="provider-expense-dialog">{{ _('+ Add bill / provider') }}</button></div>
         <div class="table-wrap expense-table-scroll"><table><thead><tr><th>{{ _('Account type') }}</th><th>{{ _('Organization / provider name') }}</th><th>{{ _('For whom') }}</th><th>{{ _('Account number') }}</th><th>{{ _('Contact phone') }}</th><th>{{ _('Monthly bill ($)') }}</th></tr></thead><tbody>{% for account in b.get('accounts', []) %}<tr><td>{{ _({'utility':'Utility company','grocery':'Grocery store','mosdos':'Mosdos / school','other':'Other'}.get(account.get('kind'), account.get('kind','Other'))) }}</td><td><strong>{{ account.get('provider') or '—' }}</strong></td><td>{{ account.get('child') or family.name }}</td><td><bdi dir="ltr">{{ account.get('account') or '—' }}</bdi></td><td><bdi dir="ltr">{{ account.get('phone') or '—' }}</bdi></td><td class="numeric">{{ account.get('monthly_bill')|money if account.get('monthly_bill') is not none else '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">{{ _('No bills or providers entered.') }}</td></tr>{% endfor %}</tbody></table></div>
@@ -278,7 +286,7 @@
             <thead><tr><th>{{ _('Family / Payee') }}</th><th>{{ _('Category') }}</th><th>{{ _('Budget month') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Status') }}</th><th>{{ _('Notes') }}</th></tr></thead>
             <tbody>
               {% for expense in family.expenses|sort(attribute='id', reverse=true) %}
-              <tr><td><strong>{{ expense.payee }}</strong></td><td>{{ _(expense.category) }}</td><td><bdi dir="ltr">{{ expense.month }}</bdi></td><td class="numeric">{{ expense.amount|money }}</td><td>{{ badge(expense.status) }}</td><td>{{ expense.note or '—' }}</td></tr>
+              <tr><td><strong>{{ expense.payee }}</strong></td><td>{{ _(expense.category) }}</td><td><bdi dir="ltr">{{ expense.month }}</bdi></td><td class="numeric"><bdi class="money-value" dir="ltr">{{ expense.amount|money }}</bdi></td><td>{{ badge(expense.status) }}</td><td>{{ expense.note or '—' }}</td></tr>
               {% else %}<tr><td colspan="6" class="empty">{{ _('No expense requests yet.') }}</td></tr>{% endfor %}
             </tbody>
           </table>
@@ -289,7 +297,7 @@
     <dialog id="provider-expense-dialog" class="workspace-dialog"><form method="post" action="{{ url_for('add_provider_account', family_id=family.id) }}">{{ token(csrf) }}<div class="dialog-heading"><h2>{{ _('Add bill / provider') }}</h2><button type="button" class="icon-button" data-dialog-close aria-label="{{ _('Close') }}">×</button></div><div class="form-grid"><label>{{ _('Account type') }}<select name="kind" required><option value="">{{ _('Choose…') }}</option>{% for code,label in [('utility','Utility company'),('grocery','Grocery store'),('mosdos','Mosdos / school'),('other','Other')] %}<option value="{{ code }}">{{ _(label) }}</option>{% endfor %}</select></label><label>{{ _('Organization / provider name') }}<input name="provider" required maxlength="300"></label><label>{{ _('For whom') }}<input name="child" maxlength="300" placeholder="{{ family.name }}"></label><label>{{ _('Monthly bill ($)') }}<input name="monthly_bill" type="number" min="0" max="1000000" step="0.01" required></label><label>{{ _('Account number') }}<input name="account" maxlength="300" dir="ltr"></label><label>{{ _('Contact phone') }}<input name="phone" maxlength="300" dir="ltr"></label><label>{{ _('Count this bill') }}<select name="budget_treatment"><option value="">{{ _('Choose…') }}</option>{% for code,label in [('additional','Add to monthly expenses'),('food','Already included in food'),('rent','Already included in rent')] %}<option value="{{ code }}">{{ _(label) }}</option>{% endfor %}</select></label></div><div class="dialog-actions"><button type="button" class="secondary" data-dialog-close>{{ _('Cancel') }}</button><button>{{ _('Add bill / provider') }}</button></div></form></dialog>
 
     {% if family.status not in ['Closed','Declined'] %}<dialog id="expense-request-dialog" class="workspace-dialog"><form method="post" action="/families/{{ family.id }}/expenses">{{ token(csrf) }}<div class="dialog-heading"><h2>{{ _('Request expense') }}</h2><button type="button" class="icon-button" data-dialog-close aria-label="{{ _('Close') }}">×</button></div><div class="form-grid"><label>{{ _("Category") }}<select name="category">{% for s in categories %}<option value="{{ s }}">{{ _(s) }}</option>{% endfor %}</select></label><label>{{ _("Payee *") }}<input name="payee" required maxlength="160"></label><label>{{ _("Amount ($) *") }}<input type="number" name="amount" min="0.01" max="1000000" step="0.01" required></label><label>{{ _("Budget month *") }}<input type="month" name="month" value="{{ current_month }}" required></label></div><label>{{ _("Notes") }}<textarea name="note" maxlength="5000" rows="3"></textarea></label><div class="dialog-actions"><button type="button" class="secondary" data-dialog-close>{{ _('Cancel') }}</button><button>{{ _("Submit request") }}</button></div></form></dialog>{% endif %}
-    {% else %}<article class="card padded"><p>{{ _('No household budget has been entered yet.') }}</p><a class="button secondary" href="{{ url_for('edit_family',family_id=family.id) }}">{{ _('Add household budget') }}</a></article>{% endif %}
+    {% if not family.intake_record %}<article class="card padded"><p>{{ _('No household budget has been entered yet.') }}</p><a class="button secondary" href="{{ url_for('edit_family',family_id=family.id) }}">{{ _('Add household budget') }}</a></article>{% endif %}
   </section>
 
   <section id="financial-payouts" class="financial-panel" data-financial-panel="payouts" hidden>

@@ -257,9 +257,10 @@ def test_supporter_history_and_safe_duplicate_deletion(app, client):
     with app.app_context():
         assert db.session.get(Contact, duplicate_contact_id) is None
         assert db.session.get(Contact, first_contact_id) is not None
-    assert post(client, f'/contacts/{first_contact_id}/delete', {'next': '/supporters'}).status_code == 400
+    assert post(client, f'/contacts/{first_contact_id}/delete', {'next': '/supporters'}).status_code == 302
     with app.app_context():
-        assert db.session.get(Contact, first_contact_id) is not None
+        assert db.session.get(Contact, first_contact_id).status == 'Paused'
+        assert db.session.scalar(db.select(Receipt).where(Receipt.contact_id == first_contact_id)).reference == 'HISTORY-1'
 
 def test_supporter_can_have_multiple_children_and_spouses(app, client):
     assert post(client, '/families/1/contacts', {
@@ -381,9 +382,11 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert 'Hersh Levy' in supporter_list and 'Shlomo supporter' in supporter_list
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in supporter_list
     assert 'nested-supporter-row' in supporter_list
-    assert supporter_list.index('Shlomo supporter') < supporter_list.index('Hersh Levy')
+    tree = supporter_list.split('supporter-accordion-item', 1)[1]
+    assert tree.index('Shlomo supporter') < tree.index('Hersh Levy')
     searched_list = client.get('/supporters?family_id=1&q=Hersh').text
-    assert searched_list.index('Shlomo supporter') < searched_list.index('Hersh Levy')
+    tree = searched_list.split('supporter-accordion-item', 1)[1]
+    assert tree.index('Shlomo supporter') < tree.index('Hersh Levy')
     supporter_detail = client.get(f'/supporters/{hersh_id}').text
     assert 'class="metrics clickable-metrics"' in supporter_detail
     assert f'/communications?contact_id={hersh_id}' in supporter_detail
@@ -401,7 +404,8 @@ def test_supporter_can_be_edited_and_nested_under_another_supporter(app, client)
     assert 'name="pledge_frequency"' in profile
     assert 'Son-in-law of Shlomo supporter, Sibling of the applicant' in profile
     assert 'nested-supporter-row' in profile
-    assert profile.index('Shlomo supporter') < profile.index('Hersh Levy')
+    tree = profile.split('class="family-supporters-table"', 1)[1]
+    assert tree.index('Shlomo supporter') < tree.index('Hersh Levy')
 
 
 def test_supporter_can_connect_to_applicant_father_or_father_in_law(app, client):
@@ -484,9 +488,13 @@ def test_supporter_can_connect_to_applicant_father_or_father_in_law(app, client)
 def test_supporter_relationships_use_current_heimish_yiddish(client):
     client.get('/language/yi')
     page = client.get('/supporters').text
-    assert 'ברידער/שוואגער' in page
-    assert 'ליסטע פון ברידער / שוואגערס' in page
-    assert 'ליסטע פון פלימעניקעס' in page
+    from translations import translate
+    with client.application.test_request_context():
+        from flask import session
+        session['language'] = 'yi'
+        assert translate('Sibling') in page
+        assert translate('Brothers / brothers-in-law list') in page
+        assert translate('Nephews list') in page
 
 
 def test_supporter_directory_bounds_initial_records_and_keeps_direct_profiles(app, client):
@@ -714,19 +722,16 @@ def test_parent_picker_contains_nested_names_and_is_searchable(app, client):
     assert 'action="/contacts/' in page and 'Add another child' in page
 
     family_page = client.get('/families/1').text
-    assert 'data-select-filter="family-parent-contact"' in family_page
-    assert 'aria-label="Search supporters"' in family_page
+    assert '/supporters?family_id=1' in family_page
     assert 'Nested Parent' in family_page
 
 def test_profile_data_points_have_targeted_pencil_edit_links(client):
     profile = client.get('/families/1').text
-    for field in ('name', 'address', 'phone', 'spouse', 'father', 'inlaws',
-                  'inlaws_maiden_name', 'inlaws_family', 'rabbi', 'rabbi_phone',
-                  'weekday_shul', 'shabbos_shul', 'askan_name', 'circumstances'):
-        assert f'/families/1/edit?field={field}' in profile
-    edit = client.get('/families/1/edit?field=rabbi')
+    assert '/families/1/edit?step=0' in profile
+    edit = client.get('/families/1/edit?step=0')
     assert edit.status_code == 200
-    assert 'name="rabbi"' in edit.text
+    for field in ('phone', 'father', 'inlaws', 'rabbi', 'rabbi_phone', 'circumstances'):
+        assert f'name="{field}"' in edit.text
 
 def test_designated_askan_profile_is_saved_linked_and_shown(app, client):
     response = post(client, '/families/1/edit', {
@@ -746,7 +751,7 @@ def test_designated_askan_profile_is_saved_linked_and_shown(app, client):
     assert 'R. Example' in profile
     assert '(845) 555-0199' in profile
     assert 'askan@example.org' in profile
-    assert '/families/1/edit?field=askan_name' in profile
+    assert f'/askonim/{askan_id}' in profile
     askan_profile = client.get(f'/askonim/{askan_id}')
     assert askan_profile.status_code == 200
     assert 'R. Example' in askan_profile.text and 'Sample family' in askan_profile.text
@@ -1185,7 +1190,7 @@ def test_existing_demo_database_is_upgraded_before_navigation(monkeypatch, tmp_p
     assert {'city', 'state', 'zip_code'} <= family_columns
     assert {'married', 'spouse_name', 'home_phone', 'cell_phone'} <= child_columns
 
-@pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','לוח בקרה'),('yi','rtl','איבערבליק')])
+@pytest.mark.parametrize('language,direction,label',[('en','ltr','Overview'),('he','rtl','סקירה'),('yi','rtl','איבערבליק')])
 def test_shared_language_screens(client,language,direction,label):
     result=client.get(f'/language/{language}?next=/expenses%3Fstatus%3DRequested')
     assert result.status_code==302

@@ -167,12 +167,20 @@ def expire_changed_values(session, flush_context, instances):
             continue
         if fields:
             changed.setdefault(owner, set()).update(fields)
-    # One batched UPDATE for the transaction, never a query per field.
+    # Group by field and bound each batch. A large import can change thousands
+    # of people; one OR per person exceeds SQLite's expression depth and can
+    # produce an unnecessarily large statement on PostgreSQL too.
     if changed:
-        conditions = [(PersonVerification.person_id == owner) & PersonVerification.field.in_(fields)
-                      for owner, fields in changed.items()]
-        session.execute(db.update(PersonVerification).where(
-            db.or_(*conditions), PersonVerification.expired.is_(False)).values(expired=True))
+        owners_by_field = {}
+        for owner, fields in changed.items():
+            for field in fields:
+                owners_by_field.setdefault(field, []).append(owner)
+        for field, owners in owners_by_field.items():
+            for start in range(0, len(owners), 250):
+                session.execute(db.update(PersonVerification).where(
+                    PersonVerification.person_id.in_(owners[start:start + 250]),
+                    PersonVerification.field == field,
+                    PersonVerification.expired.is_(False)).values(expired=True))
 
 
 if not event.contains(Session, 'before_flush', expire_changed_values):
@@ -180,6 +188,15 @@ if not event.contains(Session, 'before_flush', expire_changed_values):
 
 
 def install(app, access):
+    def save_identity(person, before):
+        save = app.extensions.get('supporter_identity', {}).get('save_verified')
+        if save:
+            try:
+                save(person, before)
+            except ValueError as exc:
+                db.session.rollback()
+                return jsonify(error=core.translate(str(exc))), 409
+
     @app.get('/people/<int:person_id>/verification')
     def get_person_verification(person_id):
         access()
@@ -232,6 +249,9 @@ def install(app, access):
                     if field in changes and normalize(before[field]) == normalize(before['phone']):
                         person.phone = getattr(person, field)
                         break
+            failure = save_identity(person, before)
+            if failure:
+                return failure
             db.session.flush()
             current = values(person)
             if not any(current['name']):
@@ -282,7 +302,11 @@ def install(app, access):
         digest = fingerprint(current[field])
         if request.form.get('fingerprint') != digest:
             abort(409)
+        before = current
         update_value(person, field, request.form)
+        failure = save_identity(person, before)
+        if failure:
+            return failure
         db.session.flush()
         current = values(person)
         digest = fingerprint(current[field])

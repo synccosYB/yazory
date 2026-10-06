@@ -263,7 +263,9 @@ def test_phone_match_accepts_different_name_and_preserves_existing_name(app):
         record = db.session.scalar(db.select(PersonBookRecord))
         person = db.session.get(SupporterPerson, record.person_id)
         assert person.name == 'Existing Name'
-        assert person.home_address == '12 Main St.'
+        # A phone match preserves the established identity; imported address
+        # changes require review rather than silently overwriting the record.
+        assert person.home_address == ''
 
 
 def test_two_book_sources_share_new_person_and_preserve_first_address(app):

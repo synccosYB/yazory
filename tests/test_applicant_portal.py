@@ -78,14 +78,14 @@ def test_applicant_and_assigned_staff_share_private_thread(app):
     assert staff_page.status_code == 200
     assert 'I need help with a document.' in staff_page.text
     communications = client.get('/communications')
-    assert 'New applicant messages' in communications.text
+    assert 'Applicant message' in communications.text
     assert 'I need help with a document.' in communications.text
     assert 'Reply to applicant' in communications.text
     reply = client.post(f'/families/{family_id}/messages', data={
         'csrf': 'staff-csrf', 'body': 'Replying directly from Communications.',
         'return_to': 'communications'})
     assert reply.status_code == 302
-    assert reply.location.endswith('/communications#applicant-messages')
+    assert reply.location.endswith('/communications?folder=applicants#mailbox-inbox')
     with app.app_context():
         incoming_id = db.session.scalar(db.select(ApplicantMessage).where(
             ApplicantMessage.direction == 'applicant')).id

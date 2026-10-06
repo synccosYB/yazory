@@ -2700,7 +2700,8 @@ def create_app(test_config=None):
     def askan_case_view(family_id):
         require_capability(('askan',))
         family = accessible_family_or_404(family_id)
-        if not is_case_askan(family, current_user().email):
+        user = current_user()
+        if user is None or not is_case_askan(family, user.email):
             abort(403)
         return render_template('askan_case.html', title=family.name, family=family)
 
@@ -3614,6 +3615,7 @@ def create_app(test_config=None):
         family_ids = db.session.scalars(family_scope).all()
         receipts = db.session.scalars(select(Receipt).where(
             Receipt.family_id.in_(family_ids),
+            Receipt.contact_id.in_(contact_scope.with_only_columns(Contact.id).order_by(None)),
             Receipt.received_on >= month_start, Receipt.received_on < month_end
         ).order_by(Receipt.received_on.desc(), Receipt.id.desc()).limit(500)).all() if family_ids else []
         charity_statement = select(CharityDonation).join(
@@ -3625,7 +3627,7 @@ def create_app(test_config=None):
             charity_statement = charity_statement.join(
                 CharityDonor, CharityDonor.id == CharityDonation.donor_id).where(
                 CharityDonor.contact_id.in_(select(Contact.id).where(
-                    Contact.family_id.in_(family_ids))))
+                    Contact.id.in_(contact_scope.with_only_columns(Contact.id).order_by(None)))))
         charity_donations = db.session.scalars(charity_statement.order_by(
             CharityDonation.donation_time.desc(), CharityDonation.id.desc()).limit(500)).all() if family_ids else []
         contacts_by_id = {c.id: c for c in contacts}

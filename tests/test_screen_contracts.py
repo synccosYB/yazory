@@ -3,6 +3,27 @@ from pathlib import Path
 from app_entry import create_app
 
 
+def test_case_without_intake_still_has_expense_workflow_in_all_locales():
+    from app import Family, HouseholdIntake, db
+    app = create_app({'TESTING': True, 'DEMO': True,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SECRET_KEY': 'audit-expenses'})
+    with app.app_context():
+        family = Family(name='No budget yet', status='Active')
+        db.session.add(family)
+        db.session.commit()
+        family_id = family.id
+    client = app.test_client()
+    for locale in ('en', 'he', 'yi'):
+        client.get('/language/' + locale)
+        page = client.get(f'/families/{family_id}')
+        assert page.status_code == 200
+        for target in ('expense-requests', 'provider-expenses', 'expense-request-dialog'):
+            assert f'id="{target}"' in page.text
+        assert f'action="/families/{family_id}/expenses"' in page.text
+    with app.app_context():
+        assert db.session.get(HouseholdIntake, family_id) is None
+
+
 def test_communications_mobile_cards_have_localized_field_labels():
     app = create_app({
         'TESTING': True,
@@ -169,7 +190,8 @@ def test_children_screen_uses_compact_records_without_losing_edit_forms():
     root = Path(__file__).resolve().parents[1]
     template = (root / 'templates/_children.html').read_text()
     css = (root / 'static/style.css').read_text()
-    assert 'class="child-record" data-page-item' in template
+    assert 'class="child-record"' in template
+    assert 'data-page-item' in template
     assert 'action="/children/{{ c.id }}"' in template
     assert 'class="add-child-record"' in template
     assert 'name="home_phone"' in template
@@ -337,7 +359,7 @@ def test_case_workspace_script_uses_current_cache_key():
     root = Path(__file__).resolve().parents[1]
     base = (root / 'templates/base.html').read_text()
     script = (root / 'static/pages.js').read_text()
-    assert "v='20261006-case-workspace-tabs2'" in base
+    assert "v='20261006-audit-navigation3'" in base
     assert "v='20260930-imported-person-autofill'" not in base
     assert "data-case-tab" in script
     assert "event.preventDefault()" in script
@@ -372,11 +394,13 @@ def test_household_workspace_is_compact_and_uses_canonical_case_data():
     assert "family.weekday_shul" in household
     assert "family.shabbos_shul" in household
     assert "family.rabbi" in household
-    assert '_children.html' not in household
+    assert '<details class="household-child-editor">' in household
+    assert "{% include '_children.html' %}</details>" in household
     assert 'profile-attention' not in household
     assert 'profile-summary' not in household
     assert 'family-parent-picker' not in household
-    assert 'Additional askanim' not in household
+    assert "<details><summary>{{ _('Additional askanim') }}" in household
+    assert "url_for('add_family_askan', family_id=family.id)" in household
     assert 'Monthly summary' not in household
     assert '.household-summary-grid{display:grid;grid-template-columns:1fr 1.18fr 1fr' in css
     assert '.household-children-card{margin:0;min-height:0;max-height:360px;display:flex;flex:0 1 auto' in css
@@ -431,3 +455,18 @@ def test_supporter_delete_preserves_records_with_history():
     assert "History was kept" in route
     assert "workflow history. Pause outreach instead of deleting" not in route
     assert "if has_work_history or has_workflow_link or contact.receipts:" in route
+
+
+def test_household_child_actions_reach_existing_forms():
+    app = create_app({'TESTING': True, 'DEMO': True,
+                      'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SECRET_KEY': 'audit-children'})
+    client = app.test_client()
+    for language in ('en', 'he', 'yi'):
+        client.get(f'/language/{language}')
+        response = client.get('/families/1')
+        assert response.status_code == 200
+        assert 'href="#add-child-record"' in response.text
+        assert 'id="add-child-record"' in response.text
+        assert 'action="/families/1/children"' in response.text
+        assert 'id="children-schools"' in response.text
+        assert '/edit#children' not in response.text

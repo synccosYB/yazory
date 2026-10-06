@@ -53,7 +53,7 @@
 <details class="card supporter-list-card foldable-supporter-list">
   <summary class="supporter-list-summary"><span><strong>{{ _('Search people') }}</strong><small>{{ total_profiles }} {{ _('records') }} · {{ _('On this page') }}: {{ profiles|length }}</small></span><span>{{ _('Open tools') }}</span></summary>
   <div class="supporter-accordion supporter-directory-accordion">
-    {% for profile in profiles %}{% set names = person_name_values('profile', profile) %}{% set display_name = names.yiddish_name if session.get('lang') == 'yi' and names.yiddish_name else names.english_name if session.get('lang') == 'en' and names.english_name else names.yiddish_name or names.english_name or profile.name %}<details class="supporter-accordion-item">
+    {% for profile in profiles %}{% set names = person_name_values('profile', profile) %}{% set display_name = names.yiddish_name if session.get('language', 'en') == 'yi' and names.yiddish_name else names.english_name if session.get('language', 'en') == 'en' and names.english_name else names.yiddish_name or names.english_name or profile.name %}<details class="supporter-accordion-item">
       <summary>
         <span class="supporter-accordion-name"><strong>{{ display_name }}</strong><small>{{ _('Person ID') }}: <bdi dir="ltr">{{ person_numbers.get(profile.person_id) or person_number('profile', profile) }}</bdi> · {{ _('Cases') }}: {{ case_counts.get('phone:' + profile.normalized_phone, 0) }}</small></span>
         <span><bdi dir="ltr">{{ profile.phone|phone }}</bdi><small>{{ _('Phone') }}</small></span>

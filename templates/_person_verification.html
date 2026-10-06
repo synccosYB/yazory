@@ -2,7 +2,7 @@
 <summary>{{ _('Edit person') }}</summary><span class="field-hint">{{ _('Field verification') }}</span>
 <p class="field-hint">{{ _('Review or correct the information here, then save it together with its verification status.') }}</p>
 <form data-profile-form><fieldset disabled data-profile-fields><div class="verification-grid">
-{% for field,label in verification_fields.items() %}<div data-verification-field="{{ field }}">
+{% for field,label in verification_fields.items() %}<div data-verification-field="{{ field }}"{% if field == 'home_address' %} id="addresses"{% endif %}>
 <strong data-field-label>{{ _(label) }}</strong>
 <small data-review hidden></small><small {% if not current_staff or current_staff.role == 'organization_admin' %}hidden{% endif %} data-value dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','work_phone') else 'auto' }}"></small>
 {% if not current_staff or current_staff.role == 'organization_admin' %}<div data-editor>
@@ -29,7 +29,7 @@
 </div>{% endfor %}</div></fieldset>{% if not current_staff or current_staff.role == 'organization_admin' %}<div class="profile-save-bar"><button type="submit" data-save>{{ _('Save changes') }}</button></div>{% endif %}</form><p data-result role="status"></p><details><summary>{{ _('Verification history') }}</summary><div data-history></div></details>
 <span hidden data-status-label="verified">{{ _('Verified') }}</span><span hidden data-status-label="unverified">{{ _('Unverified') }}</span><span hidden data-status-label="incorrect">{{ _('Incorrect') }}</span>
 </details>
-<script src="{{ url_for('static',filename='person-verification.js',v='20261005-unified-save') }}" defer></script>
+<script src="{{ url_for('static',filename='person-verification.js',v='20261006-identity-validation') }}" defer></script>
 <style>
 .person-verification{margin-block:.75rem;border-block:1px solid #dce3eb}
 .person-verification>summary{padding:.7rem .15rem;font-weight:700;cursor:pointer}

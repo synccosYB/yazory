@@ -13,7 +13,7 @@ for (const viewport of viewports) {
   for (const path of pages) {
     test(`${viewport.name} ${path} has no page-level clipping`, async ({ page }, testInfo) => {
       await page.setViewportSize(viewport);
-      await page.goto(path);
+      expect((await page.goto(path)).status()).toBe(200);
       await expect(page.locator('main')).toBeVisible();
       await page.waitForLoadState('networkidle');
 
@@ -48,8 +48,8 @@ for (const locale of ['he', 'yi']) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/language/${locale}?next=/families/1`);
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-    await expect(page.locator('.profile-record-actions')).toBeVisible();
-    await expect(page.locator('.profile-summary')).toBeVisible();
+    await expect(page.locator('.case-workspace-actions')).toBeVisible();
+    await expect(page.locator('.case-status-card')).toBeVisible();
     const overflow = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
@@ -58,10 +58,73 @@ for (const locale of ['he', 'yi']) {
 }
 
 test('communications search filters rendered supporter rows', async ({ page }) => {
-  await page.goto('/communications');
-  const rows = page.locator('#communications-supporters-table tbody tr');
+  expect((await page.goto('/communications')).status()).toBe(200);
+  await page.locator('.mailbox-tools-link').click();
+  if (await page.locator('#outreach-workflow').evaluate(element => !element.open)) {
+    await page.locator('#outreach-workflow > summary').click();
+  }
+  const rows = page.locator('#communications-supporters-list .communication-accordion-item');
   const initial = await rows.count();
-  test.skip(initial < 2, 'Demo data needs at least two supporters for this interaction check.');
+  expect(initial).toBeGreaterThan(0);
   await page.getByRole('searchbox', { name: /search supporters/i }).fill('__no_match__');
-  await expect(page.locator('#communications-supporters-table tbody tr:visible')).toHaveCount(0);
+  await expect(page.locator('#communications-supporters-list .communication-accordion-item:visible')).toHaveCount(0);
+});
+
+for (const target of ['expense-requests', 'provider-expenses', 'financial-pledges']) {
+  test(`case deep link reveals every parent tab: ${target}`, async ({ page }) => {
+    await page.goto(`/families/1#${target}`);
+    await expect(page.locator(`#${target}`)).toBeAttached();
+    expect(await page.locator(`#${target}`).evaluate(element => {
+      for (let parent = element; parent; parent = parent.parentElement) {
+        if (parent.hidden) return false;
+      }
+      return true;
+    })).toBe(true);
+    await page.locator('[data-case-tab="overview"]').click();
+    await page.locator('a[href="#expense-requests"]').first().click();
+    await expect(page.locator('#expense-requests')).toBeVisible();
+  });
+}
+
+
+test('applicant reply destination opens the applicant folder', async ({ page }) => {
+  await page.goto('/communications?folder=applicants#mailbox-inbox');
+  await expect(page.locator('[data-mailbox-folder="applicants"]')).toHaveClass(/selected/);
+  await expect(page.locator('.mailbox-list-fold')).toHaveAttribute('open', '');
+});
+
+
+test('person editor saves through the browser and persists after reopening', async ({ page }) => {
+  await page.goto('/supporter-directory');
+  const destination = await page.locator('a[href^="/supporter-directory/"][href$="/edit"]').first().getAttribute('href');
+  expect(destination).toBeTruthy();
+  await page.goto(destination);
+  const panel = page.locator('[data-person-verification]');
+  const notes = panel.locator('[data-verification-field="notes"] [data-edit]');
+  await expect(notes).toBeEnabled();
+  const previous = await notes.inputValue();
+  const marker = `Browser audit ${Date.now()}`;
+  try {
+    await notes.fill(marker);
+    await panel.locator('[data-save]').click();
+    await expect(panel.locator('[data-result]')).toHaveText('Person saved');
+    await page.reload();
+    await expect(notes).toHaveValue(marker);
+  } finally {
+    await notes.fill(previous);
+    await panel.locator('[data-save]').click();
+    await expect(panel.locator('[data-result]')).toHaveText('Person saved');
+  }
+});
+
+
+test('household child actions reveal working add and edit forms', async ({ page }) => {
+  await page.goto('/families/1#add-child-record');
+  await expect(page.locator('.add-child-record form')).toBeVisible();
+  await expect(page.locator('.add-child-record form')).toHaveAttribute('action', '/families/1/children');
+  const record = page.locator('.child-record').first();
+  const target = await record.getAttribute('id');
+  expect(target).toBeTruthy();
+  await page.goto(`/families/1#${target}`);
+  await expect(record.locator('form')).toBeVisible();
 });

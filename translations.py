@@ -5,6 +5,13 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'Add task': {'he': 'הוספת משימה', 'yi': 'לייג צו אן אויפגאבע'},
+    'More': {'he': 'עוד', 'yi': 'נאך'},
+    'children': {'he': 'ילדים', 'yi': 'קינדער'},
+    'supporters': {'he': 'תומכים', 'yi': 'העלפער'},
+    'Enter a valid phone number.': {'he': 'הזינו מספר טלפון תקין.', 'yi': 'לייגט אריין א גילטיגן טעלעפאן נומער.'},
+    'Enter a valid email address.': {'he': 'הזינו כתובת אימייל תקינה.', 'yi': 'לייגט אריין א גילטיגע אימעיל אדרעס.'},
+    'That phone number already belongs to another person.': {'he': 'מספר הטלפון הזה כבר שייך לאדם אחר.', 'yi': 'דער טעלעפאן נומער געהערט שוין צו אן אנדערן מענטש.'},
     'No message text was saved.': {'he': 'לא נשמר טקסט להודעה זו.', 'yi': 'פאר דעם מעסעדזש איז נישט אפגעהיטן געווארן קיין טעקסט.'},
     'Group text': {'he': 'הודעה לקבוצה', 'yi': 'שיק א טעקסט צו א גרופע'},
     'Send group text': {'he': 'שליחת הודעה לקבוצה', 'yi': 'שיק דעם טעקסט צו דער גרופע'},
@@ -1227,3 +1234,8 @@ _EXTRA.update({
     'No children entered yet.': {'he': 'עדיין לא הוזנו ילדים.', 'yi': 'עס זענען נאך נישט אריינגעשריבן קיין קינדער.'},
 })
 CATALOG.update(_EXTRA)
+
+CATALOG.update({
+    'Choose an active staff member.': {'he': 'בחרו איש צוות פעיל.', 'yi': 'וועלט אויס אן אקטיוון שטאב מיטגליד.'},
+    'Choose a contact from the selected organization.': {'he': 'בחרו איש קשר מהארגון שנבחר.', 'yi': 'וועלט אויס א קאנטאקט פון דער אויסגעוועלטער ארגאניזאציע.'},
+})

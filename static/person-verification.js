@@ -119,7 +119,10 @@
         const body = new URLSearchParams({csrf: panel.dataset.csrf, changes: JSON.stringify(changes)});
         const response = await fetch(panel.dataset.url, {method: 'POST', body,
           headers: {'Accept': 'application/json'}});
-        if (response.status === 409) { result.textContent = panel.dataset.conflict; return; }
+        if (response.status === 409) {
+          const detail = await response.json().catch(() => ({}));
+          result.textContent = detail.error || panel.dataset.conflict; return;
+        }
         if (!response.ok) throw new Error();
         show(await response.json());
         remember();

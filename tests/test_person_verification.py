@@ -341,3 +341,39 @@ def test_batch_phone_alias_and_address_metadata_preserved(app):
     assert response.json['values']['phone'] == '8455553333'
     assert response.json['values']['work_address']['company'] == 'Business'
     assert response.json['values']['home_address'][4]['mailing_name'] == 'Recipient'
+
+
+def test_duplicate_phone_editor_save_rolls_back_all_changes(app):
+    import json
+    ident = setup_person(app)
+    with app.app_context():
+        other = person('Other', 'phone:8455559999', phone='8455559999')
+        db.session.add(SupporterProfile(person_id=other.id, name=other.name,
+            phone=other.phone, normalized_phone='8455559999'))
+        db.session.commit()
+    client = app.test_client()
+    state = client.get(f'/people/{ident}/verification').json
+    changes = {field: dict(fingerprint=state['fields'][field]['fingerprint'],
+        status='unverified', reason='', edits={'value': value})
+        for field, value in [('phone', '8455559999'), ('notes', 'Must roll back')]}
+    response = post(client, f'/people/{ident}/verification', {'changes': json.dumps(changes)})
+    assert response.status_code == 409
+    assert response.json['error'] == 'That phone number already belongs to another person.'
+    with app.app_context():
+        row = db.session.get(SupporterPerson, ident)
+        assert row.phone == state['values']['phone']
+        assert row.notes == state['values']['notes']
+        assert db.session.scalar(db.select(db.func.count(PersonVerification.id))) == 0
+
+
+def test_invalid_phone_editor_save_returns_specific_error(app):
+    import json
+    ident = setup_person(app)
+    client = app.test_client()
+    state = client.get(f'/people/{ident}/verification').json
+    response = post(client, f'/people/{ident}/verification', {'changes': json.dumps({
+        'phone': dict(fingerprint=state['fields']['phone']['fingerprint'],
+            status='unverified', reason='', edits={'value': '12'})})})
+    assert response.status_code == 409
+    assert response.json['error'] == 'Enter a valid phone number.'
+    assert client.get(f'/people/{ident}/verification').json['values']['phone'] == state['values']['phone']

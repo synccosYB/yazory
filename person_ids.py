@@ -102,6 +102,10 @@ def ensure_role(connection, kind, obj, field, profile_model):
             identity_key='phone:' + key, name=name,
             phone=getattr(obj, 'phone', '') or '' if field == 'name' else '',
             email=getattr(obj, 'email', '') or '' if field == 'name' else '')).inserted_primary_key[0]
+        # Role inserts share the person table with ORM batch imports. Keep the
+        # cached allocation mark ahead of these direct SQL inserts.
+        for cache_key in ('person_merge_last_id', 'person_merge_batch_highest'):
+            connection.info[cache_key] = max(connection.info.get(cache_key, 0), person_id)
         issue(connection, person_id, new=True)
     else:
         issue(connection, person_id)

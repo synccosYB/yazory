@@ -541,7 +541,7 @@ def install(app):
     def network_askan_detail(askan_id):
         require_network_access()
         askan = db.get_or_404(core.Askan, askan_id)
-        profile = askan.network_profile or AskanNetworkProfile(askan=askan)
+        profile = askan.network_profile or AskanNetworkProfile()
         if core.request.method == 'POST':
             if 'name_english' in core.request.form:
                 askan.name = value('name', 160, True)
@@ -554,7 +554,10 @@ def install(app):
             profile.preferred_method = value('preferred_method', 20) or 'Phone'
             profile.notes = value('notes', 10000)
             askan.phone, askan.email = value('phone', 80), email_value()
+            if 'cell_phone' in core.request.form:
+                askan.cell_phone = value('cell_phone', 80)
             sync_askan(askan)
+            profile.askan = askan
             db.session.add(profile)
             audit(f'Updated askan network profile: {askan.name}')
             db.session.commit()
@@ -583,6 +586,14 @@ def install(app):
                                     organizations=organizations, askonim=askonim, staff=staff,
                                     statuses=COORDINATION_STATUSES)
 
+    def coordination_assignee():
+        assigned_to = core.request.form.get('assigned_to', type=int)
+        if assigned_to:
+            assignee = db.get_or_404(core.StaffUser, assigned_to)
+            if assignee.status != 'active':
+                core.abort(400, core.translate('Choose an active staff member.'))
+        return assigned_to
+
     @app.post('/families/<int:family_id>/coordination')
     def add_case_coordination(family_id):
         if not can_access_family(family_id):
@@ -593,10 +604,18 @@ def install(app):
         status = value('status', 40) or 'Identified'
         if status not in COORDINATION_STATUSES:
             core.abort(400, 'Choose a valid coordination status.')
+        contact_id = core.request.form.get('contact_id', type=int)
+        if contact_id:
+            contact = db.get_or_404(PartnerContact, contact_id)
+            if contact.organization_id != org.id:
+                core.abort(400, core.translate('Choose a contact from the selected organization.'))
+        askan_id = core.request.form.get('askan_id', type=int)
+        if askan_id:
+            db.get_or_404(core.Askan, askan_id)
+        assigned_to = coordination_assignee()
         row = CaseCoordination(family=family, organization=org,
-            askan_id=core.request.form.get('askan_id', type=int),
-            contact_id=core.request.form.get('contact_id', type=int),
-            assigned_to=core.request.form.get('assigned_to', type=int),
+            askan_id=askan_id, contact_id=contact_id,
+            assigned_to=assigned_to,
             need=value('need', 300, True), responsibility=value('responsibility', 500),
             status=status, next_action=value('next_action', 500),
             follow_up_on=parsed_date('follow_up_on'), notes=value('notes', 10000))
@@ -617,7 +636,7 @@ def install(app):
         row.status, row.next_action = status, value('next_action', 500)
         row.follow_up_on, row.outcome = parsed_date('follow_up_on'), value('outcome', 10000)
         row.notes = value('notes', 10000)
-        row.assigned_to = core.request.form.get('assigned_to', type=int)
+        row.assigned_to = coordination_assignee()
         audit(f'Updated partner coordination with {row.organization.name}: {status}', row.family_id)
         db.session.commit()
         core.flash('Coordination updated.')

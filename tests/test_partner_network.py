@@ -28,6 +28,66 @@ def client(app):
     return app.test_client()
 
 
+def test_askan_edit_entry_and_cell_phone_persist_to_shared_person(app, client):
+    from person_names import resolve_name_owner
+    from app import SupporterPerson
+    with app.app_context():
+        family = db.session.scalar(db.select(Family).order_by(Family.id))
+        askan = Askan(name='Editable helper', phone='8455551111')
+        family.designated_askan = askan
+        db.session.commit()
+        askan_id = askan.id
+    for locale in ('en', 'he', 'yi'):
+        client.get('/language/' + locale)
+        page = client.get(f'/askonim/{askan_id}')
+        assert page.status_code == 200
+        assert f'/partner-network/askonim/{askan_id}' in page.text
+        assert 'name="cell_phone"' in client.get(
+            f'/partner-network/askonim/{askan_id}').text
+    for cell in ('8455552222', ''):
+        response = post(client, f'/partner-network/askonim/{askan_id}', {
+            'phone': '8455551111', 'cell_phone': cell, 'email': 'helper@example.test'})
+        assert response.status_code == 302
+        with app.app_context():
+            assert db.session.get(Askan, askan_id).cell_phone == cell
+            kind, person_id, _ = resolve_name_owner('askan', askan_id)
+            assert kind == 'person'
+            assert db.session.get(SupporterPerson, person_id).cell_phone == cell
+            if cell:
+                # A blank legacy role during a backfill must not erase the
+                # shared person's phone; the next explicit edit may clear it.
+                legacy = db.session.get(Askan, askan_id)
+                legacy.cell_phone = ''
+                db.session.commit()
+                for callback in app.extensions['askan_profile_person_sync']:
+                    callback(legacy)
+                db.session.commit()
+                assert db.session.get(SupporterPerson, person_id).cell_phone == cell
+
+
+def test_coordination_rejects_wrong_organization_contact_and_inactive_assignee(app, client):
+    from app import StaffUser
+    with app.app_context():
+        family_id = db.session.scalar(db.select(Family.id))
+        first = PartnerOrganization(name='First', category='Other')
+        second = PartnerOrganization(name='Second', category='Other')
+        db.session.add_all((first, second))
+        db.session.flush()
+        contact = PartnerContact(organization_id=second.id, name='Other contact')
+        inactive = StaffUser(email='inactive@example.test', role='office_employee',
+                             password_hash='unused', status='inactive')
+        db.session.add_all((contact, inactive))
+        db.session.commit()
+        org_id, contact_id, staff_id = first.id, contact.id, inactive.id
+    data = {'organization_id': org_id, 'need': 'Help'}
+    path = f'/families/{family_id}/coordination'
+    assert post(client, path, {**data, 'contact_id': contact_id}).status_code == 400
+    assert post(client, path, {**data, 'assigned_to': staff_id}).status_code == 400
+    with app.app_context():
+        assert not db.session.scalar(db.select(CaseCoordination.id))
+    assert post(client, path, data).status_code == 302
+
+
 def test_partner_data_center_coordination_and_communications(app, client):
     added = post(client, '/partner-network/organizations', {
         'name': 'Refuah Helpline', 'category': 'Medical',

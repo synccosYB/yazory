@@ -1,5 +1,6 @@
 """Exercise the identity form actually rendered by the person workspace."""
 from html.parser import HTMLParser
+import json
 
 import pytest
 from sqlalchemy import event
@@ -41,6 +42,57 @@ class IdentityForm(HTMLParser):
             self.in_identity = False
 
 
+
+class EditorPanel(HTMLParser):
+    def __init__(self, html):
+        super().__init__()
+        self.url = None
+        self.csrf = None
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if 'data-person-verification' in attrs:
+            self.url, self.csrf = attrs['data-url'], attrs['data-csrf']
+
+
+def editor_state(client, url):
+    page = client.get(url)
+    assert page.status_code == 200
+    panel = EditorPanel(page.text)
+    assert panel.url, 'The rendered workspace must expose the unified editor.'
+    state = client.get(panel.url)
+    assert state.status_code == 200
+    return panel, state.json
+
+
+def editor_values(client, url):
+    _, state = editor_state(client, url)
+    values = {field: value for field, value in state['values'].items()
+              if isinstance(value, str)}
+    values.update(name_english=state['values']['name'][0],
+                  name_yiddish=state['values']['name'][1])
+    return values
+
+
+def submit_editor(client, url, submitted):
+    panel, state = editor_state(client, url)
+    changes = {}
+    if 'name_english' in submitted or 'name_yiddish' in submitted:
+        english = submitted.get('name_english', state['values']['name'][0])
+        yiddish = submitted.get('name_yiddish', state['values']['name'][1])
+        if [english, yiddish] != state['values']['name']:
+            changes['name'] = {'edits': {'english_name': english, 'yiddish_name': yiddish}}
+    for field, value in submitted.items():
+        if field != 'identity' and field in state['values'] and isinstance(value, str):
+            if value != state['values'][field]:
+                changes[field] = {'edits': {'value': value}}
+    for field, item in changes.items():
+        item.update(fingerprint=state['fields'][field]['fingerprint'],
+                    status='unverified', reason='')
+    response = client.post(panel.url, data={'csrf': panel.csrf, 'changes': json.dumps(changes)})
+    return client.get(url) if response.status_code == 200 else response
+
 def seed_person(app):
     with app.app_context():
         person = SupporterPerson(identity_key='phone:8455558123', name='Old English',
@@ -76,16 +128,16 @@ def test_rendered_identity_form_persists_after_redirect_reload_and_linked_record
     url = f'/supporter-directory/{profile_id}/edit'
     page = client.get(url)
     assert page.status_code == 200
-    form = IdentityForm(page.text).values
-    assert form['name'] == 'Old English'  # the hidden legacy field is stale
+    form = editor_values(client, url)
+    assert form['name_english'] == 'Old English'
     form.update(name_english=english, name_yiddish=yiddish,
                 phone='8455558222', home_phone='8455558333', cell_phone='8455558444',
                 email='saved@example.test', work_phone='8455558555', notes='Saved notes')
-    response = client.post(url, data=form, follow_redirects=True)
+    response = submit_editor(client, url, form)
     assert response.status_code == 200
     for _ in range(2):
         reloaded = client.get(url)
-        values = IdentityForm(reloaded.text).values
+        values = editor_values(client, url)
         assert values['name_english'] == english
         assert values['name_yiddish'] == yiddish
         assert values['email'] == 'saved@example.test'
@@ -151,10 +203,10 @@ def test_save_uses_profile_canonical_id_not_another_contacts_stale_phone_key(app
         db.session.commit()
     client = app.test_client()
     url = f'/supporter-directory/{profile_id}/edit'
-    form = IdentityForm(client.get(url).text).values
+    form = editor_values(client, url)
     form.update(name_english='Correct canonical person', name_yiddish='ריכטיג',
                 email='canonical@example.test', phone='8455558888')
-    assert client.post(url, data=form, follow_redirects=True).status_code == 200
+    assert submit_editor(client, url, form).status_code == 200
     with app.app_context():
         assert db.session.get(SupporterPerson, person_id).name == 'Correct canonical person'
         assert db.session.get(SupporterPerson, unrelated_person_id).name == unrelated_name
@@ -167,9 +219,9 @@ def test_role_profile_save_does_not_treat_its_own_linked_contact_as_a_duplicate(
         db.session.commit()
     client = app.test_client()
     url = f'/supporter-directory/{profile_id}/edit'
-    form = IdentityForm(client.get(url).text).values
+    form = editor_values(client, url)
     form.update(name_english='Saved role person', name_yiddish='געראטעוועט')
-    response = client.post(url, data=form, follow_redirects=True)
+    response = submit_editor(client, url, form)
     assert response.status_code == 200, response.text
     with app.app_context():
         assert db.session.get(SupporterPerson, person_id).name == 'Saved role person'
@@ -206,11 +258,11 @@ def test_profile_save_refreshes_linked_role_snapshot_and_survives_role_resync(ap
         role_id, profile_id = role.id, profile.id
     client = app.test_client()
     url = f'/supporter-directory/{profile_id}/edit'
-    form = IdentityForm(client.get(url).text).values
+    form = editor_values(client, url)
     form.update(name_english='Updated role identity', name_yiddish='נייע אידענטיטעט',
                 phone=primary, cell_phone=cell, home_phone='8455559888',
                 email='role@example.test', work_phone='8455559999', notes='Role note')
-    assert client.post(url, data=form, follow_redirects=True).status_code == 200
+    assert submit_editor(client, url, form).status_code == 200
     with app.app_context():
         model = dict(family=Family, askan=Askan, child=Child)[kind]
         role = db.session.get(model, role_id)
@@ -238,7 +290,7 @@ def test_profile_save_refreshes_linked_role_snapshot_and_survives_role_resync(ap
             PersonNames.owner_kind == 'person', PersonNames.owner_id == person_id))
         assert (names.english_name, names.yiddish_name) == (
             'Updated role identity', 'נייע אידענטיטעט')
-    assert IdentityForm(client.get(url).text).values['name_english'] == 'Updated role identity'
+    assert editor_values(client, url)['name_english'] == 'Updated role identity'
 
 
 def test_legacy_target_get_is_read_only_and_save_can_clear_optional_fields(app):
@@ -292,13 +344,31 @@ def test_unlinked_profile_form_uses_existing_canonical_bilingual_names(app):
         profile_id, person_id = profile.id, person.id
     client = app.test_client()
     url = f'/supporter-directory/{profile_id}/edit'
-    form = IdentityForm(client.get(url).text).values
+    form = editor_values(client, url)
     assert (form['name_english'], form['name_yiddish']) == ('Current English', 'איצטיגער נאמען')
     with app.app_context():
         assert db.session.get(SupporterProfile, profile_id).person_id is None
     form['email'] = 'email-only@example.test'
-    assert client.post(url, data=form, follow_redirects=True).status_code == 200
+    assert submit_editor(client, url, form).status_code == 200
     with app.app_context():
         assert db.session.get(SupporterProfile, profile_id).person_id == person_id
         assert db.session.get(SupporterPerson, person_id).name == 'Current English'
-    assert IdentityForm(client.get(url).text).values['name_yiddish'] == 'איצטיגער נאמען'
+    assert editor_values(client, url)['name_yiddish'] == 'איצטיגער נאמען'
+
+@pytest.mark.parametrize('language,expected', [('en', 'English Directory Name'), ('yi', 'אידישע נאמען')])
+def test_directory_uses_selected_language_for_bilingual_names(app, language, expected):
+    with app.app_context():
+        row = SupporterPerson(identity_key='phone:8455558199', name='English Directory Name',
+                              phone='8455558199')
+        db.session.add(row)
+        db.session.flush()
+        db.session.add(SupporterProfile(person_id=row.id, name=row.name, phone=row.phone,
+                                       normalized_phone='8455558199'))
+        from person_names import save_names
+        save_names('person', row.id, 'English Directory Name', 'אידישע נאמען', legacy=row.name)
+        db.session.commit()
+    client = app.test_client()
+    client.get(f'/language/{language}')
+    response = client.get('/supporter-directory')
+    assert response.status_code == 200
+    assert f'<strong>{expected}</strong>' in response.text

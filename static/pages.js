@@ -124,7 +124,7 @@ document.querySelectorAll('[data-list-search]').forEach(search=>{const list=docu
 const communicationMetricData=document.getElementById('communication-callbacks'),communicationTable=document.getElementById('communications-supporters-list'),communicationSearch=document.querySelector('[data-accordion-search="communications-supporters-list"]');
 const mailboxSearch=document.querySelector('[data-mailbox-search]'),mailboxList=document.querySelector('[data-mailbox-list]'),mailboxListFold=mailboxList?.closest('.mailbox-list-fold');if(mailboxSearch&&mailboxList){mailboxSearch.addEventListener('input',()=>{if(mailboxSearch.value)mailboxListFold.open=true;const query=mailboxSearch.value.trim().toLowerCase();for(const message of mailboxList.querySelectorAll('.mailbox-message'))message.hidden=query&&!message.textContent.toLowerCase().includes(query);});}const composeButton=document.querySelector('[data-mailbox-compose]'),composePanel=document.querySelector('[data-mailbox-compose-panel]'),composeClose=document.querySelector('[data-mailbox-compose-close]');if(composeButton&&composePanel){composeButton.addEventListener('click',()=>{composePanel.hidden=false;composePanel.querySelector('select')?.focus();});composeClose?.addEventListener('click',()=>{composePanel.hidden=true;});}
 const applicantChannels=document.querySelector('[data-mailbox-applicant-channels]');if(applicantChannels){const emailForm=composePanel.querySelector('.mailbox-external-email'),smsForm=composePanel.querySelector('.mailbox-general-sms');const showChannel=channel=>{emailForm.hidden=channel!=='email';smsForm.hidden=channel!=='sms';for(const button of applicantChannels.querySelectorAll('[data-applicant-channel]')){const selected=button.dataset.applicantChannel===channel;button.setAttribute('aria-pressed',String(selected));button.classList.toggle('secondary',!selected);}};applicantChannels.addEventListener('click',event=>{const button=event.target.closest('[data-applicant-channel]');if(button)showChannel(button.dataset.applicantChannel);});showChannel('sms');}
-const mailboxFolders=[...document.querySelectorAll('[data-mailbox-folder]')];if(mailboxFolders.length&&mailboxList){const showFolder=folder=>{mailboxListFold.open=true;mailboxFolders.forEach(link=>link.classList.toggle('selected',link.dataset.mailboxFolder===folder));mailboxSearch.value='';for(const message of mailboxList.querySelectorAll('.mailbox-message')){const category=message.dataset.mailboxCategory||message.id.replace('mailbox-','');message.hidden=folder==='inbox'?category==='sent':category!==folder;}mailboxList.closest('.mailbox-main')?.scrollIntoView({behavior:'smooth',block:'start'});};mailboxFolders.forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const folder=link.dataset.mailboxFolder;showFolder(folder);if(folder==='general-sms'&&composePanel){composePanel.hidden=false;requestAnimationFrame(()=>document.getElementById('mailbox-general-sms-compose')?.scrollIntoView({behavior:'smooth',block:'center'}));document.querySelector('#mailbox-general-sms-compose select')?.focus();}}));if(location.hash==='#mailbox-sent')showFolder('sent');}
+const mailboxFolders=[...document.querySelectorAll('[data-mailbox-folder]')];if(mailboxFolders.length&&mailboxList){const showFolder=folder=>{mailboxListFold.open=true;mailboxFolders.forEach(link=>link.classList.toggle('selected',link.dataset.mailboxFolder===folder));mailboxSearch.value='';for(const message of mailboxList.querySelectorAll('.mailbox-message')){const category=message.dataset.mailboxCategory||message.id.replace('mailbox-','');message.hidden=folder==='inbox'?category==='sent':category!==folder;}mailboxList.closest('.mailbox-main')?.scrollIntoView({behavior:'smooth',block:'start'});};mailboxFolders.forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const folder=link.dataset.mailboxFolder;showFolder(folder);if(folder==='general-sms'&&composePanel){composePanel.hidden=false;requestAnimationFrame(()=>document.getElementById('mailbox-general-sms-compose')?.scrollIntoView({behavior:'smooth',block:'center'}));document.querySelector('#mailbox-general-sms-compose select')?.focus();}}));const initialFolder=new URLSearchParams(location.search).get('folder');if(mailboxFolders.some(link=>link.dataset.mailboxFolder===initialFolder))showFolder(initialFolder);else if(location.hash==='#mailbox-sent')showFolder('sent');}
 mailboxListFold?.querySelector(':scope > summary')?.addEventListener('click',event=>{event.preventDefault();mailboxListFold.open=true;mailboxFolders.forEach(link=>link.classList.remove('selected'));mailboxSearch.value='';mailboxList.querySelectorAll('.mailbox-message').forEach(message=>message.hidden=false);});
 const richTextareas=document.querySelectorAll('.mailbox textarea[name="body"],#email-draft textarea[name="body"]');richTextareas.forEach(textarea=>{if(textarea.previousElementSibling?.classList.contains('email-format-toolbar'))return;const toolbar=document.createElement('div');toolbar.className='email-format-toolbar';toolbar.setAttribute('role','toolbar');toolbar.setAttribute('aria-label','Text formatting');const commands=[['B','Bold','**','**'],['I','Italic','*','*'],['U','Underline','[u]','[/u]'],['•','Bulleted list','- ',''],['1.','Numbered list','1. ',''],['🔗','Insert link','[','](https://)']];for(const [label,title,before,after] of commands){const button=document.createElement('button');button.type='button';button.textContent=label;button.title=title;button.setAttribute('aria-label',title);button.addEventListener('click',()=>{const start=textarea.selectionStart,end=textarea.selectionEnd,selected=textarea.value.slice(start,end),lineCommand=title.includes('list'),prefix=lineCommand&&(start>0&&textarea.value[start-1]!=='\n')?'\n':'';textarea.setRangeText(prefix+before+selected+after,start,end,'end');textarea.focus();textarea.dispatchEvent(new Event('input',{bubbles:true}));});toolbar.append(button);}textarea.before(toolbar);});
 const revealCommunicationTarget=target=>{if(!target)return;const tools=target.closest('details.communication-tools');if(tools)tools.open=true;if(target.matches('details'))target.open=true;requestAnimationFrame(()=>{target.scrollIntoView({behavior:'smooth',block:'start'});target.focus?.({preventScroll:true});});};
@@ -394,6 +394,7 @@ document.querySelectorAll('[data-case-tabs]').forEach((tabs)=>{
   }));
   const revealHash=()=>{
     const target=document.getElementById(location.hash.slice(1));
+    for(let disclosure=target?.closest('details');disclosure;disclosure=disclosure.parentElement?.closest('details'))disclosure.open=true;
     const panel=target?.closest('[data-case-panel]');
     const key=panel?.dataset.casePanel||links.find((link)=>link.getAttribute('href')===location.hash)?.dataset.caseTab;
     if(key) show(key,false);
@@ -409,7 +410,7 @@ document.querySelectorAll('[data-financial-tabs]').forEach((tabs)=>{
   const workspace=tabs.closest('.case-financial-workspace');
   const links=[...tabs.querySelectorAll('[data-financial-tab]')];
   const panels=[...workspace.querySelectorAll('[data-financial-panel]')];
-  const show=(key)=>{
+  const show=(key,updateHash=true)=>{
     links.forEach((link)=>{
       const active=link.dataset.financialTab===key;
       link.classList.toggle('selected',active);
@@ -421,6 +422,7 @@ document.querySelectorAll('[data-financial-tabs]').forEach((tabs)=>{
       panel.classList.toggle('is-active',active);
       if(active) panel.scrollTop=0;
     });
+    if(updateHash) history.replaceState(null,'',links.find((link)=>link.dataset.financialTab===key)?.getAttribute('href')||'#financial-overview');
   };
   links.forEach((link)=>link.addEventListener('click',(event)=>{
     event.preventDefault();
@@ -430,7 +432,14 @@ document.querySelectorAll('[data-financial-tabs]').forEach((tabs)=>{
     event.preventDefault();
     show(link.dataset.financialJump);
   }));
-  show('overview');
+  const revealHash=()=>{
+    const target=document.getElementById(location.hash.slice(1));
+    const panel=target?.closest('[data-financial-panel]');
+    if(panel && workspace.contains(panel)) show(panel.dataset.financialPanel,false);
+  };
+  show('overview',false);
+  window.addEventListener('hashchange',revealHash);
+  revealHash();
 });
 document.querySelectorAll('[data-case-jump]').forEach((link)=>link.addEventListener('click',(event)=>{
   event.preventDefault();
@@ -444,17 +453,25 @@ document.querySelectorAll('[data-expense-tabs]').forEach((tabs)=>{
   const workspace=tabs.closest('.expense-workspace');
   const links=[...tabs.querySelectorAll('[data-expense-tab]')];
   const panels=[...workspace.querySelectorAll('[data-expense-panel]')];
-  const show=(key)=>{
+  const show=(key,updateHash=true)=>{
     links.forEach((link)=>link.classList.toggle('selected',link.dataset.expenseTab===key));
     panels.forEach((panel)=>{
       const active=panel.dataset.expensePanel===key;
       panel.hidden=!active;
       panel.classList.toggle('is-active',active);
     });
+    if(updateHash) history.replaceState(null,'',links.find((link)=>link.dataset.expenseTab===key)?.getAttribute('href')||'#expense-summary');
   };
   links.forEach((link)=>link.addEventListener('click',(event)=>{event.preventDefault();show(link.dataset.expenseTab);}));
   workspace.querySelectorAll('[data-expense-jump]').forEach((link)=>link.addEventListener('click',(event)=>{event.preventDefault();show(link.dataset.expenseJump);}));
-  show('summary');
+  const revealHash=()=>{
+    const target=document.getElementById(location.hash.slice(1));
+    const panel=target?.closest('[data-expense-panel]');
+    if(panel && workspace.contains(panel)) show(panel.dataset.expensePanel,false);
+  };
+  show('summary',false);
+  window.addEventListener('hashchange',revealHash);
+  revealHash();
 });
 document.querySelectorAll('[data-dialog-open]').forEach((button)=>button.addEventListener('click',()=>{
   document.getElementById(button.dataset.dialogOpen)?.showModal();

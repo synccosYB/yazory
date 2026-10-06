@@ -1407,7 +1407,14 @@ def create_app(test_config=None):
         from person_names import link_name_owner
         link_name_owner('askan', askan.id, 'name', person)
         person.phone = askan.phone or ''
-        person.cell_phone = askan.cell_phone or person.cell_phone or ''
+        # Empty legacy role snapshots must not erase a canonical phone during
+        # schema backfills. An explicit network-profile edit may clear it.
+        cell_submitted = (has_request_context() and
+                          _app.request.endpoint == 'network_askan_detail' and
+                          _app.request.method == 'POST' and
+                          'cell_phone' in _app.request.form)
+        if askan.cell_phone or cell_submitted:
+            person.cell_phone = askan.cell_phone or ''
         person.email = askan.email or ''
         if not person.notes or person.notes.startswith('Askan in Yazory directory'):
             person.notes = 'Askan in Yazory directory'
@@ -1795,7 +1802,40 @@ def create_app(test_config=None):
         sync_person_snapshots(person)
         return person
 
+    def save_verified_identity(person, before):
+        """Use the same ownership and duplicate rules for the unified editor."""
+        with _app.db.session.no_autoflush:
+            for field_name in ('phone', 'cell_phone', 'home_phone', 'work_phone'):
+                value = getattr(person, field_name) or ''
+                if value != before[field_name] and value and not normalized_profile_phone(value):
+                    raise ValueError('Enter a valid phone number.')
+            if person.email != before['email'] and person.email and not re.fullmatch(
+                    r'[^\s@]+@[^\s@]+\.[^\s@]+', person.email):
+                raise ValueError('Enter a valid email address.')
+            old_key = before['identity']
+            # Only adopt legacy rows with the exact old identity key. Explicit
+            # canonical IDs always win over an old phone snapshot.
+            if old_key.startswith('phone:'):
+                for profile in _app.db.session.scalars(select(SupporterProfile).where(
+                        SupporterProfile.person_id.is_(None),
+                        SupporterProfile.normalized_phone == old_key[6:])).all():
+                    profile.person_id = person.id
+                for contact in _app.db.session.scalars(select(_app.Contact).where(
+                        _app.Contact.person_id.is_(None),
+                        _app.Contact.supporter_key == old_key)).all():
+                    contact.person_id = person.id
+            normalized = normalized_profile_phone(person.phone)
+            if normalized:
+                duplicate = _app.db.session.scalar(select(SupporterProfile).where(
+                    SupporterProfile.normalized_phone == normalized))
+                if duplicate is not None and duplicate.person_id != person.id:
+                    raise ValueError('That phone number already belongs to another person.')
+            key = ('phone:' + normalized if normalized and person.phone != before['phone']
+                   else person.identity_key)
+            update_canonical_person(person, {'supporter_key': key})
+
     app.extensions['supporter_identity'] = {
+        'save_verified': save_verified_identity,
         'attach': attach_supporter_person,
         'update': update_supporter_person,
         'sync': sync_person_snapshots,

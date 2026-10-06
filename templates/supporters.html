@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% from 'macros.html' import token with context %}{% macro localized_supporter_name(person) -%}
 {%- set names = person_name_values('supporter', person) -%}
-{%- if session.get('lang') == 'yi' and names.yiddish_name -%}{{ names.yiddish_name }}
-{%- elif session.get('lang') == 'en' and names.english_name -%}{{ names.english_name }}
+{%- if session.get('language', 'en') == 'yi' and names.yiddish_name -%}{{ names.yiddish_name }}
+{%- elif session.get('language', 'en') == 'en' and names.english_name -%}{{ names.english_name }}
 {%- else -%}{{ names.yiddish_name or names.english_name or person.name }}
 {%- endif -%}
 {%- endmacro %}{% block content %}

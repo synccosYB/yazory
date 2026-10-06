@@ -4,7 +4,7 @@
   <p>{{ _("Mark which children are married and record the name of each child’s spouse.") }}</p></div><strong class="count">{{ family.children|length }}</strong></div>
   <div class="child-records">
   {% for c in family.children %}
-  <details class="child-record" data-page-item>
+  <details class="child-record" id="child-record-{{ c.id }}" data-page-item>
     <summary><span class="child-record-name">{{ c.name }}</span><span class="child-record-facts"><span>{{ _('Age') }} <bdi dir="ltr">{{ c.age }}</bdi></span>{% if c.grade %}<span>{{ _('Grade') }} {{ c.grade }}</span>{% endif %}{% if c.school %}<span>{{ _('School') }}: {{ c.school }}</span>{% endif %}{% if c.cell_phone %}<span>{{ _('Cell phone') }}: <bdi dir="ltr">{{ c.cell_phone|phone }}</bdi></span>{% endif %}{% if c.home_phone %}<span>{{ _('Home phone') }}: <bdi dir="ltr">{{ c.home_phone|phone }}</bdi></span>{% endif %}{% if c.married %}<span>{{ _('Spouse') }}: {{ c.spouse_name or _('Not entered') }}</span>{% endif %}</span><span class="child-record-edit">✎ {{ _('Edit') }}</span></summary>
     <a class="button small secondary" href="{{ url_for('person_addresses', kind='child', person_id=c.id) }}">{{ _('Home & work addresses') }}</a>{% if c.spouse_name %}<a class="button small secondary" href="{{ url_for('person_addresses', kind='child_spouse', person_id=c.id) }}">{{ _('Home & work addresses') }}</a>{% endif %}<form method="post" action="/children/{{ c.id }}">
       {{ token(csrf) }}
@@ -24,7 +24,7 @@
   </details>
   {% else %}<p class="empty">{{ _("Add the children, then mark which children are married and enter their spouses.") }}</p>{% endfor %}
   </div>
-  <details class="add-child-record"><summary>{{ _("+ Add child") }}</summary><form method="post" action="/families/{{ family.id }}/children">{{ token(csrf) }}
+  <details class="add-child-record" id="add-child-record"><summary>{{ _("+ Add child") }}</summary><form method="post" action="/families/{{ family.id }}/children">{{ token(csrf) }}
     <div class="form-grid">
       <input type="hidden" name="name" maxlength="160">{{ bilingual_name_fields('child', none, 'name') }}<label>{{ _("Age *") }}<input name="age" type="number" min="0" max="120" required></label><label>{{ _("Grade") }}<input name="grade" maxlength="80"></label><label>{{ _("School") }}<input name="school" maxlength="160"></label><label>{{ _("Tuition department contact") }}<input name="tuition_contact" maxlength="300"></label><label>{{ _("Home phone") }}<input name="home_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label><label>{{ _("Cell phone") }}<input name="cell_phone" maxlength="80" inputmode="tel" autocomplete="tel" dir="ltr"></label>
       <label>{{ _("Married?") }}<select name="married"><option value="no">{{ _('No') }}</option><option value="yes">{{ _('Yes') }}</option></select></label><input type="hidden" name="spouse_name" maxlength="160">{{ bilingual_name_fields('child', none, 'spouse_name') }}

@@ -34,7 +34,7 @@ def test_payout_gate_uses_lower_workflow_balance(monkeypatch, tmp_path):
     assert 'Other ledger adjustments and holds' in page.text
     profile = client.get(f'/families/{family_id}')
     assert profile.status_code == 200
-    assert 'Available to give out' in profile.text
+    assert 'Available funds' in profile.text
     assert '$100.00' in profile.text
     assert 'Other ledger adjustments and holds' in profile.text
     for language, label in (('he', 'התאמות ועיכובים נוספים בספר החשבונות'),
@@ -77,7 +77,7 @@ def test_case_available_balance_counts_all_non_voided_disbursements(tmp_path):
     assert '$1,000.00' in payouts
     assert '$500.00' in payouts
     profile = client.get(f'/families/{family_id}').text
-    assert 'Available to give out' in profile
+    assert 'Available funds' in profile
     assert '$500.00' in profile
 
 

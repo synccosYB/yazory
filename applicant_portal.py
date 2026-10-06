@@ -203,7 +203,7 @@ def register_applicant_portal(app):
         core.db.session.commit()
         flash('Message sent to the applicant portal.', 'success')
         if request.form.get('return_to') == 'communications':
-            return redirect(url_for('communications', _anchor='applicant-messages'))
+            return redirect(url_for('communications', folder='applicants', _anchor='mailbox-inbox'))
         return redirect(url_for('staff_applicant_messages', family_id=family.id))
 
     @app.post('/communications/applicant-messages/<int:message_id>/handled')
@@ -215,6 +215,6 @@ def register_applicant_portal(app):
         message.status = 'handled'
         core.db.session.commit()
         flash('Applicant message marked as handled.', 'success')
-        return redirect(url_for('communications', _anchor='applicant-messages'))
+        return redirect(url_for('communications', folder='applicants', _anchor='mailbox-inbox'))
 
     return app
