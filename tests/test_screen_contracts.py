@@ -431,3 +431,16 @@ def test_supporter_delete_preserves_records_with_history():
     assert "History was kept" in route
     assert "workflow history. Pause outreach instead of deleting" not in route
     assert "if has_work_history or has_workflow_link or contact.receipts:" in route
+
+
+def test_case_askan_profile_is_editable_from_its_normal_profile():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/askan.html').read_text()
+    app_source = (root / 'app_original.py').read_text()
+    assert 'method="post"' in template
+    for field in ('name', 'phone', 'cell_phone', 'email'):
+        assert f'name="{field}"' in template
+    assert "methods=['GET', 'POST']" in app_source[app_source.index("/askonim/<int:askan_id>")-30:app_source.index("/askan/cases/<int:family_id>")]
+    assert "askan.cell_phone = field('cell_phone', limit=80)" in app_source
+    assert "askan.email = optional_email_field()" in app_source
+    assert "db.session.commit()" in app_source[app_source.index("def askan_detail(askan_id):"):app_source.index("def askan_case_view(family_id):")]
