@@ -1111,3 +1111,31 @@ html[dir="rtl"] .people-match-reasons span{
 .icon-button{width:34px;height:34px;padding:0;border-radius:50%;font-size:20px}
 .legacy-expense-form{display:none!important}
 @media(max-width:900px){.expense-tabs{overflow-x:auto}.expense-tabs a{flex:0 0 auto;min-width:125px}.expense-panel{overflow:auto}}
+
+
+/* Shared multilingual workspace contract: identical geometry in LTR and RTL. */
+:is(.case-workspace-header,.workspace-tabs,.financial-tabs,.expense-tabs,.case-workspace-panel,.financial-panel,.expense-panel){text-align:start}
+:is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:inherit}
+:is(.workspace-tabs,.financial-tabs,.expense-tabs)>a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35}
+.case-workspace-meta bdi[dir="ltr"],
+.case-workspace-identity .case-number,
+.case-kpi-grid strong,
+.financial-kpi-grid strong,
+.numeric,
+time,
+input[type="email"],
+input[type="tel"],
+input[type="number"],
+input[type="url"]{direction:ltr;unicode-bidi:isolate}
+.case-workspace-identity h1 bdi[dir="auto"],
+.expense-record-card td,
+.expense-record-card th{unicode-bidi:plaintext}
+html[dir="rtl"] :is(.case-workspace-title-row,.case-workspace-identity,.case-workspace-actions,.case-workspace-meta,.case-card-heading,.section-heading,.dialog-heading,.dialog-actions){direction:rtl}
+html[dir="rtl"] :is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:rtl}
+html[dir="ltr"] :is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:ltr}
+html[dir="rtl"] :is(.case-workspace-header,.case-workspace-panel,.financial-panel,.expense-panel,.workspace-dialog){text-align:right}
+html[dir="ltr"] :is(.case-workspace-header,.case-workspace-panel,.financial-panel,.expense-panel,.workspace-dialog){text-align:left}
+@media(min-width:901px){
+  body[data-endpoint="family_detail"] :is(.case-tabs,.financial-tabs,.expense-tabs){overflow:hidden}
+  body[data-endpoint="family_detail"] .case-tabs>a{min-width:0}
+}
