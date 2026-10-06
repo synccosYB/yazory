@@ -270,3 +270,22 @@ def test_case_financials_is_split_into_compact_workspace_views():
     assert 'id="expense-requests"' in expenses
     assert "panel.dataset.financialPanel===key" in script
     assert ".financial-overview{overflow:hidden}" in css
+
+
+def test_financial_expenses_are_split_into_stacked_views_and_dialogs():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    script = (root / 'static/pages.js').read_text()
+    css = (root / 'static/style.css').read_text()
+
+    for view in ('summary', 'household', 'providers', 'requests'):
+        assert f'data-expense-panel="{view}"' in template
+        assert f'data-expense-tab="{view}"' in template
+    assert 'id="provider-expense-dialog"' in template
+    assert 'id="expense-request-dialog"' in template
+    assert "url_for('add_provider_account', family_id=family.id)" in template
+    assert 'action="/families/{{ family.id }}/expenses"' in template
+    assert "panel.dataset.expensePanel===key" in script
+    assert "showModal()" in script
+    assert ".expense-record-card .table-wrap" in css
+    assert ".expense-workspace{display:flex;flex-direction:column;overflow:hidden}" in css
