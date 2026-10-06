@@ -363,3 +363,36 @@ document.querySelectorAll('[data-task-status-form]').forEach(form=>{
   status.addEventListener('change',update);
   update();
 });
+
+
+
+/* Case workspace: keep the page fixed and switch existing sections in place. */
+document.querySelectorAll('[data-case-tabs]').forEach((tabs)=>{
+  const root=tabs.closest('main');
+  const links=[...tabs.querySelectorAll('[data-case-tab]')];
+  const panels=[...root.querySelectorAll('[data-case-panel]')];
+  const show=(key,updateHash=true)=>{
+    if(!panels.some((panel)=>panel.dataset.casePanel===key)) key='overview';
+    links.forEach((link)=>{
+      const active=link.dataset.caseTab===key;
+      link.classList.toggle('selected',active);
+      if(active) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current');
+    });
+    panels.forEach((panel)=>{
+      const active=panel.dataset.casePanel===key;
+      panel.hidden=!active;
+      panel.classList.toggle('is-active',active);
+    });
+    if(updateHash){
+      const link=links.find((item)=>item.dataset.caseTab===key);
+      history.replaceState(null,'',link?.getAttribute('href')||'#case-overview');
+    }
+  };
+  links.forEach((link)=>link.addEventListener('click',(event)=>{
+    event.preventDefault();
+    show(link.dataset.caseTab);
+  }));
+  const hash=location.hash.slice(1);
+  const initial=links.find((link)=>link.getAttribute('href')===('#'+hash))?.dataset.caseTab||'overview';
+  show(initial,false);
+});
