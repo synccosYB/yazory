@@ -1144,7 +1144,7 @@ html[dir="ltr"] :is(.case-workspace-header,.case-workspace-panel,.financial-pane
 /* Case Household workspace: compact summaries + canonical children table. */
 .household-workspace{display:flex;flex-direction:column;gap:12px;overflow:hidden}
 .household-summary-grid{display:grid;grid-template-columns:1fr 1.18fr 1fr;gap:12px;flex:0 0 auto}
-.household-summary-card{min-width:0;margin:0;padding:12px 14px;align-self:start}
+.household-summary-card{min-width:0;margin:0;padding:12px 14px;align-self:stretch}
 .household-summary-card .case-card-heading{margin-bottom:7px}
 .household-summary-card .case-card-heading h2,.household-children-card h2{margin:0}
 .household-summary-card .case-card-heading>a{font-size:12px;font-weight:700;white-space:nowrap}
