@@ -296,3 +296,31 @@ def test_financial_expenses_are_split_into_stacked_views_and_dialogs():
     assert "showModal()" in script
     assert ".expense-record-card .table-wrap" in css
     assert ".expense-workspace{display:flex;flex-direction:column;overflow:hidden}" in css
+
+
+def test_case_workspace_has_complete_shared_multilingual_contract():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    css = (root / 'static/style.css').read_text()
+    from translations import CATALOG
+
+    labels = (
+        'Overview', 'Household', 'Support', 'Financials', 'Communications',
+        'Documents', 'Activity', 'Current status', 'Monthly need',
+        'Support raised', 'Available funds', 'Needs attention',
+        'Upcoming work', 'Support network', 'Recent activity',
+        'Donations', 'Pledges', 'Expenses', 'Payouts', 'Ledger',
+        'Summary', 'Household Budget', 'Bills & Providers',
+        'Expense requests', 'No expense requests yet.',
+        'View bills & providers', '+ Add bill / provider',
+    )
+    missing = [label for label in labels if label not in CATALOG or not all(CATALOG[label].get(lang) for lang in ('he', 'yi'))]
+    assert not missing
+    assert "{{ _('Household Budget') }}" in template
+    assert "{{ _('Bills & Providers') }}" in template
+    assert "{{ _('Provider accounts') }}" not in template
+    assert "{{ _('Household bills') }}" not in template
+    assert 'html[dir="rtl"] :is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:rtl}' in css
+    assert 'html[dir="ltr"] :is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:ltr}' in css
+    assert 'unicode-bidi:isolate' in css
+    assert 'body[data-endpoint="family_detail"] :is(.case-tabs,.financial-tabs,.expense-tabs){overflow:hidden}' in css
