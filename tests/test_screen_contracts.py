@@ -329,7 +329,7 @@ def test_case_workspace_has_complete_shared_multilingual_contract():
 def test_case_workspace_stylesheet_uses_current_cache_key():
     root = Path(__file__).resolve().parents[1]
     base = (root / 'templates/base.html').read_text()
-    assert "v='20261006-case-workspace-household1'" in base
+    assert "v='20261006-case-workspace-household2'" in base
     assert "v='20261002-people-match-rtl2'" not in base
 
 
@@ -379,4 +379,14 @@ def test_household_workspace_is_compact_and_uses_canonical_case_data():
     assert 'Additional askanim' not in household
     assert 'Monthly summary' not in household
     assert '.household-summary-grid{display:grid;grid-template-columns:1fr 1.18fr 1fr' in css
-    assert '.household-children-card{margin:0;min-height:0;display:flex;flex:1 1 auto' in css
+    assert '.household-children-card{margin:0;min-height:0;max-height:360px;display:flex;flex:0 1 auto' in css
+
+
+def test_household_summary_vocabulary_has_all_workspace_locales():
+    from translations import CATALOG
+
+    for label in ('Household circumstances', 'Household children and married children.',
+                  'Married', 'At home', 'No circumstances recorded.', 'No children entered yet.'):
+        for language in ('he', 'yi'):
+            assert CATALOG[label][language]
+            assert CATALOG[label][language] != label

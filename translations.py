@@ -1216,3 +1216,14 @@ _EXTRA.update({
 # Synchronize after every extension block so catalog audits and runtime
 # translation see the same vocabulary.
 CATALOG.update(_EXTRA)
+
+# Household summaries share the same vocabulary in all workspace languages.
+_EXTRA.update({
+    'Household circumstances': {'he': 'נסיבות המשפחה', 'yi': 'די אומשטענדן פון דער משפחה'},
+    'Household children and married children.': {'he': 'ילדים בבית וילדים נשואים.', 'yi': 'די קינדער אין שטוב און די פארהייראטע קינדער.'},
+    'Married': {'he': 'נשוי/נשואה', 'yi': 'פארהייראט'},
+    'At home': {'he': 'בבית', 'yi': 'אין שטוב'},
+    'No circumstances recorded.': {'he': 'לא נרשמו נסיבות.', 'yi': 'עס זענען נאך נישט אריינגעשריבן קיין אומשטענדן.'},
+    'No children entered yet.': {'he': 'עדיין לא הוזנו ילדים.', 'yi': 'עס זענען נאך נישט אריינגעשריבן קיין קינדער.'},
+})
+CATALOG.update(_EXTRA)
