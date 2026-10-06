@@ -351,7 +351,7 @@ def test_case_workspace_has_complete_shared_multilingual_contract():
 def test_case_workspace_stylesheet_uses_current_cache_key():
     root = Path(__file__).resolve().parents[1]
     base = (root / 'templates/base.html').read_text()
-    assert "v='20261006-case-workspace-metric-align1'" in base
+    assert "v='20261006-askan-save-visible'" in base
     assert "v='20261002-people-match-rtl2'" not in base
 
 

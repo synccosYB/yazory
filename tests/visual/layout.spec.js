@@ -128,3 +128,31 @@ test('household child actions reveal working add and edit forms', async ({ page 
   await page.goto(`/families/1#${target}`);
   await expect(record.locator('form')).toBeVisible();
 });
+
+
+for (const locale of ['en', 'he', 'yi']) {
+  for (const width of [1440, 390]) {
+    test(`askan editor save stays reachable and persists: ${locale} ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/language/${locale}?next=/partner-network`);
+      const csrf = await page.locator('input[name="csrf"]').first().inputValue();
+      const created = await page.request.post('/partner-network/askonim', { form: {
+        csrf, name: `Save audit ${locale} ${width} ${Date.now()}`, phone: ''
+      }});
+      expect(created.ok()).toBeTruthy();
+      await page.goto(created.url());
+      const form = page.locator('.askan-edit-form');
+      const save = form.locator('button[type="submit"]');
+      await expect(save).toBeInViewport();
+      const cell = `845${String(Date.now()).slice(-7)}`;
+      await form.locator('[name="cell_phone"]').fill(cell);
+      await form.locator('[name="notes"]').fill('Askan save regression');
+      await expect(save).toBeInViewport();
+      await save.click();
+      await expect(form.locator('[name="cell_phone"]')).toHaveValue(cell);
+      await page.reload();
+      await expect(form.locator('[name="cell_phone"]')).toHaveValue(cell);
+      await expect(form.locator('[name="notes"]')).toHaveValue('Askan save regression');
+    });
+  }
+}

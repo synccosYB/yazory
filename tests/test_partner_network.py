@@ -42,8 +42,10 @@ def test_askan_edit_entry_and_cell_phone_persist_to_shared_person(app, client):
         page = client.get(f'/askonim/{askan_id}')
         assert page.status_code == 200
         assert f'/partner-network/askonim/{askan_id}' in page.text
-        assert 'name="cell_phone"' in client.get(
-            f'/partner-network/askonim/{askan_id}').text
+        editor = client.get(f'/partner-network/askonim/{askan_id}').text
+        assert 'name="cell_phone"' in editor
+        assert 'class="form-actions askan-save-actions"' in editor
+        assert editor.index('type="submit"') < editor.index('name="cell_phone"')
     for cell in ('8455552222', ''):
         response = post(client, f'/partner-network/askonim/{askan_id}', {
             'phone': '8455551111', 'cell_phone': cell, 'email': 'helper@example.test'})

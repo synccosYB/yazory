@@ -1189,3 +1189,9 @@ html[dir="ltr"] .household-workspace{text-align:left}
   .household-children-table-wrap{overflow:auto}
   .household-children-table{min-width:720px}
 }
+
+/* Keep the askan editor's single save action in view above its fields. */
+.askan-edit-form .askan-save-actions{position:sticky;inset-block-start:12px;bottom:auto;z-index:8;margin:0 0 16px;padding:10px 0;background:var(--surface);border-bottom:1px solid var(--line)}
+@media(max-width:900px){.askan-edit-form .askan-save-actions{inset-block-start:70px;margin:0 0 12px;padding:10px 0}}
+
+.askan-edit-card{overflow:visible}
