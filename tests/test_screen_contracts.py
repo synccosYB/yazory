@@ -189,3 +189,25 @@ def test_supporter_navigation_has_one_global_people_entry_and_family_views():
     assert "url_for('case_helper_roster', family_id=family.id)" in family
     assert "aria-label=\"{{ _('Supporter views') }}\"" in family
     assert "Back to supporters" not in directory
+
+
+def test_case_workspace_matches_approved_structure():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    css = (root / 'static/style.css').read_text()
+
+    assert 'class="case-workspace-header"' in template
+    assert 'class="workspace-tabs case-tabs' in template
+    assert 'id="case-overview"' in template
+    for anchor in ('household-community', 'circle-of-support', 'case-financials', 'case-documents', 'case-activity'):
+        assert f'id="{anchor}"' in template
+    for label in ('Overview', 'Household', 'Support', 'Financials', 'Communications', 'Documents', 'Activity'):
+        assert "{{ _('"+label+"') }}" in template
+    assert 'class="case-overview-grid"' in template
+    assert 'case-attention-card' in template
+    assert 'case-work-card' in template
+    assert 'case-household-summary' in template
+    assert 'case-support-summary' in template
+    assert 'case-activity-summary' in template
+    assert '.case-overview-grid{' in css
+    assert '.workspace-tabs{' in css
