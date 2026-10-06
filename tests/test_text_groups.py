@@ -253,3 +253,27 @@ def test_provider_setup_failure_saved_and_retryable(workspace, monkeypatch):
     with app.app_context():
         group = db.session.scalar(db.select(TextGroup))
         assert group.state == 'active' and not group.error
+
+
+def test_group_creation_is_case_first(workspace):
+    app, client, (_, _, family_id, other_id, ids) = workspace
+    page = client.get('/communications/text-groups')
+    assert page.status_code == 200
+    assert 'Choose a case' in page.text
+    assert 'Helper 0' not in page.text
+    page = client.get(f'/communications/text-groups?family_id={family_id}')
+    assert 'YZ-' in page.text and 'First case' in page.text
+    assert 'Helper 0' in page.text
+    assert 'Helper 8' in page.text
+    assert 'Helper 9' not in page.text
+    page = client.get(f'/communications/text-groups?family_id={other_id}')
+    assert 'Helper 9' in page.text
+    assert 'Helper 0' not in page.text
+
+
+def test_case_group_rejects_member_from_another_case(workspace):
+    app, client, (_, _, family_id, _, ids) = workspace
+    response = create_group(client, [ids[0], ids[-1]], family_id=family_id)
+    assert response.status_code == 400
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count()).select_from(TextGroup)) == 0
