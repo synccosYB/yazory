@@ -431,3 +431,26 @@ document.querySelectorAll('[data-case-jump]').forEach((link)=>link.addEventListe
   const key=link.dataset.caseJump;
   document.querySelector('[data-case-tab="'+key+'"]')?.click();
 }));
+
+
+/* Expense workspace: stack finance jobs; scroll only record tables. */
+document.querySelectorAll('[data-expense-tabs]').forEach((tabs)=>{
+  const workspace=tabs.closest('.expense-workspace');
+  const links=[...tabs.querySelectorAll('[data-expense-tab]')];
+  const panels=[...workspace.querySelectorAll('[data-expense-panel]')];
+  const show=(key)=>{
+    links.forEach((link)=>link.classList.toggle('selected',link.dataset.expenseTab===key));
+    panels.forEach((panel)=>{
+      const active=panel.dataset.expensePanel===key;
+      panel.hidden=!active;
+      panel.classList.toggle('is-active',active);
+    });
+  };
+  links.forEach((link)=>link.addEventListener('click',(event)=>{event.preventDefault();show(link.dataset.expenseTab);}));
+  workspace.querySelectorAll('[data-expense-jump]').forEach((link)=>link.addEventListener('click',(event)=>{event.preventDefault();show(link.dataset.expenseJump);}));
+  show('summary');
+});
+document.querySelectorAll('[data-dialog-open]').forEach((button)=>button.addEventListener('click',()=>{
+  document.getElementById(button.dataset.dialogOpen)?.showModal();
+}));
+document.querySelectorAll('[data-dialog-close]').forEach((button)=>button.addEventListener('click',()=>button.closest('dialog')?.close()));
