@@ -3350,27 +3350,44 @@ def create_app(test_config=None):
         contact = db.session.scalar(scoped_contacts_statement().where(Contact.id == contact_id))
         if contact is None:
             abort(403, 'You are not assigned to this family.')
-        work_model=app.extensions['workflows']['models']['WorkItem']
-        if any(w.data.get('contact_id')==contact.id for w in db.session.scalars(select(work_model).where(work_model.family_id==contact.family_id))):
-            abort(400,'This supporter has workflow history. Pause outreach instead of deleting the record.')
-        link_model=app.extensions['workflows']['models']['SupporterLink']
-        if db.session.get(link_model,contact.id) or db.session.scalar(select(link_model.contact_id).where(link_model.parent_id==contact.id)):
-            abort(400,'This supporter has workflow history. Pause outreach instead of deleting the record.')
-        if contact.receipts:
-            abort(400, 'This supporter cannot be deleted because donation receipts are recorded.')
         family_id = contact.family_id
         name = contact.name
+        work_model = app.extensions['workflows']['models']['WorkItem']
+        link_model = app.extensions['workflows']['models']['SupporterLink']
+        has_work_history = any(
+            w.data.get('contact_id') == contact.id
+            for w in db.session.scalars(select(work_model).where(work_model.family_id == family_id))
+        )
+        has_workflow_link = bool(
+            db.session.get(link_model, contact.id) or
+            db.session.scalar(select(link_model.contact_id).where(link_model.parent_id == contact.id))
+        )
+        if has_work_history or has_workflow_link or contact.receipts:
+            # Historical supporter rows must remain addressable by workflow,
+            # receipt and audit records. Removing from the case therefore means
+            # retiring active outreach, not deleting the Contact/Person row.
+            contact.status = 'Paused'
+            link = db.session.get(link_model, contact.id)
+            if link is not None:
+                link.assigned_to = None
+            audit(f'Removed supporter from active case roster: {name}', family_id)
+            db.session.commit()
+            flash('Supporter removed from active outreach. History was kept.')
+            next_url = request.form.get('next', '')
+            return redirect(next_url if next_url.startswith('/') and not next_url.startswith('//')
+                            else url_for('supporters', family_id=family_id))
         child_ids = [child.id for child in contact.children]
         db.session.execute(db.delete(PersonAffiliation).where(
             ((PersonAffiliation.person_type == 'supporter') & (PersonAffiliation.person_id == contact.id)) |
             ((PersonAffiliation.person_type.in_(('supporter_child', 'supporter_child_spouse'))) &
              (PersonAffiliation.person_id.in_(child_ids)))))
         db.session.delete(contact)
-        audit(f'Deleted supporter: {name}', family_id)
+        audit(f'Deleted supporter case record: {name}', family_id)
         db.session.commit()
-        flash('Supporter deleted.')
+        flash('Supporter removed from this case.')
         next_url = request.form.get('next', '')
-        return redirect(next_url if next_url.startswith('/') and not next_url.startswith('//') else url_for('supporters'))
+        return redirect(next_url if next_url.startswith('/') and not next_url.startswith('//')
+                        else url_for('supporters', family_id=family_id))
 
     def accessible_document_or_403(document_id):
         if organization_admin():
