@@ -1,5 +1,6 @@
 from app_entry import create_app
 import re
+import pytest
 
 import app_original as app_module
 import app_original as core_module
@@ -134,16 +135,18 @@ def test_unknown_reset_email_does_not_disclose_account(monkeypatch):
         assert db.session.scalar(db.select(db.func.count()).select_from(AccountToken)) == 0
 
 
-def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch):
+@pytest.mark.parametrize('reply_domain', ['', 'replies.example.test'])
+def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch, reply_domain):
     app, owner = app_and_owner(monkeypatch)
     app.config['APP_BASE_URL'] = 'https://yazory.example'
     app.config['RESEND_API_KEY'] = 'test-key'
     app.config['EMAIL_FROM'] = 'notifications@synccos.live'
+    app.config['EMAIL_REPLY_DOMAIN'] = reply_domain
     delivered = {}
 
-    def capture_delivery(api_key, sender, recipient, subject, html, text):
+    def capture_delivery(api_key, sender, recipient, subject, html, text, *, reply_to=None):
         delivered.update(api_key=api_key, sender=sender, recipient=recipient,
-                         subject=subject, html=html, text=text)
+                         subject=subject, html=html, text=text, reply_to=reply_to)
         return 'email_123', None
 
     monkeypatch.setattr(core_module, 'deliver', capture_delivery)
@@ -159,6 +162,10 @@ def test_email_html_uses_yazory_brand_and_absolute_logo(monkeypatch):
         # that do not display HTML.
         assert 'You have been invited' in message.text_body
     assert delivered['sender'] == 'notifications@synccos.live'
+    if reply_domain:
+        assert re.fullmatch(r'reply\+\d+-[0-9a-f]{20}@replies\.example\.test', delivered['reply_to'])
+    else:
+        assert delivered['reply_to'] is None
     assert 'background:#f8f7f3' in delivered['html']
     assert 'background:#173e66' in delivered['html']
     assert 'background:#b49a52' in delivered['html']
