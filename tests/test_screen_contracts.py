@@ -211,3 +211,26 @@ def test_case_workspace_matches_approved_structure():
     assert 'case-activity-summary' in template
     assert '.case-overview-grid{' in css
     assert '.workspace-tabs{' in css
+
+
+def test_case_workspace_is_viewport_first_and_switches_panels_in_place():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    script = (root / 'static/pages.js').read_text()
+    css = (root / 'static/style.css').read_text()
+
+    assert 'data-case-tabs' in template
+    for panel in ('overview', 'household', 'support', 'financials', 'documents', 'activity'):
+        assert f'data-case-panel="{panel}"' in template
+        assert f'data-case-tab="{panel}"' in template
+    assert "panel.hidden=!active" in script
+    assert "history.replaceState" in script
+    assert 'body[data-endpoint="family_detail"]{height:100vh;overflow:hidden}' in css
+    assert '.case-workspace-panel{flex:1 1 auto;min-height:0;overflow:auto' in css
+    assert '.case-workspace-panel[hidden]{display:none!important}' in css
+
+
+def test_case_workspace_keeps_existing_logo_asset_untouched():
+    root = Path(__file__).resolve().parents[1]
+    base = (root / 'templates/base.html').read_text()
+    assert base.count("filename='yazory-logo-corrected.png'") >= 2
