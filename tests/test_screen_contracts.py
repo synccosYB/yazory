@@ -266,7 +266,10 @@ def test_case_financials_is_split_into_compact_workspace_views():
     assert "_household_budget.html" not in financial_overview
     assert "financial-kpi-grid" in financial_overview
     expenses = template[template.index('id="financial-expenses"'):template.index('id="financial-payouts"')]
-    assert "_household_budget.html" in expenses
+    assert "_household_budget.html" not in expenses
+    assert 'data-expense-panel="household"' in expenses
+    assert 'data-expense-panel="providers"' in expenses
+    assert 'data-expense-panel="requests"' in expenses
     assert 'id="expense-requests"' in expenses
     assert "panel.dataset.financialPanel===key" in script
     assert ".financial-overview{overflow:hidden}" in css
