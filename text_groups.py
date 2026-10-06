@@ -219,6 +219,16 @@ def install(app, user_for_request, is_admin, contact_access, mobile, history_row
             core.db.session.commit()
             return redirect(url_for('text_group_detail', group_id=group.id))
         query = request.args.get('q', '').strip()[:160]
+        # Group creation is case-first: without a selected case, do not dump the
+        # global people directory into the member picker.
+        family_statement = select(core.Family).order_by(core.Family.name, core.Family.id)
+        if not is_admin(user):
+            family_statement = family_statement.where(core.Family.id.in_(select(core.FamilyAssignment.family_id).where(
+                core.FamilyAssignment.staff_user_id == user.id)))
+        families = core.db.session.scalars(family_statement.limit(500)).all()
+        if family_id and not any(family.id == family_id for family in families):
+            abort(403)
+        selected_family = next((family for family in families if family.id == family_id), None)
         statement = select(core.Contact).options(selectinload(core.Contact.family))
         if family_id:
             statement = statement.where(core.Contact.family_id == family_id)
@@ -231,7 +241,8 @@ def install(app, user_for_request, is_admin, contact_access, mobile, history_row
         if user.role == 'fundraiser' and app.extensions['workflows']['enforced']():
             link = app.extensions['workflows']['models']['SupporterLink']
             statement = statement.where(core.Contact.id.in_(select(link.contact_id).where(link.assigned_to == user.id)))
-        contacts = core.db.session.scalars(statement.order_by(core.Contact.name, core.Contact.id).limit(75)).all()
+        contacts = (core.db.session.scalars(statement.order_by(core.Contact.name, core.Contact.id).limit(75)).all()
+                    if family_id else [])
         groups = []
         group_statement = select(TextGroup).options(selectinload(TextGroup.members).selectinload(TextGroupMember.contact)).order_by(TextGroup.id.desc()).limit(50)
         if family_id:
@@ -249,7 +260,8 @@ def install(app, user_for_request, is_admin, contact_access, mobile, history_row
                 continue
             groups.append(group)
         return render_template('text_groups.html', title='Shared text groups', contacts=contacts,
-                               groups=groups, family_id=family_id, query=query, mobile=mobile)
+                               groups=groups, family_id=family_id, selected_family=selected_family,
+                               families=families, query=query, mobile=mobile)
 
     @app.route('/communications/text-groups/<int:group_id>', methods=['GET', 'POST'])
     def text_group_detail(group_id):
