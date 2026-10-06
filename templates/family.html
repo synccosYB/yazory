@@ -89,23 +89,62 @@
   </article>
 </section>
 {% include '_case_sponsor_panel.html' %}
-<section class="case-workspace-panel" data-case-panel="household" hidden>
-<section class="card padded profile-household-sheet" id="household-community"><h2>{{ _("Household & community") }}</h2><div class="profile-sheet-layout"><dl class="details">
-<div class="profile-askan"><dt>{{ _('Designated askan for this case') }}</dt><dd><span class="profile-askan-details">{% if family.designated_askan %}<a class="strong" href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}">{{ family.designated_askan.name }}</a>{% if family.designated_askan.phone %}<span>· {{ _('Phone') }}: <bdi dir="ltr">{{ family.designated_askan.phone|phone }}</bdi></span>{% endif %}{% if family.designated_askan.cell_phone %}<span>· {{ _('Cell phone') }}: <bdi dir="ltr">{{ family.designated_askan.cell_phone|phone }}</bdi></span>{% endif %}{% if family.designated_askan.cell_phone or family.designated_askan.phone %}<a class="button small secondary" href="{{ url_for('communications', sms_phone=family.designated_askan.cell_phone or family.designated_askan.phone, sms_name=family.designated_askan.name, family_id=family.id, _anchor='mailbox-general-sms-compose') }}">{{ _('Send SMS') }}</a>{% endif %}{% if family.designated_askan.email %}<span>· <a href="mailto:{{ family.designated_askan.email }}"><bdi dir="ltr">{{ family.designated_askan.email }}</bdi></a></span>{% endif %}{% else %}{{ _('Not entered') }}{% endif %}</span> {{ pencil(family.id, 'askan_name', 'Designated askan for this case') }}</dd></div>
-<div class="profile-askan"><dt>{{ _('Additional askanim') }}</dt><dd>
-{% for link in family.additional_askanim %}<span class="profile-linked-row"><a href="{{ url_for('askan_detail', askan_id=link.askan_id) }}">{{ link.askan.name }}</a> · <bdi dir="ltr">{{ link.askan.email }}</bdi> {% if link.askan.phone %}· {{ _('Phone') }}: <bdi dir="ltr">{{ link.askan.phone|phone }}</bdi>{% endif %}{% if link.askan.cell_phone %} · {{ _('Cell phone') }}: <bdi dir="ltr">{{ link.askan.cell_phone|phone }}</bdi>{% endif %}<form method="post" action="{{ url_for('remove_family_askan', family_id=family.id, askan_id=link.askan_id) }}" style="display:inline">{{ token(csrf) }}<button class="small secondary">{{ _('Remove') }}</button></form></span>{% else %}{{ _('None yet') }}{% endfor %}
-<details><summary class="button small secondary">+ {{ _('Add another askan') }}</summary><form method="post" action="{{ url_for('add_family_askan', family_id=family.id) }}">{{ token(csrf) }}<input type="hidden" name="name" maxlength="160">{{ bilingual_name_fields('askan', none, 'name') }}<label>{{ _('Email') }}<input name="email" type="email" maxlength="254"></label><label>{{ _('Phone') }}<input name="phone" type="tel" maxlength="80"></label><label>{{ _('Cell phone') }}<input name="cell_phone" type="tel" maxlength="80"></label><button>{{ _('Add askan') }}</button></form></details>
-</dd></div>
-{% for key, label in [('spouse','Spouse'),('father','Father'),('inlaws','Father-in-law'),('inlaws_maiden_name','Mother-in-law’s maiden name'),('inlaws_family','Mother-in-law’s family / network'),('yeshivah','Yeshivah attended by applicant'),('weekday_shul','Weekday shul'),('shabbos_shul','Shabbos shul')] %}<div><dt>{{ _(label) }}</dt><dd>{% if key=='yeshivah' %}{% set history=family_yeshivah_history(family.id) %}{% for row,institution in history %}<span class="profile-linked-row">{{ institution.name }}{% if row.grade %} · {{ row.grade }}{% endif %}{% if row.year_from or row.year_to %} · <bdi dir="ltr">{{ row.year_from or '?' }}–{{ row.year_to or '?' }}</bdi>{% endif %}</span>{% else %}{{ family[key] or _('Not entered') }}{% endfor %} {{ pencil(family.id, 'yeshivah_name', label) }}{% elif key in ('weekday_shul','shabbos_shul') %}{{ family[key] or _('Not entered') }} {{ pencil(family.id, key, label) }}{% set contacts=shul_rabbi_map.get(family[key],{}) %}{% set show_contacts=key=='weekday_shul' or family.shabbos_shul!=family.weekday_shul %}{% if show_contacts and (contacts.get('name') or contacts.get('assistants') or contacts.get('gabbais')) %}<details class="profile-linked-contacts"><summary>{{ _('Shul contacts') }}</summary>{% if contacts.get('name') %}<small><strong>{{ contacts.name }}</strong>{% for phone in contacts.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</small>{% endif %}{% for person in contacts.get('assistants',[]) %}<small>{{ person.name }}{% for phone in person.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</small>{% endfor %}{% for person in contacts.get('gabbais',[]) %}<small>{{ person.name }}{% for phone in person.phones %} · <bdi dir="ltr">{{ phone }}</bdi>{% endfor %}</small>{% endfor %}</details>{% endif %}{% else %}{{ family[key] or _('Not entered') }} {{ pencil(family.id, key, label) }}{% endif %}</dd></div>{% endfor %}
-<div hidden><dt>{{ _('Rabbi') }}</dt><dd>{{ family.rabbi or _('Not entered') }} {{ pencil(family.id, 'rabbi', 'Rabbi') }}<small>{{ _('Rabbi phone') }}: <bdi dir="ltr">{{ family.rabbi_phone or _('Not entered') }}</bdi> {{ pencil(family.id, 'rabbi_phone', 'Rabbi phone') }}</small></dd></div><div hidden><dt>{{ _('Shul gabbais') }}</dt><dd>{% set connected_gabbais=family_gabbai_contacts(family.id) %}{% for gabbai in connected_gabbais %}<span class="profile-linked-row"><strong>{{ gabbai.name }}</strong>{% for phone in gabbai.phones %}<small>{{ _('Gabbai phone') }}: <bdi dir="ltr">{{ phone }}</bdi></small>{% endfor %}</span>{% else %}{{ _('Not entered') }}{% endfor %}<details><summary>{{ _('+ Add another gabbai') }}</summary><form method="post" action="{{ url_for('add_gabbai', family_id=family.id) }}">{{ token(csrf) }}{% set shul_choices=family_shul_choices(family) %}{% if shul_choices|length > 1 %}<label>{{ _('Shul') }}<select name="institution_id" required>{% for shul in shul_choices %}<option value="{{ shul.id }}">{{ shul.name }}</option>{% endfor %}</select></label>{% elif shul_choices %}<input type="hidden" name="institution_id" value="{{ shul_choices[0].id }}">{% endif %}<input type="hidden" name="name" maxlength="160">{{ bilingual_name_fields('gabbai', none, 'name') }}<label>{{ _('Gabbai phone') }}<input name="phone" maxlength="80" dir="ltr"></label><button class="small">{{ _('Add gabbai') }}</button></form></details></dd></div><div class="profile-circumstances"><dt>{{ _('Household circumstances') }}</dt><dd><p class="preserve">{{ family.circumstances or _('No circumstances recorded.') }} {{ pencil(family.id, 'circumstances', 'Household circumstances') }}</p></dd></div></dl>
-<aside class="profile-attention">
-<h3>{{ _('Needs attention') }}</h3>
-<a href="/families/{{ family.id }}/edit"><span>{{ _('Missing profile information') }}</span><strong>{{ missing_profile_count }}</strong></a><a href="{{ url_for('supporters', family_id=family.id) }}"><span>{{ _('Supporters awaiting contact') }}</span><strong>{{ awaiting_contact }}</strong></a>
-<a href="#expense-requests"><span>{{ _('Pending expense requests') }}</span><strong>{{ family.expenses|selectattr('status', 'equalto', 'Requested')|list|length }}</strong></a><div class="profile-attention-stage"><span>{{ _('Case status') }}</span>{{ badge(family.status) }}</div><a class="profile-attention-next" href="/families/{{ family.id }}/edit">{{ _('Next step') }}: {{ _('Complete or review the profile') }} →</a></aside>
-<aside class="profile-summary">
-<h3>{{ _('Monthly summary') }}</h3><div><span>{{ _('Monthly income') }}</span><strong>{{ budget.income|money }}</strong></div><div><span>{{ _('Monthly expenses') }}</span><strong>{{ budget.bills|money }}</strong></div><div><span>{{ _('Monthly assistance') }}</span><strong>{{ budget.assistance|money }}</strong></div><div><span>{{ _('Monthly pledged') }}</span><strong><bdi class="money-value" dir="ltr">{{ pledged|money }}</bdi></strong></div><div><span>{{ _('Gross donations received') }}</span><strong><bdi class="money-value" dir="ltr">{{ gross_collected|money }}</bdi></strong></div><div><span>{{ _('ABCharity fees / deductions') }}</span><strong><bdi class="money-value" dir="ltr">{{ collection_fees|money }}</bdi></strong></div><div><span>{{ _('Already collected') }}</span><strong><bdi class="money-value" dir="ltr">{{ collected|money }}</bdi></strong></div><div><span>{{ _('Already sent') }}</span><strong><bdi class="money-value" dir="ltr">{{ sent|money }}</bdi></strong></div><div><span>{{ _('Available to give out') }}</span><strong><bdi class="money-value" dir="ltr">{{ available_to_give|money }}</bdi></strong></div>{% if ledger_adjustments_and_holds %}<div><span>{{ _('Other ledger adjustments and holds') }}</span><strong><bdi class="money-value" dir="ltr">{{ ledger_adjustments_and_holds|money }}</bdi></strong></div>{% endif %}<div class="need"><span>{{ _('Remaining monthly need') }}</span><strong><bdi class="money-value" dir="ltr">{{ budget.shortfall|money }}</bdi></strong></div><div><span>{{ _('Number of children') }}</span><strong>{{ budget.children_count if budget.children_count is not none else _('Not entered') }}</strong></div></aside></div></section>
-<section class="card padded no-print family-parent-picker"><h2>{{ _('Family connections') }}</h2><p>{{ _('Choose a supporter to review or edit who is connected under whom.') }}</p><label>{{ _('Whose son or son-in-law is he?') }}<span class="field-hint">{{ _('Search supporters') }}</span><input type="search" class="select-search" data-select-filter="family-parent-contact" aria-label="{{ _('Search supporters') }}" placeholder="{{ _('Search names') }}" autocomplete="off"><select id="family-parent-contact" onchange="if(this.value){window.location.href='/contacts/'+this.value+'/edit'}"><option value="">{{ _('Choose supporter') }}</option>{% for c, is_nested in contact_rows %}<option value="{{ c.id }}">{{ c.name }} · {{ _(c.relationship) }}</option>{% endfor %}</select></label></section>
-{% include '_children.html' %}
+<section class="case-workspace-panel household-workspace" data-case-panel="household" hidden>
+  <div class="household-summary-grid" id="household-community">
+    <article class="card padded household-summary-card">
+      <div class="case-card-heading"><h2>{{ _('Household') }}</h2><a href="/families/{{ family.id }}/edit">{{ _('Edit') }} →</a></div>
+      <div class="household-primary-person"><strong><bdi dir="auto">{{ family.name }}</bdi></strong>{% if family.spouse %}<span>{{ _('Spouse') }}: <bdi dir="auto">{{ family.spouse }}</bdi></span>{% endif %}</div>
+      <dl class="household-compact-details">
+        <div><dt>{{ _('Address') }}</dt><dd><bdi dir="auto">{{ family.full_address or _('Not entered') }}</bdi></dd></div>
+        <div><dt>{{ _('Phone') }}</dt><dd>{% if profile_phones %}<bdi dir="ltr">{{ profile_phones[0]|phone }}</bdi>{% else %}{{ _('Not entered') }}{% endif %}</dd></div>
+        <div><dt>{{ _('Email') }}</dt><dd>{% if family.email %}<bdi dir="ltr">{{ family.email }}</bdi>{% else %}{{ _('Not entered') }}{% endif %}</dd></div>
+      </dl>
+      <div class="household-counts"><strong>{{ family.reported_children_count if family.reported_children_count is not none else (budget.children_count if budget.children_count is not none else family.children|length) }}</strong><span>{{ _('children') }}</span><strong>{{ family.children|selectattr('married')|list|length }}</strong><span>{{ _('Married') }}</span></div>
+    </article>
+
+    <article class="card padded household-summary-card">
+      <div class="case-card-heading"><h2>{{ _('Family & community') }}</h2><a href="/families/{{ family.id }}/edit#family-community">{{ _('Edit') }} →</a></div>
+      <dl class="household-compact-details community-details">
+        <div><dt>{{ _('Father') }}</dt><dd><bdi dir="auto">{{ family.father or _('Not entered') }}</bdi></dd></div>
+        <div><dt>{{ _('Father-in-law') }}</dt><dd><bdi dir="auto">{{ family.inlaws or _('Not entered') }}</bdi></dd></div>
+        <div><dt>{{ _('Mother-in-law’s family / network') }}</dt><dd><bdi dir="auto">{{ family.inlaws_family or family.inlaws_maiden_name or _('Not entered') }}</bdi></dd></div>
+        <div><dt>{{ _('Rabbi') }}</dt><dd><bdi dir="auto">{{ family.rabbi or _('Not entered') }}</bdi></dd></div>
+        <div><dt>{{ _('Weekday shul') }}</dt><dd><bdi dir="auto">{{ family.weekday_shul or _('Not entered') }}</bdi></dd></div>
+        <div><dt>{{ _('Shabbos shul') }}</dt><dd><bdi dir="auto">{{ family.shabbos_shul or _('Not entered') }}</bdi></dd></div>
+      </dl>
+    </article>
+
+    <article class="card padded household-summary-card household-circumstances-card">
+      <div class="case-card-heading"><h2>{{ _('Household circumstances') }}</h2><a href="/families/{{ family.id }}/edit">{{ _('Edit') }} →</a></div>
+      <p class="preserve household-circumstances-preview">{{ family.circumstances or _('No circumstances recorded.') }}</p>
+    </article>
+  </div>
+
+  <section class="card padded household-children-card">
+    <div class="section-heading household-children-heading">
+      <div><h2>{{ _('Children') }}</h2><p>{{ _('Household children and married children.') }}</p></div>
+      <a class="button small secondary no-print" href="/families/{{ family.id }}/edit#children">+ {{ _('Add child') }}</a>
+    </div>
+    <div class="table-wrap household-children-table-wrap">
+      <table class="data-table household-children-table">
+        <thead><tr><th>{{ _('Name') }}</th><th>{{ _('Age') }}</th><th>{{ _('Grade') }}</th><th>{{ _('School') }}</th><th>{{ _('Status') }}</th><th class="no-print"></th></tr></thead>
+        <tbody>
+        {% for child in family.children %}
+          <tr>
+            <td><strong><bdi dir="auto">{{ child.name }}</bdi></strong>{% if child.married and child.spouse_name %}<small>{{ _('Spouse') }}: <bdi dir="auto">{{ child.spouse_name }}</bdi></small>{% endif %}</td>
+            <td>{{ child.age if child.age is not none else '—' }}</td>
+            <td><bdi dir="auto">{{ child.grade or '—' }}</bdi></td>
+            <td><bdi dir="auto">{{ child.school or '—' }}</bdi></td>
+            <td>{% if child.married %}{{ _('Married') }}{% else %}{{ _('At home') }}{% endif %}</td>
+            <td class="no-print"><a class="button small secondary" href="/families/{{ family.id }}/edit#children">{{ _('View') }} →</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty-state">{{ _('No children entered yet.') }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </section>
 <section class="case-workspace-panel" data-case-panel="support" hidden>
 <section class="card padded" id="circle-of-support">
