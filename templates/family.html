@@ -89,7 +89,6 @@
     <a href="#case-activity" data-case-jump="activity">{{ _('View full activity') }} →</a>
   </article>
 </section>
-{% include '_case_sponsor_panel.html' %}
 <section class="case-workspace-panel household-workspace" data-case-panel="household" hidden>
   <div class="household-summary-grid" id="household-community">
     <article class="card padded household-summary-card">
@@ -189,6 +188,7 @@
   </nav>
 
   <section id="financial-overview" class="financial-panel financial-overview is-active" data-financial-panel="overview">
+    {% include '_case_sponsor_panel.html' %}
     <div class="financial-kpi-grid">
       <article class="card padded"><span>{{ _('Monthly income') }}</span><strong>{{ budget.income|money }}</strong></article>
       <article class="card padded"><span>{{ _('Monthly expenses') }}</span><strong>{{ budget.bills|money }}</strong></article>
