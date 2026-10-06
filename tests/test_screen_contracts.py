@@ -286,6 +286,10 @@ def test_financial_expenses_are_split_into_stacked_views_and_dialogs():
         assert f'data-expense-tab="{view}"' in template
     assert 'id="provider-expense-dialog"' in template
     assert 'id="expense-request-dialog"' in template
+    requests = template[template.index('id="expense-requests"'):template.index('id="provider-expense-dialog"')]
+    assert "{{ _('No expense requests yet.') }}" in requests
+    assert "for expense in family.expenses" in requests
+    assert 'data-dialog-open="expense-request-dialog"' in requests
     assert "url_for('add_provider_account', family_id=family.id)" in template
     assert 'action="/families/{{ family.id }}/expenses"' in template
     assert "panel.dataset.expensePanel===key" in script
