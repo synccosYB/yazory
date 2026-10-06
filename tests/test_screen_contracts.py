@@ -246,5 +246,5 @@ def test_case_workspace_panels_are_siblings_and_abcharity_is_financial_action():
     assert support < financial < documents
     assert 'data-panel-href="{{ url_for(\'charity_donations\'' not in template
     financial_chunk = template[financial:documents]
-    assert "href="{{ url_for('charity_donations', family_id=family.id) }}"" in financial_chunk
+    assert "href=\"{{ url_for(\'charity_donations\', family_id=family.id) }}\"" in financial_chunk
     assert "{{ _('ABCharity donations') }}" in financial_chunk
