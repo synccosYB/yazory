@@ -1089,3 +1089,25 @@ html[dir="rtl"] .people-match-reasons span{
 .financial-summary-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #edf0f3}
 .financial-kpi-grid-compact{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:900px){.financial-tabs{overflow-x:auto}.financial-tabs a{flex:0 0 auto;min-width:105px}.financial-kpi-grid{grid-template-columns:1fr 1fr}.financial-overview-lower{grid-template-columns:1fr}.financial-overview{overflow:auto}}
+
+
+/* Expense sub-workspace: no long finance page inside a scrollbar. */
+.expense-workspace{display:flex;flex-direction:column;overflow:hidden}
+.expense-tabs{display:flex;gap:4px;flex:0 0 auto;margin-bottom:10px;padding:4px;background:#fff;border:1px solid var(--line);border-radius:7px}
+.expense-tabs a{flex:1 1 0;padding:8px 10px;border-radius:5px;text-align:center;font-size:12px;font-weight:650;color:#344f70;white-space:nowrap}
+.expense-tabs a:hover{text-decoration:none;background:#f5f7fa}
+.expense-tabs a.selected{background:#edf4ff;color:#1268df}
+.expense-panel{flex:1 1 auto;min-height:0;overflow:hidden}
+.expense-panel[hidden]{display:none!important}
+.expense-summary .financial-kpi-grid{margin-bottom:14px}
+.expense-summary-actions{display:flex;gap:8px;flex-wrap:wrap}
+.expense-record-card{height:100%;margin:0;display:flex;flex-direction:column;overflow:hidden}
+.expense-record-card .table-wrap,.expense-table-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+.workspace-dialog{width:min(760px,calc(100vw - 40px));max-height:calc(100vh - 80px);padding:0;border:0;border-radius:10px;box-shadow:0 20px 60px rgba(15,35,60,.28)}
+.workspace-dialog::backdrop{background:rgba(15,35,60,.35)}
+.workspace-dialog>form{padding:20px;overflow:auto;max-height:calc(100vh - 80px)}
+.dialog-heading,.dialog-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.dialog-heading{margin-bottom:16px}.dialog-heading h2{margin:0}.dialog-actions{justify-content:flex-end;margin-top:16px}
+.icon-button{width:34px;height:34px;padding:0;border-radius:50%;font-size:20px}
+.legacy-expense-form{display:none!important}
+@media(max-width:900px){.expense-tabs{overflow-x:auto}.expense-tabs a{flex:0 0 auto;min-width:125px}.expense-panel{overflow:auto}}
