@@ -1021,3 +1021,16 @@ html[dir="rtl"] .people-match-reasons span{
 .group-text-recipients input { width: auto; }
 .text-group-message { padding: 1rem; margin-block: .75rem; border: 1px solid var(--line, #ddd); border-radius: .5rem; }
 .text-group-message.outbound { background: var(--soft, #f5f7fa); }
+
+/* Inbox reading layout: isolate dates, wrap sender identities and keep actions together. */
+.mailbox-message>summary>time{direction:ltr;unicode-bidi:isolate;text-align:start}
+.mailbox-sender{overflow-wrap:anywhere}
+.mailbox-reading-pane{padding:18px 22px}
+.mailbox-reading-head>div{min-width:0;overflow-wrap:anywhere}
+.mailbox-body{max-width:none;min-height:0;margin:14px 0;padding:14px 16px;background:#f5f7f9;border-radius:6px;color:var(--ink);overflow-wrap:anywhere}
+.mailbox-reply-actions{flex-wrap:wrap;align-items:center}
+.mailbox-reply-actions>details{flex:0 1 auto}
+.mailbox-reply-actions>form{margin:0}
+.mailbox-reply-actions .button,.mailbox-reply-actions button{white-space:normal}
+@media(max-width:1100px){.mailbox-message>summary{grid-template-columns:38px minmax(0,1fr) auto}.mailbox-subject{grid-column:2/4}}
+@media(max-width:520px){.mailbox-message>summary{grid-template-columns:34px minmax(0,1fr)}.mailbox-message>summary>time,.mailbox-subject{grid-column:2}.mailbox-reading-pane{padding:14px}}

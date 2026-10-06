@@ -3789,8 +3789,19 @@ def create_app(test_config=None):
         outbound_sms_count = sum(
             row.direction == 'outbound'
             for row in (general_sms_history or ()))
+        # Merge the already permission-scoped, bounded queries before rendering.
+        mailbox_records = (
+            [('general', row) for row in (inbox_history or [])] +
+            [('general-sms' if row.direction == 'inbound' else 'sent-sms', row)
+             for row in (general_sms_history or [])] +
+            [('supporters', row) for row in email_replies] +
+            [('applicants', row) for row in applicant_replies] +
+            [('sent', row) for row in outbound_history])
+        mailbox_records.sort(
+            key=lambda item: (item[1].created_at, item[1].id, item[0]), reverse=True)
         return _app.render_template(
             'communications.html', title='Communications', contacts=contacts,
+            mailbox_records=mailbox_records,
             selected_contact=selected_contact,
             history=history, latest=latest, due=due, email_replies=email_replies,
             applicant_history=applicant_history, applicant_replies=applicant_replies,

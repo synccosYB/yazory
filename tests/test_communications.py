@@ -1586,3 +1586,34 @@ def test_communications_get_eager_loads_replies_and_performs_no_writes(monkeypat
     assert not any('from family where family.id =' in sql for sql in statements)
     assert not any(sql.lstrip().startswith(('insert ', 'update ', 'delete '))
                    for sql in statements)
+
+
+def test_mailbox_merges_channels_newest_first_and_displays_bodies(monkeypatch):
+    app, client, contact_id = setup_workspace(monkeypatch)
+    with app.app_context():
+        family_id = db.session.get(Contact, contact_id).family_id
+        db.session.add_all([
+            InboundInboxMessage(provider_message_id='mailbox-old', recipient='info@yaazory.org',
+                                sender_email='older@example.test', subject='Older email',
+                                body='Old email body', created_at=datetime(2026, 9, 18)),
+            GeneralSmsMessage(phone='+18455559999', direction='inbound', status='unread',
+                              body='Middle SMS body', created_at=datetime(2026, 10, 5, 17)),
+            SupporterCommunication(contact_id=contact_id, family_id=family_id,
+                                   kind='sms', direction='inbound', status='received',
+                                   subject='Incoming text message', body='Newest supporter body',
+                                   created_at=datetime(2026, 10, 6, 12)),
+            SupporterCommunication(contact_id=contact_id, family_id=family_id,
+                                   kind='sms', direction='inbound', status='received',
+                                   subject='Incoming text message', body='',
+                                   created_at=datetime(2026, 10, 6, 13)),
+        ])
+        db.session.commit()
+    for locale in ('en', 'he', 'yi'):
+        with client.session_transaction() as session:
+            session['language'] = locale
+        response = client.get('/communications')
+        assert response.status_code == 200
+        mailbox = response.text.split('data-mailbox-list>', 1)[1]
+        assert mailbox.index('Newest supporter body') < mailbox.index('Middle SMS body') < mailbox.index('Old email body')
+        assert '<div class="mailbox-body" dir="auto">Newest supporter body</div>' in mailbox
+        assert '<div class="mailbox-body" dir="auto"></div>' not in mailbox

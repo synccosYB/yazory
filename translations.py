@@ -5,6 +5,7 @@ from flask import session
 from translations_original import CATALOG, LANGUAGES, translate as _translate, translate_audit
 
 _EXTRA = {
+    'No message text was saved.': {'he': 'לא נשמר טקסט להודעה זו.', 'yi': 'פאר דעם מעסעדזש איז נישט אפגעהיטן געווארן קיין טעקסט.'},
     'Group text': {'he': 'הודעה לקבוצה', 'yi': 'שיק א טעקסט צו א גרופע'},
     'Send group text': {'he': 'שליחת הודעה לקבוצה', 'yi': 'שיק דעם טעקסט צו דער גרופע'},
     'Each recipient receives a private SMS. Replies stay in their own conversation.': {'he': 'כל נמען מקבל הודעה פרטית. התשובות נשמרות בשיחה שלו.', 'yi': 'יעדער באקומט א פריוואטע טעקסט. די ענטפערס בלייבן אין זיין אייגענעם שמועס.'},
