@@ -248,3 +248,25 @@ def test_case_workspace_panels_are_siblings_and_abcharity_is_financial_action():
     financial_chunk = template[financial:documents]
     assert "href=\"{{ url_for(\'charity_donations\', family_id=family.id) }}\"" in financial_chunk
     assert "{{ _('ABCharity donations') }}" in financial_chunk
+
+
+def test_case_financials_is_split_into_compact_workspace_views():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    script = (root / 'static/pages.js').read_text()
+    css = (root / 'static/style.css').read_text()
+
+    assert 'class="workspace-tabs case-tabs' in template
+    assert 'class="financial-tabs' in template
+    for view in ('overview', 'pledges', 'expenses', 'payouts'):
+        assert f'data-financial-panel="{view}"' in template
+    for label in ('Donations', 'Pledges', 'Expenses', 'Payouts', 'Ledger'):
+        assert "{{ _('"+label+"') }}" in template
+    financial_overview = template[template.index('id="financial-overview"'):template.index('id="financial-pledges"')]
+    assert "_household_budget.html" not in financial_overview
+    assert "financial-kpi-grid" in financial_overview
+    expenses = template[template.index('id="financial-expenses"'):template.index('id="financial-payouts"')]
+    assert "_household_budget.html" in expenses
+    assert 'id="expense-requests"' in expenses
+    assert "data.financialPanel===key" in script
+    assert ".financial-overview{overflow:hidden}" in css
