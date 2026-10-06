@@ -329,7 +329,7 @@ def test_case_workspace_has_complete_shared_multilingual_contract():
 def test_case_workspace_stylesheet_uses_current_cache_key():
     root = Path(__file__).resolve().parents[1]
     base = (root / 'templates/base.html').read_text()
-    assert "v='20261006-case-workspace-i18n1'" in base
+    assert "v='20261006-case-workspace-household1'" in base
     assert "v='20261002-people-match-rtl2'" not in base
 
 
@@ -353,3 +353,30 @@ def test_applicant_communications_preserves_case_workspace_navigation():
     assert 'aria-current="page"' in template
     assert "url_for('staff_applicant_messages',family_id=family.id)" in template
     assert "url_for('family_detail',family_id=family.id)" in template
+
+
+def test_household_workspace_is_compact_and_uses_canonical_case_data():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    css = (root / 'static/style.css').read_text()
+
+    household = template[template.index('data-case-panel="household"'):template.index('data-case-panel="support"')]
+    assert 'class="household-summary-grid"' in household
+    assert 'class="card padded household-summary-card"' in household
+    assert 'class="card padded household-children-card"' in household
+    assert 'class="data-table household-children-table"' in household
+    assert 'for child in family.children' in household
+    assert 'family.reported_children_count' in household
+    assert 'family.full_address' in household
+    assert 'family.circumstances' in household
+    assert "family.weekday_shul" in household
+    assert "family.shabbos_shul" in household
+    assert "family.rabbi" in household
+    assert '_children.html' not in household
+    assert 'profile-attention' not in household
+    assert 'profile-summary' not in household
+    assert 'family-parent-picker' not in household
+    assert 'Additional askanim' not in household
+    assert 'Monthly summary' not in household
+    assert '.household-summary-grid{display:grid;grid-template-columns:1fr 1.18fr 1fr' in css
+    assert '.household-children-card{margin:0;min-height:0;display:flex;flex:1 1 auto' in css
