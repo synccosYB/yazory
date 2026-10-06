@@ -181,11 +181,59 @@
     <article class="card padded"><p>{{ _('Pledges are managed from this case’s support network so supporter commitments keep one source of truth.') }}</p><a href="#circle-of-support" data-case-jump="support">{{ _('Open support network') }} →</a></article>
   </section>
 
-  <section id="financial-expenses" class="financial-panel" data-financial-panel="expenses" hidden>
-    {% include '_household_budget.html' %}
-    <section class="card padded">
-<h2 id="expense-requests">{{ _("Expense requests") }}</h2><p>{{ _("Approval and payment recording are available in") }} <a href="/expenses">{{ _("Expenses & approvals") }}</a>.</p>{{ expense_table(family.expenses, csrf, expense_transitions, is_org_admin) }}{% if family.status not in ['Closed','Declined'] %}<details><summary>{{ _("+ Request expense") }}</summary><form method="post" action="/families/{{ family.id }}/expenses">{{ token(csrf) }}<div class="form-grid"><label>{{ _("Category") }}<select name="category">{% for s in categories %}<option value="{{ s }}">{{ _(s) }}</option>{% endfor %}</select></label><label>{{ _("Payee *") }}<input name="payee" required maxlength="160"></label><label>{{ _("Amount ($) *") }}<input type="number" name="amount" min="0.01" max="1000000" step="0.01" required></label><label>{{ _("Budget month *") }}<input type="month" name="month" value="{{ current_month }}" required></label></div><label>{{ _("Notes") }}<textarea name="note" maxlength="5000" rows="3"></textarea></label><button>{{ _("Submit request") }}</button></form></details>{% endif %}</section>
+  <section id="financial-expenses" class="financial-panel expense-workspace" data-financial-panel="expenses" hidden>
+    {% if family.intake_record %}{% set b=family.intake_record.data %}
+    <nav class="expense-tabs no-print" aria-label="{{ _('Expense sections') }}" data-expense-tabs>
+      <a class="selected" href="#expense-summary" data-expense-tab="summary">{{ _('Summary') }}</a>
+      <a href="#expense-household" data-expense-tab="household">{{ _('Household bills') }}</a>
+      <a href="#expense-providers" data-expense-tab="providers">{{ _('Provider accounts') }}</a>
+      <a href="#expense-requests" data-expense-tab="requests">{{ _('Expense requests') }}</a>
+    </nav>
 
+    <section id="expense-summary" class="expense-panel expense-summary is-active" data-expense-panel="summary">
+      <div class="financial-kpi-grid">
+        <article class="card padded"><span>{{ _('Monthly household bills') }}</span><strong>{{ budget.bills|money }}</strong></article>
+        <article class="card padded"><span>{{ _('Child age-based estimates') }}</span><strong>{{ budget.child_estimates|money }}</strong></article>
+        <article class="card padded"><span>{{ _('Actual child amounts entered') }}</span><strong>{{ budget.actual_children|money }}</strong></article>
+        <article class="card padded"><span>{{ _('Monthly need') }}</span><strong>{{ budget.shortfall|money }}</strong></article>
+        <article class="card padded"><span>{{ _('Provider accounts') }}</span><strong>{{ b.get('accounts', [])|length }}</strong></article>
+        <article class="card padded"><span>{{ _('Pending expense requests') }}</span><strong>{{ family.expenses|selectattr('status', 'equalto', 'Requested')|list|length }}</strong></article>
+      </div>
+      <div class="expense-summary-actions no-print">
+        <a class="button secondary" href="#expense-providers" data-expense-jump="providers">{{ _('View provider accounts') }}</a>
+        <a class="button secondary" href="#expense-requests" data-expense-jump="requests">{{ _('View expense requests') }}</a>
+        <a class="button secondary" href="{{ url_for('edit_family',family_id=family.id) }}">{{ _('Edit full budget') }}</a>
+      </div>
+    </section>
+
+    <section id="expense-household" class="expense-panel" data-expense-panel="household" hidden>
+      <article class="card padded">
+        <div class="section-heading"><div><h2>{{ _('Household bills') }}</h2><p>{{ _('Monthly household income and expense inputs for this case.') }}</p></div><a class="button secondary" href="{{ url_for('edit_family',family_id=family.id) }}">{{ _('Edit full budget') }}</a></div>
+        <dl class="details">
+          <div><dt>{{ _('Number of children') }}</dt><dd>{{ b.get('children_count') if b.get('children_count') is not none else _('Not entered') }}</dd></div>
+          {% for key,label in [('rent','Monthly rent or mortgage ($)'),('food','Monthly food costs ($)'),('his_income','His monthly income ($)'),('her_income','Her monthly income ($)'),('other_income','Other monthly income ($)'),('foodstamps_amount','Monthly food stamps ($)')] %}<div><dt>{{ _(label) }}</dt><dd>{{ b[key]|money if b.get(key) is not none else _('Not entered') }}</dd></div>{% endfor %}
+          <div><dt>{{ _('Total monthly income') }}</dt><dd>{{ budget.income|money }}</dd></div>
+          <div><dt>{{ _('Monthly household bills') }}</dt><dd>{{ budget.bills|money }}</dd></div>
+          <div><dt>{{ _('Total shortfall') }}</dt><dd><strong>{{ budget.shortfall|money }}</strong></dd></div>
+        </dl>
+      </article>
+    </section>
+
+    <section id="expense-providers" class="expense-panel" data-expense-panel="providers" hidden>
+      <article class="card padded expense-record-card">
+        <div class="section-heading"><div><h2>{{ _('Provider accounts') }}</h2><p>{{ _('Utilities, groceries, mosdos and other recurring provider bills.') }}</p></div><button class="secondary" type="button" data-dialog-open="provider-expense-dialog">{{ _('+ Add provider expense') }}</button></div>
+        <div class="table-wrap expense-table-scroll"><table><thead><tr><th>{{ _('Account type') }}</th><th>{{ _('Organization / provider name') }}</th><th>{{ _('For whom') }}</th><th>{{ _('Account number') }}</th><th>{{ _('Contact phone') }}</th><th>{{ _('Monthly bill ($)') }}</th></tr></thead><tbody>{% for account in b.get('accounts', []) %}<tr><td>{{ _({'utility':'Utility company','grocery':'Grocery store','mosdos':'Mosdos / school','other':'Other'}.get(account.get('kind'), account.get('kind','Other'))) }}</td><td><strong>{{ account.get('provider') or '—' }}</strong></td><td>{{ account.get('child') or family.name }}</td><td><bdi dir="ltr">{{ account.get('account') or '—' }}</bdi></td><td><bdi dir="ltr">{{ account.get('phone') or '—' }}</bdi></td><td class="numeric">{{ account.get('monthly_bill')|money if account.get('monthly_bill') is not none else '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">{{ _('No provider expenses entered.') }}</td></tr>{% endfor %}</tbody></table></div>
+      </article>
+    </section>
+
+    <section id="expense-requests" class="expense-panel" data-expense-panel="requests" hidden>
+      
+    </section>
+
+    <dialog id="provider-expense-dialog" class="workspace-dialog"><form method="post" action="{{ url_for('add_provider_account', family_id=family.id) }}">{{ token(csrf) }}<div class="dialog-heading"><h2>{{ _('Add provider expense') }}</h2><button type="button" class="icon-button" data-dialog-close aria-label="{{ _('Close') }}">×</button></div><div class="form-grid"><label>{{ _('Account type') }}<select name="kind" required><option value="">{{ _('Choose…') }}</option>{% for code,label in [('utility','Utility company'),('grocery','Grocery store'),('mosdos','Mosdos / school'),('other','Other')] %}<option value="{{ code }}">{{ _(label) }}</option>{% endfor %}</select></label><label>{{ _('Organization / provider name') }}<input name="provider" required maxlength="300"></label><label>{{ _('For whom') }}<input name="child" maxlength="300" placeholder="{{ family.name }}"></label><label>{{ _('Monthly bill ($)') }}<input name="monthly_bill" type="number" min="0" max="1000000" step="0.01" required></label><label>{{ _('Account number') }}<input name="account" maxlength="300" dir="ltr"></label><label>{{ _('Contact phone') }}<input name="phone" maxlength="300" dir="ltr"></label><label>{{ _('Count this bill') }}<select name="budget_treatment"><option value="">{{ _('Choose…') }}</option>{% for code,label in [('additional','Add to monthly expenses'),('food','Already included in food'),('rent','Already included in rent')] %}<option value="{{ code }}">{{ _(label) }}</option>{% endfor %}</select></label></div><div class="dialog-actions"><button type="button" class="secondary" data-dialog-close>{{ _('Cancel') }}</button><button>{{ _('Add provider expense') }}</button></div></form></dialog>
+
+    {% if family.status not in ['Closed','Declined'] %}<dialog id="expense-request-dialog" class="workspace-dialog"><form method="post" action="/families/{{ family.id }}/expenses">{{ token(csrf) }}<div class="dialog-heading"><h2>{{ _('Request expense') }}</h2><button type="button" class="icon-button" data-dialog-close aria-label="{{ _('Close') }}">×</button></div><div class="form-grid"><label>{{ _("Category") }}<select name="category">{% for s in categories %}<option value="{{ s }}">{{ _(s) }}</option>{% endfor %}</select></label><label>{{ _("Payee *") }}<input name="payee" required maxlength="160"></label><label>{{ _("Amount ($) *") }}<input type="number" name="amount" min="0.01" max="1000000" step="0.01" required></label><label>{{ _("Budget month *") }}<input type="month" name="month" value="{{ current_month }}" required></label></div><label>{{ _("Notes") }}<textarea name="note" maxlength="5000" rows="3"></textarea></label><div class="dialog-actions"><button type="button" class="secondary" data-dialog-close>{{ _('Cancel') }}</button><button>{{ _("Submit request") }}</button></div></form></dialog>{% endif %}
+    {% else %}<article class="card padded"><p>{{ _('No household budget has been entered yet.') }}</p><a class="button secondary" href="{{ url_for('edit_family',family_id=family.id) }}">{{ _('Add household budget') }}</a></article>{% endif %}
   </section>
 
   <section id="financial-payouts" class="financial-panel" data-financial-panel="payouts" hidden>
