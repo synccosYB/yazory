@@ -79,7 +79,7 @@
   <article class="card padded case-support-summary">
     <div class="case-card-heading"><h2>{{ _('Support network') }}</h2></div>
     <strong>{{ supporter_total }} {{ _('supporters') }}</strong>
-    {% if family.designated_askan %}<p>{{ _('Askan') }}: <a href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}"><bdi dir="auto">{{ family.designated_askan.name }}</bdi></a></p>{% endif %}
+    {% if family.designated_askan %}<p class="profile-linked-row">{{ _('Askan') }}: <a href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}"><bdi dir="auto">{{ family.designated_askan.name }}</bdi></a> <form method="post" action="{{ url_for('remove_designated_family_askan', family_id=family.id) }}" style="display:inline" onsubmit="return confirm('{{ _('Remove this name from this case?') }}')">{{ token(csrf) }}<button class="small secondary" type="submit">{{ _('Remove') }}</button></form></p>{% endif %}
     {% if is_org_admin and family.designated_askan and (family.designated_askan.cell_phone or family.designated_askan.phone) %}<a class="button small secondary" href="{{ url_for('communications', sms_phone=family.designated_askan.cell_phone or family.designated_askan.phone, sms_name=family.designated_askan.name, family_id=family.id, _anchor='mailbox-general-sms-compose') }}">{{ _('Send SMS') }}</a>{% endif %}
     <a href="#circle-of-support" data-case-jump="support">{{ _('View support network') }} →</a>
   </article>
