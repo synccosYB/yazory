@@ -1135,6 +1135,9 @@ html[dir="rtl"] :is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:rtl
 html[dir="ltr"] :is(.workspace-tabs,.financial-tabs,.expense-tabs){direction:ltr}
 html[dir="rtl"] :is(.case-workspace-header,.case-workspace-panel,.financial-panel,.expense-panel,.workspace-dialog){text-align:right}
 html[dir="ltr"] :is(.case-workspace-header,.case-workspace-panel,.financial-panel,.expense-panel,.workspace-dialog){text-align:left}
+/* Keep LTR currency aligned with its label in RTL metric cards. */
+html[dir="rtl"] :is(.case-kpi-grid,.financial-kpi-grid) strong{text-align:right}
+html[dir="ltr"] :is(.case-kpi-grid,.financial-kpi-grid) strong{text-align:left}
 @media(min-width:901px){
   body[data-endpoint="family_detail"] :is(.case-tabs,.financial-tabs,.expense-tabs){overflow:hidden}
   body[data-endpoint="family_detail"] .case-tabs>a{min-width:0}
