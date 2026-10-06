@@ -107,8 +107,6 @@
 <section class="card padded no-print family-parent-picker"><h2>{{ _('Family connections') }}</h2><p>{{ _('Choose a supporter to review or edit who is connected under whom.') }}</p><label>{{ _('Whose son or son-in-law is he?') }}<span class="field-hint">{{ _('Search supporters') }}</span><input type="search" class="select-search" data-select-filter="family-parent-contact" aria-label="{{ _('Search supporters') }}" placeholder="{{ _('Search names') }}" autocomplete="off"><select id="family-parent-contact" onchange="if(this.value){window.location.href='/contacts/'+this.value+'/edit'}"><option value="">{{ _('Choose supporter') }}</option>{% for c, is_nested in contact_rows %}<option value="{{ c.id }}">{{ c.name }} · {{ _(c.relationship) }}</option>{% endfor %}</select></label></section>
 {% include '_children.html' %}
 </section>
-<section id="case-financials" class="case-workspace-panel" data-case-panel="financials" hidden>
-<div>{% include '_household_budget.html' %}</div>
 <section class="case-workspace-panel" data-case-panel="support" hidden>
 <section class="card padded" id="circle-of-support">
   <div class="section-heading supporter-summary-heading"><div><h2>{{ _( "Circle of support" ) }}</h2><p>{{ _( "Track relatives, friends, and recurring or one-time commitments. A supporter connected to multiple cases is charged only once." ) }}</p></div><div><strong>{{ supporter_total }}</strong> {{ _( "Supporters" ) }}</div></div>
@@ -138,10 +136,16 @@
   {% if can_manage_supporters %}{% with families=[family], selected_family_id=family.id, possible_parents=contact_rows|map(attribute=0)|list, return_to='family' %}{% include '_add_supporter_form.html' %}{% endwith %}{% endif %}
   <p><a href="{{ url_for('supporters', family_id=family.id) }}">{{ _( "Manage supporters" ) }}</a></p>
 </section>
-</section><section class="card padded">
+</section>
+<section id="case-financials" class="case-workspace-panel" data-case-panel="financials" hidden>
+<div>{% include '_household_budget.html' %}</div>
+<nav class="case-financial-actions no-print" aria-label="{{ _('Financial actions') }}">
+  <a class="button secondary" href="{{ url_for('charity_donations', family_id=family.id) }}">{{ _('ABCharity donations') }}</a>
+  {% if workflow_active %}<a class="button secondary" href="{{ url_for('case_ledger', family_id=family.id) }}">{{ _('Case ledger') }}</a>{% endif %}
+</nav>
+<section class="card padded">
 <h2 id="expense-requests">{{ _("Expense requests") }}</h2><p>{{ _("Approval and payment recording are available in") }} <a href="/expenses">{{ _("Expenses & approvals") }}</a>.</p>{{ expense_table(family.expenses, csrf, expense_transitions, is_org_admin) }}{% if family.status not in ['Closed','Declined'] %}<details><summary>{{ _("+ Request expense") }}</summary><form method="post" action="/families/{{ family.id }}/expenses">{{ token(csrf) }}<div class="form-grid"><label>{{ _("Category") }}<select name="category">{% for s in categories %}<option value="{{ s }}">{{ _(s) }}</option>{% endfor %}</select></label><label>{{ _("Payee *") }}<input name="payee" required maxlength="160"></label><label>{{ _("Amount ($) *") }}<input type="number" name="amount" min="0.01" max="1000000" step="0.01" required></label><label>{{ _("Budget month *") }}<input type="month" name="month" value="{{ current_month }}" required></label></div><label>{{ _("Notes") }}<textarea name="note" maxlength="5000" rows="3"></textarea></label><button>{{ _("Submit request") }}</button></form></details>{% endif %}</section>
 </section>
 <section id="case-documents" class="case-workspace-panel" data-case-panel="documents" hidden>{% include '_documents.html' %}</section>
 
-<section class="card padded" data-panel-href="{{ url_for('charity_donations', family_id=family.id) }}"><h2>{{ _('ABCharity donations') }}</h2></section>
 <section id="case-activity" class="case-workspace-panel" data-case-panel="activity" hidden><section class="card padded"><h2>{{ _("Case activity") }}</h2>{% for a in activity %}<div class="activity-row"><div>{{ _audit(a.action) }}<small>{{ a.actor }}</small></div><time>{{ a.at|eastern_time }}</time></div>{% else %}<p>{{ _("No activity recorded.") }}</p>{% endfor %}</section></section>{% endblock %}
