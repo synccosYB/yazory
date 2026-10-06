@@ -407,3 +407,17 @@ def test_case_overview_links_activate_panels_and_askan_has_actions():
     script = (root / 'static/pages.js').read_text()
     assert "window.addEventListener('hashchange',revealHash)" in script
     assert "target?.closest('[data-case-panel]')" in script
+
+def test_household_names_have_case_only_remove_actions():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    app_source = (root / 'app_original.py').read_text()
+    assert "remove_designated_family_askan" in template
+    assert "remove_family_household_field" in template
+    assert "Remove this name from this case?" in template
+    for field in ('spouse', 'father', 'inlaws', 'inlaws_maiden_name', 'inlaws_family', 'rabbi'):
+        assert f"field_name='{field}'" in template
+        assert f"'{field}':" in app_source
+    assert "family.designated_askan = None" in app_source
+    assert "setattr(family, field_name, '')" in app_source
+    assert "db.session.delete(askan)" not in app_source
