@@ -247,7 +247,7 @@ def test_case_workspace_panels_are_siblings_and_abcharity_is_financial_action():
     assert 'data-panel-href="{{ url_for(\'charity_donations\'' not in template
     financial_chunk = template[financial:documents]
     assert "href=\"{{ url_for(\'charity_donations\', family_id=family.id) }}\"" in financial_chunk
-    assert "{{ _('ABCharity donations') }}" in financial_chunk
+    assert "{{ _('Donations') }}" in financial_chunk
 
 
 def test_case_financials_is_split_into_compact_workspace_views():
@@ -268,5 +268,5 @@ def test_case_financials_is_split_into_compact_workspace_views():
     expenses = template[template.index('id="financial-expenses"'):template.index('id="financial-payouts"')]
     assert "_household_budget.html" in expenses
     assert 'id="expense-requests"' in expenses
-    assert "data.financialPanel===key" in script
+    assert "panel.dataset.financialPanel===key" in script
     assert ".financial-overview{overflow:hidden}" in css
