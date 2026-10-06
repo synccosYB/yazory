@@ -337,7 +337,7 @@ def test_case_workspace_script_uses_current_cache_key():
     root = Path(__file__).resolve().parents[1]
     base = (root / 'templates/base.html').read_text()
     script = (root / 'static/pages.js').read_text()
-    assert "v='20261006-case-workspace-tabs1'" in base
+    assert "v='20261006-case-workspace-tabs2'" in base
     assert "v='20260930-imported-person-autofill'" not in base
     assert "data-case-tab" in script
     assert "event.preventDefault()" in script
@@ -390,3 +390,20 @@ def test_household_summary_vocabulary_has_all_workspace_locales():
         for language in ('he', 'yi'):
             assert CATALOG[label][language]
             assert CATALOG[label][language] != label
+
+
+def test_case_overview_links_activate_panels_and_askan_has_actions():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/family.html').read_text()
+    for anchor, panel in [('household-community', 'household'),
+                          ('circle-of-support', 'support'),
+                          ('case-activity', 'activity')]:
+        assert f'href="#{anchor}" data-case-jump="{panel}"' in template
+    summary = template.split('case-support-summary', 1)[1].split('</article>', 1)[0]
+    assert "url_for('askan_detail', askan_id=family.designated_askan.id)" in summary
+    assert 'is_org_admin and family.designated_askan' in summary
+    assert 'sms_phone=family.designated_askan.cell_phone or family.designated_askan.phone' in summary
+    assert "{{ _('Send SMS') }}" in summary
+    script = (root / 'static/pages.js').read_text()
+    assert "window.addEventListener('hashchange',revealHash)" in script
+    assert "target?.closest('[data-case-panel]')" in script

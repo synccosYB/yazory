@@ -392,9 +392,15 @@ document.querySelectorAll('[data-case-tabs]').forEach((tabs)=>{
     event.preventDefault();
     show(link.dataset.caseTab);
   }));
-  const hash=location.hash.slice(1);
-  const initial=links.find((link)=>link.getAttribute('href')===('#'+hash))?.dataset.caseTab||'overview';
-  show(initial,false);
+  const revealHash=()=>{
+    const target=document.getElementById(location.hash.slice(1));
+    const panel=target?.closest('[data-case-panel]');
+    const key=panel?.dataset.casePanel||links.find((link)=>link.getAttribute('href')===location.hash)?.dataset.caseTab;
+    if(key) show(key,false);
+    else if(!location.hash) show('overview',false);
+  };
+  window.addEventListener('hashchange',revealHash);
+  revealHash();
 });
 
 

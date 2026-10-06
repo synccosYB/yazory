@@ -33,7 +33,7 @@
     {% if profile_phones %}<span><bdi dir="ltr">{{ profile_phones[0] }}</bdi></span>{% endif %}
     {% if family.email %}<span><bdi dir="ltr">{{ family.email }}</bdi></span>{% endif %}
     {% if family.full_address %}<span><bdi dir="auto">{{ family.full_address }}</bdi></span>{% endif %}
-    {% if family.designated_askan %}<span>{{ _('Askan') }}: {{ family.designated_askan.name }}</span>{% endif %}
+    {% if family.designated_askan %}<span>{{ _('Askan') }}: <a href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}"><bdi dir="auto">{{ family.designated_askan.name }}</bdi></a></span>{% endif %}
   </div>
 </section>
 
@@ -74,18 +74,19 @@
     <div class="case-card-heading"><h2>{{ _('Household') }}</h2></div>
     <strong>{{ family.name }}</strong>
     <p>{{ budget.children_count if budget.children_count is not none else _('Not entered') }} {{ _('children') }}</p>
-    <a href="#household-community">{{ _('View household details') }} →</a>
+    <a href="#household-community" data-case-jump="household">{{ _('View household details') }} →</a>
   </article>
   <article class="card padded case-support-summary">
     <div class="case-card-heading"><h2>{{ _('Support network') }}</h2></div>
     <strong>{{ supporter_total }} {{ _('supporters') }}</strong>
-    {% if family.designated_askan %}<p>{{ _('Askan') }}: {{ family.designated_askan.name }}</p>{% endif %}
-    <a href="#circle-of-support">{{ _('View support network') }} →</a>
+    {% if family.designated_askan %}<p>{{ _('Askan') }}: <a href="{{ url_for('askan_detail', askan_id=family.designated_askan.id) }}"><bdi dir="auto">{{ family.designated_askan.name }}</bdi></a></p>{% endif %}
+    {% if is_org_admin and family.designated_askan and (family.designated_askan.cell_phone or family.designated_askan.phone) %}<a class="button small secondary" href="{{ url_for('communications', sms_phone=family.designated_askan.cell_phone or family.designated_askan.phone, sms_name=family.designated_askan.name, family_id=family.id, _anchor='mailbox-general-sms-compose') }}">{{ _('Send SMS') }}</a>{% endif %}
+    <a href="#circle-of-support" data-case-jump="support">{{ _('View support network') }} →</a>
   </article>
   <article class="card padded case-activity-summary">
     <div class="case-card-heading"><h2>{{ _('Recent activity') }}</h2></div>
     {% for a in activity[:4] %}<div class="case-activity-item"><span>{{ _audit(a.action) }}</span><time>{{ a.at|eastern_time }}</time></div>{% else %}<p>{{ _('No activity recorded.') }}</p>{% endfor %}
-    <a href="#case-activity">{{ _('View full activity') }} →</a>
+    <a href="#case-activity" data-case-jump="activity">{{ _('View full activity') }} →</a>
   </article>
 </section>
 {% include '_case_sponsor_panel.html' %}
