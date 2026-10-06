@@ -421,3 +421,13 @@ def test_household_names_have_case_only_remove_actions():
     assert "family.designated_askan = None" in app_source
     assert "setattr(family, field_name, '')" in app_source
     assert "db.session.delete(askan)" not in app_source
+
+def test_supporter_delete_preserves_records_with_history():
+    root = Path(__file__).resolve().parents[1]
+    app_source = (root / 'app_original.py').read_text()
+    route = app_source[app_source.index("def delete_contact(contact_id):"):app_source.index("def accessible_document_or_403")]
+    assert "contact.status = 'Paused'" in route
+    assert "link.assigned_to = None" in route
+    assert "History was kept" in route
+    assert "workflow history. Pause outreach instead of deleting" not in route
+    assert "if has_work_history or has_workflow_link or contact.receipts:" in route
