@@ -2686,13 +2686,22 @@ def create_app(test_config=None):
                                     _anchor=profile_section))
         return intake_form(family, 'Edit family profile')
 
-    @app.get('/askonim/<int:askan_id>')
+    @app.route('/askonim/<int:askan_id>', methods=['GET', 'POST'])
     def askan_detail(askan_id):
         require_capability(('family_admin', 'office_employee'))
         askan = db.get_or_404(Askan, askan_id)
         families = [family for family in askan.families if can_access_family(family.id)]
         if not families:
             abort(404)
+        if request.method == 'POST':
+            askan.name = field('name', True, 160)
+            askan.phone = field('phone', limit=80)
+            askan.cell_phone = field('cell_phone', limit=80)
+            askan.email = optional_email_field()
+            audit(f'Updated askan profile: {askan.name}')
+            db.session.commit()
+            flash('Askan profile saved.')
+            return redirect(url_for('askan_detail', askan_id=askan.id))
         return render_template('askan.html', title=askan.name, askan=askan,
                                families=families)
 
