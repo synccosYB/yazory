@@ -1068,3 +1068,24 @@ html[dir="rtl"] .people-match-reasons span{
   body[data-endpoint="family_detail"] .case-activity-item{padding:5px 0}
   body[data-endpoint="family_detail"] .case-workspace-panel:not(.case-overview-grid){padding-inline-end:2px}
 }
+
+
+/* Case Financials workspace: summary first, detailed tables only in their own view. */
+.financial-tabs{display:flex;align-items:center;gap:4px;margin-bottom:12px;padding:4px;background:#fff;border:1px solid var(--line);border-radius:7px}
+.financial-tabs a{flex:1 1 0;min-width:0;padding:9px 10px;border-radius:5px;text-align:center;font-size:12px;font-weight:650;color:#344f70;white-space:nowrap}
+.financial-tabs a:hover{text-decoration:none;background:#f5f7fa}
+.financial-tabs a.selected{background:#edf4ff;color:#1268df}
+.case-financial-workspace{display:flex;flex-direction:column}
+.case-financial-workspace[hidden]{display:none!important}
+.financial-panel{flex:1 1 auto;min-height:0;overflow:auto}
+.financial-panel[hidden]{display:none!important}
+.financial-overview{overflow:hidden}
+.financial-kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}
+.financial-kpi-grid>.card{margin:0;min-height:105px;display:flex;flex-direction:column;justify-content:center}
+.financial-kpi-grid span{color:var(--muted);font-size:12px}
+.financial-kpi-grid strong{margin-top:5px;color:#10233d;font-size:22px}
+.financial-overview-lower{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.financial-overview-lower>.card{margin:0}
+.financial-summary-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #edf0f3}
+.financial-kpi-grid-compact{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:900px){.financial-tabs{overflow-x:auto}.financial-tabs a{flex:0 0 auto;min-width:105px}.financial-kpi-grid{grid-template-columns:1fr 1fr}.financial-overview-lower{grid-template-columns:1fr}.financial-overview{overflow:auto}}
