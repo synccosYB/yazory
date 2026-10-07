@@ -2485,7 +2485,7 @@ def create_app(test_config=None):
                     Askan.phone == details['phone']))
             if askan is None:
                 askan = Askan(name=details['name'], phone=details.get('phone', ''),
-                              cell_phone=details.get('cell_phone', ''),
+                              cell_phone='',
                               email=details.get('email', ''))
                 resolver = app.extensions.get('selected_canonical_person')
                 if resolver:
