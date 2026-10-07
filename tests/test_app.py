@@ -778,7 +778,7 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
     assert 'Shared Directory Person' in edit.text
     assert '+ Add new askan' in edit.text
     assert 'data-add-new-person' in edit.text
-    assert 'name="askan_selected_cell_phone"' in edit.text
+    assert 'name="askan_selected_cell_phone"' not in edit.text
 
     response = post(client, '/families/1/edit', {
         'name': 'Sample family',
