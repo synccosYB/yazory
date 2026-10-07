@@ -9,6 +9,8 @@ def test_family_workspace_has_one_children_surface():
     assert family.count("{% include '_children.html' %}") == 1
     assert "household-child-editor" not in family
     assert "household-children-table" not in family
+    assert 'class="card padded household-children-card"' in family
+    assert 'href="#add-child-record"' in family
     assert '<h2>{{ _("Children") }}</h2>' in children
 
 
