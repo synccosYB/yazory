@@ -127,7 +127,12 @@
     </article>
   </div>
 
-  {% include '_children.html' %}
+  <section class="card padded household-children-card">
+    <div class="section-heading household-children-heading">
+      <a class="button small secondary no-print" href="#add-child-record">+ {{ _('Add child') }}</a>
+    </div>
+    {% include '_children.html' %}
+  </section>
 </section>
 <section class="case-workspace-panel" data-case-panel="support" hidden>
 <section class="card padded" id="circle-of-support">
