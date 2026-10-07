@@ -470,3 +470,11 @@ def test_household_child_actions_reach_existing_forms():
         assert 'action="/families/1/children"' in response.text
         assert 'id="children-schools"' in response.text
         assert '/edit#children' not in response.text
+
+
+def test_askan_profile_shows_canonical_person_id_and_keeps_case_yz_id():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/askan.html').read_text()
+    assert "{{ _('Person ID') }}" in template
+    assert "person_number('askan', askan)" in template
+    assert "YZ-{{ '%04d'|format(family.id) }}" in template
