@@ -1284,7 +1284,7 @@ def create_app(test_config=None):
 
         # Identity/contact data belongs to the canonical People record.  Role
         # tables are only a legacy fallback for records not linked there yet.
-        resolver = _app.current_app.extensions.get('selected_canonical_person')
+        resolver = app.extensions.get('selected_canonical_person')
         canonical_id = resolver(person_type, person_id) if resolver else None
         canonical = (_app.db.session.get(SupporterPerson, canonical_id)
                      if canonical_id else None)
