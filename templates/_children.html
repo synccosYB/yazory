@@ -1,7 +1,7 @@
 {% from 'macros.html' import token with context %}
 <section class="card padded family-children-card" id="children-schools">
-  <div class="section-heading family-children-heading"><div><h2>{{ _("Children & their spouses") }}</h2>
-  <p>{{ _("Mark which children are married and record the name of each child’s spouse.") }}</p></div><strong class="count">{{ family.children|length }}</strong></div>
+  <div class="section-heading family-children-heading"><div><h2>{{ _("Children") }}</h2>
+  <p>{{ _("Household children and married children.") }}</p></div><strong class="count">{{ family.children|length }}</strong></div>
   <div class="child-records">
   {% for c in family.children %}
   <details class="child-record" id="child-record-{{ c.id }}" data-page-item>
