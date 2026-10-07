@@ -1281,11 +1281,26 @@ def create_app(test_config=None):
         person = _app.db.session.get(model, person_id) if model else None
         if person is None:
             return None
+
+        # Identity/contact data belongs to the canonical People record.  Role
+        # tables are only a legacy fallback for records not linked there yet.
+        resolver = _app.current_app.extensions.get('selected_canonical_person')
+        canonical_id = resolver(person_type, person_id) if resolver else None
+        canonical = (_app.db.session.get(SupporterPerson, canonical_id)
+                     if canonical_id else None)
+        if canonical:
+            return {
+                'name': canonical.name,
+                'phone': canonical.phone or canonical.home_phone,
+                'cell_phone': canonical.cell_phone,
+                'email': canonical.email,
+            }
+
         phone = getattr(person, 'phone', '')
         if person_type == 'helper':
             phone = _app.db.session.scalar(select(HelperPhone.phone).where(
                 HelperPhone.helper_person_id == person.id).order_by(HelperPhone.id)) or ''
-        return {'name': person.name, 'phone': phone,
+        return {'name': person.name, 'phone': phone, 'cell_phone': '',
                 'email': getattr(person, 'email', '')}
 
     app.extensions.setdefault('person_directory_resolvers', []).append(
