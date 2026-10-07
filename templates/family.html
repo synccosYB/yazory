@@ -129,9 +129,29 @@
 
   <section class="card padded household-children-card">
     <div class="section-heading household-children-heading">
+      <div><h2>{{ _('Children') }}</h2><p>{{ _('Household children and married children.') }}</p></div>
       <a class="button small secondary no-print" href="#add-child-record">+ {{ _('Add child') }}</a>
     </div>
-    {% include '_children.html' %}
+    <div class="table-wrap household-children-table-wrap">
+      <table class="data-table household-children-table">
+        <thead><tr><th>{{ _('Name') }}</th><th>{{ _('Age') }}</th><th>{{ _('Grade') }}</th><th>{{ _('School') }}</th><th>{{ _('Status') }}</th><th class="no-print"></th></tr></thead>
+        <tbody>
+        {% for child in family.children %}
+          <tr>
+            <td><strong><bdi dir="auto">{{ child.name }}</bdi></strong>{% if child.married and child.spouse_name %}<small>{{ _('Spouse') }}: <bdi dir="auto">{{ child.spouse_name }}</bdi></small>{% endif %}</td>
+            <td>{{ child.age if child.age is not none else '—' }}</td>
+            <td><bdi dir="auto">{{ child.grade or '—' }}</bdi></td>
+            <td><bdi dir="auto">{{ child.school or '—' }}</bdi></td>
+            <td>{% if child.married %}{{ _('Married') }}{% else %}{{ _('At home') }}{% endif %}</td>
+            <td class="no-print"><a class="button small secondary" href="#child-record-{{ child.id }}">{{ _('View') }} →</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty-state">{{ _('No children entered yet.') }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <details class="household-child-editor"><summary>{{ _('Edit') }}</summary>{% include '_children.html' %}</details>
   </section>
 </section>
 <section class="case-workspace-panel" data-case-panel="support" hidden>
