@@ -2519,7 +2519,12 @@ def create_app(test_config=None):
         askan.name, askan.phone, askan.cell_phone, askan.email = name, phone, cell_phone, email
         if request.form.get('askan_person') == '__new__':
             for creator in app.extensions.get('person_directory_creators', ()):
-                creator(name=name, phone=phone, email=email)
+                profile = creator(name=name, phone=phone, email=email, cell_phone=cell_phone)
+                db.session.flush()
+                resolver = app.extensions.get('selected_canonical_person')
+                canonical_id = resolver('supporter_profile', profile.id) if resolver and profile else None
+                if canonical_id:
+                    askan._canonical_person_id = canonical_id
         family.designated_askan = askan
         for sync_people in app.extensions.get('askan_profile_person_sync', ()):
             sync_people(askan)
