@@ -286,6 +286,8 @@ def install(app):
                 askan.families or askan.organization_links or askan.case_coordinations)]
         askonim_total = db.session.scalar(
             select(func.count()).select_from(core.Askan)) or 0
+        people = db.session.scalars(select(core.SupporterPerson).order_by(
+            core.SupporterPerson.name, core.SupporterPerson.id)).all()
         due = db.session.scalars(select(CaseCoordination).where(
             CaseCoordination.status.notin_(('Completed', 'Declined')),
             CaseCoordination.follow_up_on.is_not(None),
@@ -300,24 +302,31 @@ def install(app):
                                     view=view,
                                     categories=ORGANIZATION_CATEGORIES,
                                     community_options=COMMUNITY_OPTIONS,
-                                    geographic_area_options=GEOGRAPHIC_AREA_OPTIONS)
+                                    geographic_area_options=GEOGRAPHIC_AREA_OPTIONS,
+                                    people=people)
 
     @app.post('/partner-network/askonim')
     def add_network_askan():
         """Create an askan directory profile without requiring a case or organization."""
         require_network_access()
-        name = value('name', 160, True)
-        phone = value('phone', 80)
-        email = email_value()
-        identity_matches = []
-        if phone:
-            identity_matches.append(core.Askan.phone == phone)
-        if email:
-            identity_matches.append(func.lower(core.Askan.email) == email)
-        if identity_matches and db.session.scalar(select(core.Askan.id).where(
-                or_(*identity_matches))):
-            core.abort(409, 'An askan with this phone or email is already in the directory.')
-        askan = core.Askan(name=name, phone=phone, email=email)
+        person_id = core.request.form.get('person_id', type=int)
+        if not person_id:
+            core.abort(400, 'Choose an existing person from the People directory.')
+        person = db.get_or_404(core.SupporterPerson, person_id)
+        from person_names import PersonNameOwner
+        existing_alias = db.session.scalar(select(PersonNameOwner).where(
+            PersonNameOwner.owner_kind == 'askan',
+            PersonNameOwner.person_id == person.id,
+            PersonNameOwner.field == 'name'))
+        if existing_alias:
+            existing_askan = db.session.get(core.Askan, existing_alias.owner_id)
+            if existing_askan:
+                core.abort(409, 'This person is already an askan.')
+        name = person.name
+        phone = person.phone or person.cell_phone or ''
+        email = person.email or ''
+        askan = core.Askan(name=name, phone=phone, cell_phone=person.cell_phone or '', email=email)
+        askan._canonical_person_id = person.id
         profile = AskanNetworkProfile(
             askan=askan, community=value('community', 160),
             shul=value('shul', 160), expertise=value('expertise', 500),
