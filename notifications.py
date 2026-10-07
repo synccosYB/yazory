@@ -132,7 +132,7 @@ def install(app):
     def activity_url(row):
         lowered = row.action.lower()
         sponsorship_match = re.fullmatch(
-            r'Updated (\d{4}-(?:0[1-9]|1[0-2])) sponsorship for (.+)',
+            r'Updated (\\d{4}-(?:0[1-9]|1[0-2])) sponsorship for (.+)',
             row.action)
         if sponsorship_match:
             month, page_label = sponsorship_match.groups()
@@ -141,6 +141,36 @@ def install(app):
                              if label == page_label), None)
             if page_key:
                 return url_for('sponsorship_edit', page_key=page_key, month=month)
+
+        # Resolve the source object named by older audit rows. A notification
+        # click must open the work it describes, never a generic dashboard.
+        follow_up_match = re.fullmatch(
+            r'Created automatic supporter follow-up: (.+)', row.action)
+        if follow_up_match:
+            from app import StaffTask
+            supporter_name = follow_up_match.group(1).strip()
+            task = core.db.session.scalar(
+                select(StaffTask)
+                .join(core.Contact, StaffTask.source_contact_id == core.Contact.id)
+                .where(core.Contact.name == supporter_name)
+                .order_by(StaffTask.id.desc())
+                .limit(1))
+            if task:
+                return url_for('task_detail', task_id=task.id)
+            contact = core.db.session.scalar(
+                select(core.Contact).where(core.Contact.name == supporter_name)
+                .order_by(core.Contact.id.desc()).limit(1))
+            if contact:
+                return url_for('supporter_detail', contact_id=contact.id)
+
+        askan_match = re.fullmatch(r'Updated askan network profile: (.+)', row.action)
+        if askan_match:
+            askan = core.db.session.scalar(
+                select(core.Askan).where(core.Askan.name == askan_match.group(1).strip())
+                .order_by(core.Askan.id.desc()).limit(1))
+            if askan:
+                return url_for('network_askan_detail', askan_id=askan.id)
+
         if any(word in lowered for word in ('message', 'email', 'replied')):
             return url_for('communications', _anchor='general-inbox')
         if any(word in lowered for word in ('receipt', 'donation', 'pledge', 'stripe')):
@@ -155,7 +185,9 @@ def install(app):
             return url_for('tasks')
         if row.family_id:
             return url_for('family_detail', family_id=row.family_id)
-        return url_for('dashboard')
+        # Unknown legacy audit rows remain in What's new rather than lying
+        # about their destination by sending staff to the dashboard.
+        return url_for('notifications')
 
     @app.context_processor
     def notification_context():
