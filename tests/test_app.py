@@ -4,7 +4,7 @@ import sqlite3
 from datetime import date
 
 import pytest
-from app import db, Family, Askan, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation, HelperPerson, HelperPhone, ShulHelperAssociation, SupporterProfile
+from app import db, Family, Askan, Child, Expense, Contact, ContactChild, Receipt, Audit, Document, StaffUser, FamilyAssignment, HouseholdIntake, Institution, PersonAffiliation, HelperPerson, HelperPhone, ShulHelperAssociation, SupporterProfile, SupporterPerson
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
