@@ -823,6 +823,12 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
         askan = db.session.get(Family, 1).designated_askan
         assert (askan.name, askan.phone, askan.email) == (
             'New Case Askan', '845-555-0188', 'new-askan@example.org')
+        from person_names import resolve_name_owner
+        owner_kind, owner_id, _ = resolve_name_owner('askan', askan.id)
+        assert owner_kind == 'person'
+        canonical = db.session.get(SupporterPerson, owner_id)
+        assert canonical.cell_phone == '845-555-0190'
+        assert canonical.email == 'new-askan@example.org'
         assert askan.cell_phone == '845-555-0190'
 
     directory = client.get('/community-directories?kind=Shul')
