@@ -1044,31 +1044,18 @@ html[dir="rtl"] .people-match-reasons span{
 
 
 
-/* Viewport-first workspace rule: pages stay put; dense content scrolls inside its panel. */
-@media(min-width:751px){
-  body[data-endpoint="family_detail"]{height:100vh;overflow:hidden}
-  body[data-endpoint="family_detail"] .workspace{height:100vh;display:flex;flex-direction:column;overflow:hidden}
-  body[data-endpoint="family_detail"] header,
-  body[data-endpoint="family_detail"] .hebrew-calendar,
-  body[data-endpoint="family_detail"] footer{flex:0 0 auto}
-  body[data-endpoint="family_detail"] main{width:100%;max-width:none;flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding-top:14px;padding-bottom:12px}
-  body[data-endpoint="family_detail"] .case-workspace-header,
-  body[data-endpoint="family_detail"] .case-tabs{flex:0 0 auto}
-  body[data-endpoint="family_detail"] .case-workspace-panel{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
-  body[data-endpoint="family_detail"] .case-overview-grid{overflow:hidden;grid-template-rows:minmax(0,1fr) minmax(0,1fr);align-items:stretch}
-  body[data-endpoint="family_detail"] .case-overview-grid>.card{height:100%;overflow:auto}
-  body[data-endpoint="family_detail"] .case-workspace-panel[hidden]{display:none!important}
-  body[data-endpoint="family_detail"] .case-workspace-header{margin-bottom:8px}
-  body[data-endpoint="family_detail"] .case-back-link{margin-bottom:5px}
-  body[data-endpoint="family_detail"] .case-workspace-meta{margin-top:5px}
-  body[data-endpoint="family_detail"] .workspace-tabs{margin-bottom:10px}
-  body[data-endpoint="family_detail"] .workspace-tabs a{padding-block:9px}
-  body[data-endpoint="family_detail"] .case-overview-grid .padded{padding:14px 16px}
-  body[data-endpoint="family_detail"] .case-kpi-grid{gap:7px 12px}
-  body[data-endpoint="family_detail"] .case-activity-item{padding:5px 0}
-  body[data-endpoint="family_detail"] .case-workspace-panel:not(.case-overview-grid){padding-inline-end:2px}
-}
-
+/* Case workspace uses normal document scrolling. Tabs switch panels without
+   turning the content area into a nested scroll container. */
+body[data-endpoint="family_detail"] main{width:100%;max-width:none}
+body[data-endpoint="family_detail"] .case-workspace-panel[hidden]{display:none!important}
+body[data-endpoint="family_detail"] .case-workspace-header{margin-bottom:8px}
+body[data-endpoint="family_detail"] .case-back-link{margin-bottom:5px}
+body[data-endpoint="family_detail"] .case-workspace-meta{margin-top:5px}
+body[data-endpoint="family_detail"] .workspace-tabs{margin-bottom:10px}
+body[data-endpoint="family_detail"] .workspace-tabs a{padding-block:9px}
+body[data-endpoint="family_detail"] .case-overview-grid .padded{padding:14px 16px}
+body[data-endpoint="family_detail"] .case-kpi-grid{gap:7px 12px}
+body[data-endpoint="family_detail"] .case-activity-item{padding:5px 0}
 
 /* Case Financials workspace: summary first, detailed tables only in their own view. */
 .financial-tabs{display:flex;align-items:center;gap:4px;margin-bottom:12px;padding:4px;background:#fff;border:1px solid var(--line);border-radius:7px}
