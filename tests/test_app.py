@@ -770,8 +770,12 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
                                   email='shared@example.org')
         db.session.add_all([person, Institution(kind='Shul', name='Shared People Shul')])
         db.session.flush()
-        canonical = app.extensions['selected_canonical_person']('supporter_profile', person.id)
-        db.session.get(SupporterPerson, canonical).cell_phone = '845-555-0190'
+        canonical = SupporterPerson(
+            identity_key='phone:8455550177', name=person.name,
+            phone=person.phone, cell_phone='845-555-0190', email=person.email)
+        db.session.add(canonical)
+        db.session.flush()
+        person.person_id = canonical.id
         db.session.commit()
         person_id = person.id
 
