@@ -31,18 +31,25 @@ def test_additional_askan_keeps_designated_askan(app, client):
         db.session.add(primary)
         db.session.flush()
         family.designated_askan = primary
+        second = SupporterPerson(identity_key='phone:8452222222', name='Second askan',
+                                 phone='8452222222', cell_phone='8453333333',
+                                 email='second@example.com')
+        db.session.add(second)
         db.session.commit()
+        second_id = second.id
     path = '/families/1/additional-askanim'
-    assert post(client, path, {'name': 'Second askan', 'phone': '8452222222',
-                               'cell_phone': '8453333333'}).status_code == 302
+    assert post(client, path, {'person_id': str(second_id)}).status_code == 302
     with app.app_context():
         family = db.session.get(Family, 1)
         assert family.designated_askan.name == 'Primary askan'
-        assert [(link.askan.name, link.askan.phone, link.askan.cell_phone)
-                for link in family.additional_askanim] == [
-            ('Second askan', '8452222222', '8453333333')]
+        assert len(family.additional_askanim) == 1
+        askan = family.additional_askanim[0].askan
+        from person_names import resolve_name_owner
+        assert resolve_name_owner('askan', askan.id)[1] == second_id
+        assert askan.cell_phone == ''
+        assert db.session.get(SupporterPerson, second_id).cell_phone == '8453333333'
     assert '(845) 333-3333' in client.get('/families/1').text
-    assert post(client, path, {'name': 'Second askan', 'phone': '8452222222'}).status_code == 400
+    assert post(client, path, {'person_id': str(second_id)}).status_code == 400
 
 def test_pages(client):
     for path in ['/', '/families', '/families/new', '/families/1', '/families/1/edit', '/expenses', '/expenses?status=Requested', '/activity', '/community-directories?kind=Shul', '/community-directories?kind=Yeshivah', '/health', '/login']:
