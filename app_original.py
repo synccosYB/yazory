@@ -1230,6 +1230,12 @@ def create_app(test_config=None):
         elif person_type == 'askan':
             row = db.session.get(Askan, person_id)
             if row:
+                from person_names import resolve_name_owner
+                owner_kind, owner_id, _ = resolve_name_owner('askan', row.id)
+                person = db.session.get(SupporterPerson, owner_id) if owner_kind == 'person' else None
+                if person:
+                    return {'name': person.name, 'phone': person.phone or person.home_phone,
+                            'cell_phone': person.cell_phone, 'email': person.email}
                 return {'name': row.name, 'phone': row.phone,
                         'cell_phone': row.cell_phone, 'email': row.email}
         for resolver in app.extensions.get('person_directory_resolvers', ()):
@@ -2483,8 +2489,8 @@ def create_app(test_config=None):
                 if resolver:
                     askan._canonical_person_id = resolver(person_type, person_id)
                 db.session.add(askan)
-            if 'askan_selected_cell_phone' in request.form:
-                askan.cell_phone = field('askan_selected_cell_phone', limit=80)
+            # Existing people keep their identity/contact data in the canonical
+            # People record. Case assignment must never create a second contact source.
             family.designated_askan = askan
             for sync_people in app.extensions.get('askan_profile_person_sync', ()):
                 sync_people(askan)
