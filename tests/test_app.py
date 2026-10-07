@@ -769,6 +769,9 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
                                   normalized_phone='8455550177',
                                   email='shared@example.org')
         db.session.add_all([person, Institution(kind='Shul', name='Shared People Shul')])
+        db.session.flush()
+        canonical = app.extensions['selected_canonical_person']('supporter_profile', person.id)
+        db.session.get(SupporterPerson, canonical).cell_phone = '845-555-0190'
         db.session.commit()
         person_id = person.id
 
@@ -783,16 +786,18 @@ def test_shared_person_can_be_selected_as_askan_and_appears_in_directories(app, 
     response = post(client, '/families/1/edit', {
         'name': 'Sample family',
         'askan_person': f'supporter_profile:{person_id}',
-        'askan_selected_cell_phone': '845-555-0190',
     })
     assert response.status_code == 302
     with app.app_context():
         askan = db.session.get(Family, 1).designated_askan
         assert (askan.name, askan.phone, askan.email) == (
             'Shared Directory Person', '845-555-0177', 'shared@example.org')
-        assert askan.cell_phone == '845-555-0190'
+        assert askan.cell_phone == ''
+        from person_names import resolve_name_owner
+        owner_kind, owner_id, _ = resolve_name_owner('askan', askan.id)
+        assert owner_kind == 'person'
+        assert db.session.get(SupporterPerson, owner_id).cell_phone == '845-555-0190'
     edit = client.get('/families/1/edit')
-    assert 'value="845-555-0190" data-initial-person=' in edit.text
 
     response = post(client, '/families/1/edit', {
         'name': 'Sample family',
