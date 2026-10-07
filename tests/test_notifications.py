@@ -198,6 +198,7 @@ def test_automatic_supporter_follow_up_opens_exact_task(app, client):
         task_id = task.id
         activity_id = activity.id
 
+    client.get('/notifications')
     with client.session_transaction() as browser_session:
         csrf = browser_session['csrf']
     opened = client.post(
@@ -225,6 +226,7 @@ def test_askan_profile_update_opens_exact_askan(app, client):
         askan_id = askan.id
         activity_id = activity.id
 
+    client.get('/notifications')
     with client.session_transaction() as browser_session:
         csrf = browser_session['csrf']
     opened = client.post(
@@ -246,6 +248,7 @@ def test_unknown_activity_never_falls_back_to_dashboard(app, client):
         db.session.commit()
         activity_id = activity.id
 
+    client.get('/notifications')
     with client.session_transaction() as browser_session:
         csrf = browser_session['csrf']
     opened = client.post(
