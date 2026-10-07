@@ -232,7 +232,7 @@ def test_askan_profile_update_opens_exact_askan(app, client):
         data={'csrf': csrf}, follow_redirects=False)
 
     assert opened.status_code == 302
-    assert opened.location.endswith(f'/network/askanim/{askan_id}')
+    assert opened.location.endswith(f'/partner-network/askonim/{askan_id}')
 
 
 def test_unknown_activity_never_falls_back_to_dashboard(app, client):
