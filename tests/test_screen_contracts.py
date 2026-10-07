@@ -478,3 +478,12 @@ def test_askan_profile_shows_canonical_person_id_and_keeps_case_yz_id():
     assert "{{ _('Person ID') }}" in template
     assert "person_number('askan', askan)" in template
     assert "YZ-{{ '%04d'|format(family.id) }}" in template
+
+
+def test_partner_network_add_askan_uses_existing_canonical_person():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / 'templates/partner_network.html').read_text()
+    source = (root / 'partner_network.py').read_text()
+    assert 'select name="person_id" required' in template
+    assert "Choose an existing person from the People directory." in source
+    assert "askan._canonical_person_id = person.id" in source
