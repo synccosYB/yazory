@@ -235,7 +235,7 @@ def test_case_workspace_matches_approved_structure():
     assert '.workspace-tabs{' in css
 
 
-def test_case_workspace_is_viewport_first_and_switches_panels_in_place():
+def test_case_workspace_switches_panels_in_place_without_nested_page_scroll():
     root = Path(__file__).resolve().parents[1]
     template = (root / 'templates/family.html').read_text()
     script = (root / 'static/pages.js').read_text()
@@ -247,9 +247,9 @@ def test_case_workspace_is_viewport_first_and_switches_panels_in_place():
         assert f'data-case-tab="{panel}"' in template
     assert "panel.hidden=!active" in script
     assert "history.replaceState" in script
-    assert 'body[data-endpoint="family_detail"]{height:100vh;overflow:hidden}' in css
-    assert '.case-workspace-panel{flex:1 1 auto;min-height:0;overflow:auto' in css
-    assert '.case-workspace-panel[hidden]{display:none!important}' in css
+    assert 'body[data-endpoint="family_detail"]{height:100vh;overflow:hidden}' not in css
+    assert 'body[data-endpoint="family_detail"] .case-workspace-panel{flex:1 1 auto;min-height:0;overflow:auto' not in css
+    assert 'body[data-endpoint="family_detail"] .case-workspace-panel[hidden]{display:none!important}' in css
 
 
 def test_case_workspace_keeps_existing_logo_asset_untouched():
