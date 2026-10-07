@@ -1,0 +1,11 @@
+.person-tabs{display:flex;flex-wrap:wrap;gap:.35rem;border-bottom:1px solid #dce3eb;padding-bottom:.5rem;margin-bottom:1rem}
+.person-tabs a{padding:.5rem .75rem;border-radius:6px;color:#173e66;text-decoration:none;font-weight:600}
+.person-tabs a[aria-current="page"]{background:#173e66;color:white}
+[data-person-workspace] [hidden]{display:none!important}
+[data-person-workspace] .person-workspace-grid{display:block}
+[data-person-workspace]>.card{margin-block:.75rem}
+.person-contact-line{overflow-wrap:anywhere}
+[data-person-workspace] .person-verification{border:0;margin:0}
+[data-person-workspace] .verification-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:1050px){[data-person-workspace] .verification-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){[data-person-workspace] .verification-grid{grid-template-columns:1fr}}

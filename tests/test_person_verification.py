@@ -377,3 +377,28 @@ def test_invalid_phone_editor_save_returns_specific_error(app):
     assert response.status_code == 409
     assert response.json['error'] == 'Enter a valid phone number.'
     assert client.get(f'/people/{ident}/verification').json['values']['phone'] == state['values']['phone']
+
+
+def test_person_workspace_starts_in_read_mode_with_related_work_tabs(app):
+    ident = setup_person(app)
+    with app.app_context():
+        row = db.session.get(SupporterPerson, ident)
+        profile = SupporterProfile(person_id=ident, name=row.name, phone=row.phone,
+                                   normalized_phone='workspace-read-mode')
+        db.session.add(profile)
+        db.session.commit()
+        profile_id = profile.id
+    client = app.test_client()
+    for lang in ('en', 'he', 'yi'):
+        with client.session_transaction() as session:
+            session['language'] = lang
+        response = client.get(f'/supporter-directory/{profile_id}/edit')
+        assert response.status_code == 200
+        assert 'data-profile-mode="view"' in response.text
+        assert 'data-person-mode="edit"' in response.text
+        assert 'data-person-mode="verify"' in response.text
+        for tab in ('identity', 'case-connections', 'family-connections',
+                    'people-relationships', 'person-activity', 'person-tasks',
+                    'person-tickets', 'person-institutions'):
+            assert f'data-person-tab="{tab}"' in response.text
+            assert f'id="{tab}"' in response.text

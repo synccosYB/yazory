@@ -4,6 +4,7 @@ from flask import session
 LANGUAGES = {'en': 'English', 'he': 'עברית', 'yi': 'אידיש'}
 # English | Hebrew | Heimish Yiddish
 _ROWS = '''
+Other phone|טלפון נוסף|אנדערע טעלעפאן
 Reason for declining|סיבת הסירוב|פארוואס ער האט אפגעזאגט
 What did he say?|מה הוא אמר?|וואס האט ער געזאגט?
 Follow-up task (optional)|משימת המשך (לא חובה)|ווייטערדיגע אויפגאבע (אויב נויטיג)

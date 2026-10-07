@@ -3,15 +3,19 @@
   <div>
     <div class="eyebrow">{{ _('SUPPORTER NETWORK') }}</div>
     {% set names = person_name_values('person', person) if person.id else person_name_values('profile', profile) %}<h1>{% if session.get('language') in ['yi','he'] %}{{ names.yiddish_name or names.english_name or person.name }}{% else %}{{ names.english_name or names.yiddish_name or person.name }}{% endif %}</h1>{% set number=person_number('person', person) if person.id else person_number('profile', profile) %}{% if number %}<small>{{ _('Person ID') }}: <bdi dir="ltr">{{ number }}</bdi></small>{% endif %}
-    <p>{{ _('Changes will also update every case connected to this person.') }}</p>
+    <p class="person-contact-line"><bdi dir="ltr">{{ person.cell_phone or '—' }}</bdi> · {{ _('Cell phone') }} &nbsp; <bdi dir="ltr">{{ person.home_phone or '—' }}</bdi> · {{ _('Home phone') }} &nbsp; <bdi dir="ltr">{{ person.email or '—' }}</bdi></p>
   </div>
-  <a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Back to imported people') }}</a>
+  <div class="row-actions"><a class="button" href="#case-connections">{{ _('Connect to a case') }}</a><a class="button secondary" href="{{ url_for('supporter_directory') }}">{{ _('Back to imported people') }}</a></div>
 </div>
 
+<div data-person-workspace>
+<nav class="person-tabs" aria-label="{{ _('Person profile') }}">
+{% for key,label in [('identity','Overview'),('case-connections','Cases'),('family-connections','Family connections'),('people-relationships','Connections to other people'),('person-activity','Activity'),('person-tasks','Tasks'),('person-tickets','Tickets / Requests'),('person-institutions','Shul and yeshivah connections')] %}<a href="#{{ key }}" data-person-tab="{{ key }}">{{ _(label) }}</a>{% endfor %}
+</nav>
 <div class="person-workspace-grid">
 <section class="card padded" data-panel-exclude id="identity">
   <h2>{{ _('Person profile') }}</h2>
-{% if person.id %}{% include '_person_verification.html' %}{% else %}
+{% if person.id %}{% set workspace_verification = true %}{% include '_person_verification.html' %}{% else %}
   <details><summary>{{ _('Edit person') }}</summary><form method="post">
     {{ token(csrf) }}
     <div class="form-grid">
@@ -92,19 +96,19 @@
   {% endfor %}
 </details>{% endif %}
 
-<details class="card padded"><summary>{{ _('Activity') }}</summary>
+<details class="card padded" id="person-activity"><summary>{{ _('Activity') }}</summary>
   <div class="section-heading"><div><p>{{ _('All communication and supporter activity across every case connected to this person.') }}</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>{{ _('Date') }}</th><th>{{ _('Case') }}</th><th>{{ _('Type') }}</th><th>{{ _('Details') }}</th><th>{{ _('Status') }}</th></tr></thead><tbody>
     {% for item in supporter_activity %}<tr><td class="numeric">{{ item.created_at|american_date }}</td><td>{% if item.family %}<a href="{{ url_for('family_detail',family_id=item.family.id) }}">{{ item.family.name }}</a>{% else %}—{% endif %}</td><td>{{ _(item.kind|replace('_',' ')|title) }}</td><td>{% if item.subject %}<strong>{{ item.subject }}</strong>{% endif %}{% if item.body %}<small>{{ item.body|truncate(180) }}</small>{% endif %}</td><td>{{ _(item.status) }}</td></tr>{% else %}<tr><td colspan="5" class="empty">{{ _('No supporter activity yet.') }}</td></tr>{% endfor %}
   </tbody></table></div>
 </details>
-<details class="card padded"><summary>{{ _('Tasks') }}</summary>
+<details class="card padded" id="person-tasks"><summary>{{ _('Tasks') }}</summary>
   <div class="section-heading"><div><p>{{ _('Tasks tied directly to this supporter.') }}</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>{{ _('Task') }}</th><th>{{ _('Case') }}</th><th>{{ _('Assigned to') }}</th><th>{{ _('Due date') }}</th><th>{{ _('Status') }}</th></tr></thead><tbody>
     {% for task in supporter_tasks %}<tr><td><a class="strong" href="{{ url_for('task_detail',task_id=task.id) }}">{{ task.title }}</a></td><td>{% if task.family %}<a href="{{ url_for('family_detail',family_id=task.family.id) }}">{{ task.family.name }}</a>{% else %}—{% endif %}</td><td>{{ task.assignee.name or task.assignee.email }}</td><td class="numeric">{{ task.due_date|american_date if task.due_date else '—' }}</td><td><span class="badge">{{ _(task.status) }}</span></td></tr>{% else %}<tr><td colspan="5" class="empty">{{ _('No tasks for this supporter.') }}</td></tr>{% endfor %}
   </tbody></table></div>
 </details>
-<details class="card padded"><summary>{{ _('Tickets / Requests') }}</summary>
+<details class="card padded" id="person-tickets"><summary>{{ _('Tickets / Requests') }}</summary>
   <div class="section-heading"><div><p>{{ _('Requests submitted by this supporter across every connected case.') }}</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>{{ _('Ticket') }}</th><th>{{ _('Case') }}</th><th>{{ _('Date') }}</th><th>{{ _('Request') }}</th><th>{{ _('Status') }}</th><th>{{ _('Latest update') }}</th></tr></thead><tbody>
     {% for ticket in supporter_tickets %}<tr><td>#{{ ticket.id }} · <strong>{{ ticket.title }}</strong></td><td>{% if ticket.contact and ticket.contact.family %}<a href="{{ url_for('family_detail',family_id=ticket.contact.family.id) }}">{{ ticket.contact.family.name }}</a>{% else %}—{% endif %}</td><td class="numeric">{{ ticket.created_at|american_date }}</td><td>{{ ticket.request_text|truncate(180) }}</td><td>{{ _(ticket.status) }}</td><td>{{ ticket.public_update or '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">{{ _('No tickets or requests for this supporter.') }}</td></tr>{% endfor %}
@@ -123,7 +127,7 @@
   </div><button>{{ _('Connect people') }}</button></form></details>{% endif %}
 </details>
 
-<details class="card padded"><summary>{{ _('Shul and yeshivah connections') }}</summary>
+<details class="card padded" id="person-institutions"><summary>{{ _('Shul and yeshivah connections') }}</summary>
   <div class="section-heading"><div><p>{{ _('Save these now so future cases connected to the same institution already have a network of possible helpers.') }}</p></div></div>
   <div class="table-wrap"><table><thead><tr><th>{{ _('Type') }}</th><th>{{ _('Institution') }}</th><th>{{ _('Class entered') }}</th><th>{{ _('Years') }}</th><th>{{ _('Actions') }}</th></tr></thead><tbody>
     {% for affiliation in affiliations %}<tr><td>{{ _(affiliation.institution.kind) }}</td><td>{{ affiliation.institution.name }}</td><td>{{ affiliation.grade or '—' }}</td><td>{% if affiliation.year_from %}{{ affiliation.year_from }}{% if affiliation.year_to %}–{{ affiliation.year_to }}{% endif %}{% else %}—{% endif %}</td><td><form method="post" action="{{ url_for('delete_profile_affiliation', profile_id=profile.id, affiliation_id=affiliation.id) }}">{{ token(csrf) }}<button class="small danger">{{ _('Remove') }}</button></form></td></tr>{% else %}<tr><td colspan="5" class="empty">{{ _('No shul or yeshivah connections entered.') }}</td></tr>{% endfor %}
@@ -136,5 +140,5 @@
     <label>{{ _('Notes') }}<input name="affiliation_note" maxlength="300"></label>
   </div><button>{{ _('Connect institution') }}</button></form></details>{% endif %}
 </details>
-{% endblock %}
+</div><script src="{{ url_for('static',filename='person-workspace.js') }}" defer></script><link rel="stylesheet" href="{{ url_for('static',filename='person-workspace.css') }}">{% endblock %}
 

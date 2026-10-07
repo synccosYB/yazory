@@ -1,9 +1,9 @@
-<details {% if request.endpoint in ('edit_person_hub', 'edit_supporter_profile') %}open{% endif %} class="person-verification" data-person-verification="{{ person.id }}" data-url="{{ url_for('get_person_verification',person_id=person.id) }}" data-csrf="{{ csrf }}" data-error="{{ _('Could not save verification. Reopen to refresh and try again.') }}" data-conflict="{{ _('This person changed since you opened the form. Reload before saving.') }}" data-expired="{{ _('Previous value') }}" data-saved="{{ _('Person saved') }}">
-<summary>{{ _('Edit person') }}</summary><span class="field-hint">{{ _('Field verification') }}</span>
+<details {% if workspace_verification|default(false) or request.endpoint == 'edit_person_hub' %}open{% endif %} class="person-verification" data-person-verification="{{ person.id }}" data-profile-mode="{{ request.args.get('mode') if request.args.get('mode') in ('edit','verify') else ('view' if workspace_verification|default(false) else 'verify') }}" data-url="{{ url_for('get_person_verification',person_id=person.id) }}" data-csrf="{{ csrf }}" data-error="{{ _('Could not save verification. Reopen to refresh and try again.') }}" data-conflict="{{ _('This person changed since you opened the form. Reload before saving.') }}" data-expired="{{ _('Previous value') }}" data-saved="{{ _('Person saved') }}">
+<summary>{{ _('Person profile') }}</summary><div class="person-mode-actions">{% if not current_staff or current_staff.role == 'organization_admin' %}<button type="button" data-person-mode="edit">{{ _('Edit person') }}</button><button type="button" class="secondary" data-person-mode="verify">{{ _('Field verification') }}</button><button type="button" class="secondary" data-person-mode="view">{{ _('Cancel') }}</button>{% endif %}</div><p class="person-edit-notice">{{ _('Changes will also update every case connected to this person.') }}</p><span class="field-hint">{{ _('Field verification') }}</span>
 <p class="field-hint">{{ _('Review or correct the information here, then save it together with its verification status.') }}</p>
 <form data-profile-form><fieldset disabled data-profile-fields><div class="verification-grid">
 {% for field,label in verification_fields.items() %}<div data-verification-field="{{ field }}"{% if field == 'home_address' %} id="addresses"{% endif %}>
-<strong data-field-label>{{ _(label) }}</strong>
+<strong data-field-label>{{ _('Other phone') if field == 'phone' else _(label) }}</strong>
 <small data-review hidden></small><small {% if not current_staff or current_staff.role == 'organization_admin' %}hidden{% endif %} data-value dir="{{ 'ltr' if field in ('home_phone','cell_phone','phone','email','work_phone') else 'auto' }}"></small>
 {% if not current_staff or current_staff.role == 'organization_admin' %}<div data-editor>
 {% if field == 'name' %}
@@ -29,7 +29,7 @@
 </div>{% endfor %}</div></fieldset>{% if not current_staff or current_staff.role == 'organization_admin' %}<div class="profile-save-bar"><button type="submit" data-save>{{ _('Save changes') }}</button></div>{% endif %}</form><p data-result role="status"></p><details><summary>{{ _('Verification history') }}</summary><div data-history></div></details>
 <span hidden data-status-label="verified">{{ _('Verified') }}</span><span hidden data-status-label="unverified">{{ _('Unverified') }}</span><span hidden data-status-label="incorrect">{{ _('Incorrect') }}</span>
 </details>
-<script src="{{ url_for('static',filename='person-verification.js',v='20261006-identity-validation') }}" defer></script>
+<script src="{{ url_for('static',filename='person-verification.js',v='20261007-workspace') }}" defer></script>
 <style>
 .person-verification{margin-block:.75rem;border-block:1px solid #dce3eb}
 .person-verification>summary{padding:.7rem .15rem;font-weight:700;cursor:pointer}
@@ -70,3 +70,15 @@
 </style>
 
 <style>.person-workspace-grid .verification-grid{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:600px){.person-workspace-grid .verification-grid{grid-template-columns:1fr}}</style>
+
+<style>
+.person-verification[data-profile-mode="view"] [data-editor],.person-verification[data-profile-mode="view"] [data-verification-controls],.person-verification[data-profile-mode="view"] .profile-save-bar,.person-verification[data-profile-mode="view"] [data-review],.person-verification[data-profile-mode="view"] .person-edit-notice,.person-verification[data-profile-mode="view"]>[class="field-hint"],.person-verification[data-profile-mode="view"] [data-person-mode="view"]{display:none!important}
+.person-verification[data-profile-mode="view"] [data-value]{display:block!important;font-size:1rem}
+.person-verification[data-profile-mode="edit"] [data-verification-controls],.person-verification[data-profile-mode="edit"] [data-review]{display:none!important}
+.person-verification[data-profile-mode="edit"] [data-value],.person-verification[data-profile-mode="verify"] [data-value]{display:none!important}
+.person-mode-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-block:.75rem}
+.person-verification[data-profile-mode="view"]>summary{display:none}
+.person-edit-notice{background:#f1f5fa;padding:.6rem;border-radius:6px;font-size:.85rem}
+</style>
+<style>.person-verification[data-profile-mode="view"] [data-verification-field="identity"],.person-verification[data-profile-mode="edit"] [data-verification-field="identity"],.person-verification[data-profile-mode="view"]>details{display:none}.person-verification[data-profile-mode="view"]>[class="field-hint"]{display:none}</style>
+<style>.person-verification[data-profile-mode="edit"] [data-field-label]{display:none}.person-verification[data-profile-mode="edit"] [data-verification-field="name"] [data-field-label]{display:block}</style>

@@ -183,7 +183,7 @@ def install(app, profile_model, relationship_model, access):
         person = person_or_404(person_id)
         profile = canonical_profile(person.id)
         if profile is not None and request.method == 'GET':
-            return redirect(url_for('edit_supporter_profile', profile_id=profile.id))
+            return redirect(url_for('edit_supporter_profile', profile_id=profile.id, mode='edit'))
         if request.method == 'POST':
             english = request.form.get('name_english', '').strip()[:160]
             yiddish = request.form.get('name_yiddish', '').strip()[:160]

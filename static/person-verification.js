@@ -3,8 +3,17 @@
     if (panel.dataset.initialized) return;
     panel.dataset.initialized = 'yes';
     let fields;
+    const setMode = mode => { panel.dataset.profileMode = mode; };
+    panel.querySelectorAll('[data-person-mode]').forEach(control => control.addEventListener('click', () => {
+      if (control.dataset.personMode === 'view' && fields) { show(lastData); remember(); }
+      result.textContent = '';
+      setMode(control.dataset.personMode);
+    }));
+    let lastData;
+
     const result = panel.querySelector('[data-result]');
     const show = data => {
+      lastData = data;
       fields = data.fields;
       if (data.history) {
         const history = panel.querySelector('[data-history]');
@@ -112,7 +121,7 @@
           changes[field] = {...item, fingerprint: fields[field].fingerprint};
         }
       });
-      if (!Object.keys(changes).length) { result.textContent = panel.dataset.saved; return; }
+      if (!Object.keys(changes).length) { result.textContent = panel.dataset.saved; setMode('view'); return; }
       fieldset.disabled = true;
       button.disabled = true;
       try {
@@ -123,10 +132,23 @@
           const detail = await response.json().catch(() => ({}));
           result.textContent = detail.error || panel.dataset.conflict; return;
         }
-        if (!response.ok) throw new Error();
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}));
+          result.textContent = detail.error || panel.dataset.error;
+          return;
+        }
         show(await response.json());
         remember();
         result.textContent = panel.dataset.saved;
+        setMode('view');
+        const heading = document.querySelector('.page-heading h1');
+        const name = lastData.values?.name;
+        if (heading && Array.isArray(name)) heading.textContent =
+          document.documentElement.dir === 'rtl' ? (name[1] || name[0]) : (name[0] || name[1]);
+        const contactLine = document.querySelector('.person-contact-line');
+        if (contactLine) ['cell_phone', 'home_phone', 'email'].forEach((field, index) => {
+          contactLine.querySelectorAll('bdi')[index].textContent = lastData.values[field] || '—';
+        });
       } catch (_) { result.textContent = panel.dataset.error; }
       finally { fieldset.disabled = false; button.disabled = false; }
     });
