@@ -5,7 +5,8 @@ from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
 from app_entry import create_app
-from app_original import Audit, StaffUser, db
+from app import StaffTask
+from app_original import Askan, Audit, Contact, Family, StaffUser, db
 from notifications import StaffActivityCursor
 
 
@@ -167,3 +168,90 @@ def test_opening_sponsorship_notification_opens_exact_page_and_month(app, client
 
     assert opened.status_code == 302
     assert opened.location.endswith('/sponsorships/overview?month=2026-09')
+
+
+def test_automatic_supporter_follow_up_opens_exact_task(app, client):
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        cursor = db.session.get(StaffActivityCursor, user.id)
+        cursor.last_seen_at = datetime.now(timezone.utc).replace(
+            tzinfo=None) - timedelta(minutes=5)
+        family = Family(name='Notification family')
+        db.session.add(family)
+        db.session.flush()
+        contact = Contact(
+            family_id=family.id, name='Notification supporter',
+            relationship='Friend', status='To contact')
+        db.session.add(contact)
+        db.session.flush()
+        task = StaffTask(
+            family_id=family.id, source_contact_id=contact.id,
+            assigned_to=user.id, created_by=user.id,
+            title='Contact supporter', status='To do')
+        db.session.add(task)
+        db.session.flush()
+        activity = Audit(
+            actor=user.email,
+            action='Created automatic supporter follow-up: Notification supporter')
+        db.session.add(activity)
+        db.session.commit()
+        task_id = task.id
+        activity_id = activity.id
+
+    with client.session_transaction() as browser_session:
+        csrf = browser_session['csrf']
+    opened = client.post(
+        f'/notifications/{activity_id}/open',
+        data={'csrf': csrf}, follow_redirects=False)
+
+    assert opened.status_code == 302
+    assert opened.location.endswith(f'/tasks/{task_id}')
+
+
+def test_askan_profile_update_opens_exact_askan(app, client):
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        cursor = db.session.get(StaffActivityCursor, user.id)
+        cursor.last_seen_at = datetime.now(timezone.utc).replace(
+            tzinfo=None) - timedelta(minutes=5)
+        askan = Askan(name='Notification askan')
+        db.session.add(askan)
+        db.session.flush()
+        activity = Audit(
+            actor=user.email,
+            action='Updated askan network profile: Notification askan')
+        db.session.add(activity)
+        db.session.commit()
+        askan_id = askan.id
+        activity_id = activity.id
+
+    with client.session_transaction() as browser_session:
+        csrf = browser_session['csrf']
+    opened = client.post(
+        f'/notifications/{activity_id}/open',
+        data={'csrf': csrf}, follow_redirects=False)
+
+    assert opened.status_code == 302
+    assert opened.location.endswith(f'/network/askanim/{askan_id}')
+
+
+def test_unknown_activity_never_falls_back_to_dashboard(app, client):
+    with app.app_context():
+        user = db.session.scalar(db.select(StaffUser))
+        cursor = db.session.get(StaffActivityCursor, user.id)
+        cursor.last_seen_at = datetime.now(timezone.utc).replace(
+            tzinfo=None) - timedelta(minutes=5)
+        activity = Audit(actor=user.email, action='Unmapped legacy activity')
+        db.session.add(activity)
+        db.session.commit()
+        activity_id = activity.id
+
+    with client.session_transaction() as browser_session:
+        csrf = browser_session['csrf']
+    opened = client.post(
+        f'/notifications/{activity_id}/open',
+        data={'csrf': csrf}, follow_redirects=False)
+
+    assert opened.status_code == 302
+    assert opened.location.endswith('/notifications')
+    assert not opened.location.endswith('/')
