@@ -132,7 +132,7 @@ def install(app):
     def activity_url(row):
         lowered = row.action.lower()
         sponsorship_match = re.fullmatch(
-            r'Updated (\\d{4}-(?:0[1-9]|1[0-2])) sponsorship for (.+)',
+            r'Updated (\d{4}-(?:0[1-9]|1[0-2])) sponsorship for (.+)',
             row.action)
         if sponsorship_match:
             month, page_label = sponsorship_match.groups()
