@@ -402,8 +402,11 @@ def test_household_workspace_is_compact_and_uses_canonical_case_data():
     assert "<details><summary>{{ _('Additional askanim') }}" in household
     assert "url_for('add_family_askan', family_id=family.id)" in household
     assert 'Monthly summary' not in household
-    assert '.household-summary-grid{display:grid;grid-template-columns:1fr 1.18fr 1fr' in css
-    assert '.household-children-card{margin:0;min-height:0;max-height:360px;display:flex;flex:0 1 auto' in css
+    assert '.household-summary-grid{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(420px,1.35fr)' in css
+    assert '.household-circumstances-card{grid-column:1 / -1}' in css
+    assert '.household-children-card{margin:0;min-height:0;display:flex;flex-direction:column;overflow:visible' in css
+    assert 'body[data-endpoint="family_detail"]{height:100vh;overflow:hidden}' not in css
+    assert 'body[data-endpoint="family_detail"] .case-workspace-panel{flex:1 1 auto;min-height:0;overflow:auto' not in css
 
 
 def test_household_summary_vocabulary_has_all_workspace_locales():
