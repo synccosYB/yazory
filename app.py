@@ -1306,15 +1306,18 @@ def create_app(test_config=None):
     app.extensions.setdefault('person_directory_resolvers', []).append(
         resolve_extended_directory_person)
 
-    def create_neutral_directory_person(name, phone='', email=''):
+    def create_neutral_directory_person(name, phone='', email='', cell_phone=''):
         """Create the neutral identity once; roles can be attached later."""
-        normalized = normalized_profile_phone(phone)
+        normalized = normalized_profile_phone(cell_phone or phone)
         if normalized:
             existing = _app.db.session.scalar(select(SupporterProfile).where(
                 SupporterProfile.normalized_phone == normalized))
             if existing:
                 if not existing.email and email:
                     existing.email = email[:254]
+                canonical = canonical_person_for_profile(existing)
+                if canonical and cell_phone and not canonical.cell_phone:
+                    canonical.cell_phone = cell_phone[:80]
                 return existing
         else:
             normalized = 'person:' + _app.secrets.token_hex(12)
@@ -1322,6 +1325,10 @@ def create_app(test_config=None):
                                   normalized_phone=normalized,
                                   email=email[:254])
         _app.db.session.add(person)
+        _app.db.session.flush()
+        canonical = canonical_person_for_profile(person)
+        if canonical and cell_phone:
+            canonical.cell_phone = cell_phone[:80]
         return person
 
     app.extensions.setdefault('person_directory_creators', []).append(
