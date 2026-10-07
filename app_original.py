@@ -1244,6 +1244,8 @@ def create_app(test_config=None):
                 return details
         return None
 
+    app.jinja_env.globals['directory_person_details'] = directory_person_details
+
     def find_or_create_institution(kind, name, city='', state=''):
         """Reuse one central institution record when profile fields name it."""
         name, city, state = (name or '').strip(), (city or '').strip(), (state or '').strip()
