@@ -1133,7 +1133,8 @@ html[dir="ltr"] :is(.case-kpi-grid,.financial-kpi-grid) strong{text-align:left}
 
 /* Case Household workspace: compact summaries + canonical children table. */
 .household-workspace{display:flex;flex-direction:column;gap:12px;overflow:hidden}
-.household-summary-grid{display:grid;grid-template-columns:1fr 1.18fr 1fr;gap:12px;flex:0 0 auto}
+.household-summary-grid{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(420px,1.35fr);gap:12px;align-items:start}
+.household-circumstances-card{grid-column:1 / -1}
 .household-summary-card{min-width:0;margin:0;padding:12px 14px;align-self:stretch}
 .household-summary-card .case-card-heading{margin-bottom:7px}
 .household-summary-card .case-card-heading h2,.household-children-card h2{margin:0}
@@ -1152,10 +1153,10 @@ html[dir="ltr"] :is(.case-kpi-grid,.financial-kpi-grid) strong{text-align:left}
 .household-counts strong{font-size:16px;color:#10233d}
 .household-counts span{font-size:12px;color:#52647a;margin-inline-end:8px}
 .household-circumstances-preview{margin:0;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;line-height:1.5;font-size:13px;color:#344f70}
-.household-children-card{margin:0;min-height:0;max-height:360px;display:flex;flex:0 1 auto;flex-direction:column;overflow:hidden;padding:12px 14px}
+.household-children-card{margin:0;min-height:0;display:flex;flex-direction:column;overflow:visible;padding:12px 14px}
 .household-children-heading{flex:0 0 auto;margin-bottom:8px;padding:0}
 .household-children-heading p{margin:2px 0 0;color:#52647a;font-size:12px}
-.household-children-table-wrap{min-height:0;overflow:auto}
+.household-children-table-wrap{min-height:0;overflow-x:auto;overflow-y:visible}
 .household-children-table{width:100%;table-layout:fixed}
 .household-children-table th:nth-child(1){width:25%}
 .household-children-table th:nth-child(2){width:9%}
