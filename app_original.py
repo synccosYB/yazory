@@ -2569,31 +2569,32 @@ def create_app(test_config=None):
     def add_family_askan(family_id):
         require_capability(('family_admin', 'office_employee'))
         family = accessible_family_or_404(family_id)
-        name = field('name', True, 160)
-        email = optional_email_field('email')
-        phone = field('phone', limit=80)
-        cell_phone = field('cell_phone', limit=80)
-        if email and is_case_askan(family, email):
-            abort(400, 'This askan is already on the family file.')
-        if family.designated_askan and not email and (family.designated_askan.name.casefold() == name.casefold()
-                and family.designated_askan.phone == phone):
-            abort(400, 'This askan is already on the family file.')
-        askan = (db.session.scalar(select(Askan).where(func.lower(Askan.email) == email.lower()))
-                 if email else None)
-        if askan is None and phone:
-            askan = db.session.scalar(select(Askan).where(
-                func.lower(Askan.name) == name.lower(), Askan.phone == phone))
+        person_id = request.form.get('person_id', type=int)
+        person = db.session.get(SupporterPerson, person_id) if person_id else None
+        if person is None:
+            abort(400, 'Choose an existing person.')
+
+        from person_names import resolve_name_owner
+        askan = None
+        for candidate in db.session.scalars(select(Askan).order_by(Askan.id)).all():
+            owner_kind, owner_id, _ = resolve_name_owner('askan', candidate.id)
+            if owner_kind == 'person' and owner_id == person.id:
+                askan = candidate
+                break
         if askan is None:
-            askan = Askan(name=name, email=email, phone=phone, cell_phone=cell_phone)
+            askan = Askan(name=person.name, phone=person.phone or person.home_phone,
+                          cell_phone='', email=person.email)
+            askan._canonical_person_id = person.id
             db.session.add(askan)
             db.session.flush()
-        elif cell_phone and not askan.cell_phone:
-            askan.cell_phone = cell_phone
-        if db.session.scalar(select(FamilyAskan.id).where(
+            for sync_people in app.extensions.get('askan_profile_person_sync', ()):
+                sync_people(askan)
+
+        if family.designated_askan_id == askan.id or db.session.scalar(select(FamilyAskan.id).where(
                 FamilyAskan.family_id == family.id, FamilyAskan.askan_id == askan.id)):
             abort(400, 'This askan is already on the family file.')
         db.session.add(FamilyAskan(family_id=family.id, askan_id=askan.id))
-        audit(f'Added askan: {askan.name}', family.id)
+        audit(f'Added askan: {person.name}', family.id)
         db.session.commit()
         return redirect(url_for('family_detail', family_id=family.id))
 
