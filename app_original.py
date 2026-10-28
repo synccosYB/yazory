@@ -1730,6 +1730,14 @@ def create_app(test_config=None):
             return contact.monthly_cents
         return amount('monthly', allow_zero=status != 'Pledged')
 
+    def case_monthly_pledged(family_id):
+        """Shared pledge total for the profile and its printable report."""
+        if app.extensions['workflows']['enforced']():
+            return app.extensions['workflows']['monthly_pledged'](family_id)
+        contacts = db.session.scalars(select(Contact).where(
+            Contact.family_id == family_id, Contact.status == 'Pledged')).all()
+        return sum(contact.monthly_equivalent_cents for contact in contacts)
+
     def case_fund_totals(family_id):
         """Cash received, committed/disbursed, and the remaining case balance."""
         # Fetch all four independent totals in one database round trip. On the
@@ -2750,18 +2758,11 @@ def create_app(test_config=None):
                                sent=fund_totals['given_out'],
                                available_to_give=fund_totals['available'],
                                ledger_adjustments_and_holds=fund_totals['ledger_adjustments_and_holds'],
-                               pledged=(db.session.scalar(select(func.coalesce(func.sum(
-                                   case((Contact.pledge_frequency == 'Weekly',
-                                         Contact.monthly_cents * 52.0 / 12.0),
-                                        else_=Contact.monthly_cents)), 0)).where(
-                                   Contact.family_id == family.id, Contact.status == 'Pledged',
-                                   Contact.pledge_frequency != 'One time')) or 0)
-                               if not app.extensions['workflows']['enforced']()
-                               else app.extensions['workflows']['monthly_pledged'](family.id))
+                               pledged=case_monthly_pledged(family.id))
 
     @app.get('/families/<int:family_id>/print')
     def family_print_report(family_id):
-        """One filterable, print-ready record for every list on a family profile."""
+        """Print the same financial picture as the profile, with explicit list scope."""
         require_capability(('family_admin',))
         family = accessible_family_or_404(family_id)
         query = request.args.get('q', '').strip()[:160]
@@ -2795,30 +2796,48 @@ def create_app(test_config=None):
         contacts = [contact for contact in sorted(family.contacts, key=lambda row: row.name.casefold())
                     if (not supporter_status or contact.status == supporter_status)
                     and matches(contact.name, contact.relationship, contact.phone, contact.status)]
-        receipt_statement = select(Receipt).where(Receipt.family_id == family.id)
-        if date_from:
-            receipt_statement = receipt_statement.where(Receipt.received_on >= date_from)
-        if date_to:
-            receipt_statement = receipt_statement.where(Receipt.received_on <= date_to)
-        receipts = [receipt for receipt in db.session.scalars(receipt_statement.order_by(
-            Receipt.received_on.desc(), Receipt.id.desc())).all()
-            if matches(receipt.contact.name, receipt.amount_cents / 100, receipt.reference, receipt.note,
-                       receipt.received_on.isoformat())]
+        from family_reports import donation_rows, contact_summary
+        followup_order = {status: index for index, status in enumerate((
+            'Call back', 'Wrong number', 'No answer', 'Left a message',
+            'Pledged', 'Paid', 'Contacted', 'To contact', 'Paused', 'Declined'))}
+        contacts.sort(key=lambda row: (followup_order.get(row.status, 99), row.name.casefold()))
+        manual_receipts = db.session.scalars(select(Receipt).options(
+            selectinload(Receipt.contact)).where(Receipt.family_id == family.id)).all()
+        imported_donations = db.session.scalars(select(CharityDonation).options(
+            selectinload(CharityDonation.donor)).join(CharityCampaign).where(
+            CharityCampaign.family_id == family.id)).all()
+        all_payments = donation_rows(manual_receipts, imported_donations)
+        payments = [row for row in all_payments
+                    if (not date_from or row['received_on'] >= date_from)
+                    and (not date_to or row['received_on'] <= date_to)
+                    and matches(row['name'], row['gross'] / 100, row['net'] / 100,
+                                row['reference'], row['note'], row['source'],
+                                row['received_on'].isoformat())]
         expenses = [expense for expense in sorted(family.expenses, key=lambda row: (row.month, row.id), reverse=True)
                     if (not expense_status or expense.status == expense_status)
                     and matches(expense.category, expense.payee, expense.month, expense.amount_cents / 100,
                                 expense.status, expense.payment_reference, expense.note)]
         documents = [document for document in sorted(family.documents, key=lambda row: row.uploaded_at, reverse=True)
                      if app.extensions['workflows']['document_allowed'](document) and matches(document.filename, document.content_type)]
-        activity = [row for row in db.session.scalars(select(Audit).where(
-            Audit.family_id == family.id).order_by(Audit.id.desc())).all()
-                    if matches(row.actor, row.action, row.at.isoformat())]
+        include_activity = section == 'activity' or request.args.get('include_activity') == '1'
+        activity = []
+        if include_activity:
+            activity = [row for row in db.session.scalars(select(Audit).where(
+                Audit.family_id == family.id).order_by(Audit.id.desc())).all()
+                        if matches(row.actor, row.action, row.at.isoformat())]
+        # Summary cards remain case-wide; list filters never redefine the balance.
+        from person_names import preload_names
+        preload_names(('person' if row.person_id else 'supporter',
+                       row.person_id or row.id, 'name') for row in family.contacts)
         return render_template('family_print.html', title='Profile report', family=family,
             query=query, section=section, supporter_status=supporter_status, expense_status=expense_status,
-            date_from=date_from, date_to=date_to, children=children, contacts=contacts, receipts=receipts,
+            date_from=date_from, date_to=date_to, children=children, contacts=contacts, payments=payments,
             expenses=expenses, documents=documents, activity=activity, budget=budget_totals(family),
-            pledged=sum(contact.monthly_equivalent_cents for contact in family.contacts if contact.status == 'Pledged'),
-            received=sum(receipt.amount_cents for receipt in receipts), generated_at=datetime.now(timezone.utc))
+            pledged=case_monthly_pledged(family.id), funds=case_fund_totals(family.id),
+            contact_summary=contact_summary(family.contacts, all_payments),
+            include_activity=include_activity,
+            filtered=bool(query or supporter_status or expense_status or date_from or date_to),
+            received=sum(row['net'] for row in payments), generated_at=datetime.now(timezone.utc))
 
     @app.route('/families/<int:family_id>/expense-report', methods=['GET', 'POST'])
     def family_expense_report(family_id):

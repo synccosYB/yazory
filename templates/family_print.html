@@ -1,28 +1,107 @@
+{% macro supporter_name(row) -%}
+{% set names = person_name_values('supporter', row) %}<bdi>{{ (names.english_name if language == 'en' else names.yiddish_name) or names.yiddish_name or names.english_name or row.name }}</bdi>
+{%- endmacro %}
+{% macro money(value) -%}<bdi dir="ltr">{{ value|money }}</bdi>{%- endmacro %}
+{% macro missing() -%}{{ _('Not entered') }}{%- endmacro %}
 <!doctype html>
 <html lang="{{ language }}" dir="{{ direction }}">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ family.name }} · {{ _('Profile report') }}</title><link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}"><link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192.png') }}"><link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}"><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='sponsorships.css', v='20260916-case-v1') }}"></head>
-<body class="print-report" data-print-report="true">
-<main>
-  <div class="report-actions no-print"><a class="button secondary" href="{{ url_for('family_detail', family_id=family.id) }}">{{ _('Back to profile') }}</a><button type="button" data-print>{{ _('Print / Save PDF') }}</button></div>
-  <header class="report-header"><div><div class="eyebrow">YZ-{{ '%04d'|format(family.id) }} · {{ _('FAMILY PROFILE REPORT') }}</div><h1>{{ family.name }}</h1><p>{{ family.full_address or _('Address not entered') }} · {{ family.phone or _('Phone not entered') }}</p>{% if family.status=='Declined' and family.denial_reason %}<p><strong>{{ _('Reason for denial') }}:</strong> {{ family.denial_reason }}</p>{% endif %}</div><div class="report-meta"><strong>{{ _(family.status) }}</strong><span>{{ _('Generated') }} {{ generated_at|eastern_time('%m/%d/%Y %I:%M %p %Z') }}</span></div></header>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ family.name }} · {{ _('Profile report') }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon-32.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='sponsorships.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='family-report.css', v='20261028') }}">
+</head>
+<body class="print-report" data-print-report="true"><main>
+  <div class="report-actions no-print">
+    <a class="button secondary" href="{{ url_for('family_detail', family_id=family.id) }}">{{ _('Back to profile') }}</a>
+    <button type="button" data-print>{{ _('Print / Save PDF') }}</button>
+  </div>
+  <p class="no-print report-help">{{ _('For a clean PDF, turn off browser headers and footers in the print dialog.') }}</p>
+  <header class="report-header">
+    <img class="report-logo" src="{{ url_for('static', filename='yazory-logo-corrected.png') }}" alt="Yazory">
+    <div class="report-identity">
+      <div class="eyebrow"><bdi dir="ltr">YZ-{{ '%04d'|format(family.id) }}</bdi> · {{ _('FAMILY PROFILE REPORT') }}</div>
+      <h1><bdi>{{ family.name }}</bdi></h1>
+      <p><bdi dir="auto">{{ family.full_address or _('Address not entered') }}</bdi></p>
+      <p><bdi dir="ltr">{{ family.phone|phone if family.phone else _('Phone not entered') }}</bdi></p>
+      {% if family.status == 'Declined' and family.denial_reason %}<p>{{ _('Reason for denial') }}: {{ family.denial_reason }}</p>{% endif %}
+    </div>
+    <div class="report-meta"><strong>{{ _(family.status) }}</strong><span>{{ _('Generated') }}<br><bdi dir="ltr">{{ generated_at|eastern_time('%m/%d/%Y %I:%M %p %Z') }}</bdi></span></div>
+  </header>
   {% include '_case_sponsor_panel.html' %}
-
   <form class="report-filters no-print" method="get">
     <label>{{ _('Search all lists') }}<input name="q" value="{{ query }}" placeholder="{{ _('Name, note, reference, school…') }}"></label>
     <label>{{ _('List') }}<select name="section">{% for value,label in [('all','All lists'),('children','Children'),('supporters','Supporters'),('donations','Donations'),('expenses','Expenses'),('documents','Documents'),('activity','Case activity')] %}<option value="{{ value }}" {{ 'selected' if section==value }}>{{ _(label) }}</option>{% endfor %}</select></label>
     <label>{{ _('Supporter status') }}<select name="supporter_status"><option value="">{{ _('All statuses') }}</option>{% for value in contact_statuses %}<option {{ 'selected' if supporter_status==value }}>{{ _(value) }}</option>{% endfor %}</select></label>
     <label>{{ _('Expense status') }}<select name="expense_status"><option value="">{{ _('All statuses') }}</option>{% for value in expense_transitions %}<option {{ 'selected' if expense_status==value }}>{{ _(value) }}</option>{% endfor %}</select></label>
     <label>{{ _('Donations from') }}<input type="date" name="date_from" value="{{ date_from.isoformat() if date_from }}"></label><label>{{ _('Donations through') }}<input type="date" name="date_to" value="{{ date_to.isoformat() if date_to }}"></label>
+    <label class="report-check"><input type="checkbox" name="include_activity" value="1" {{ 'checked' if include_activity }}>{{ _('Include full activity history') }}</label>
     <button>{{ _('Apply filters') }}</button><a href="{{ url_for('family_print_report',family_id=family.id) }}">{{ _('Clear filters') }}</a>
   </form>
+  <aside class="report-scope">
+    <strong>{{ _('Report scope') }}:</strong> {{ _({'all':'All lists','children':'Children','supporters':'Case contacts','donations':'Donations','expenses':'Expenses','documents':'Documents','activity':'Case activity'}[section]) }}.
+    {{ _('Financial summary covers the whole case. Filters apply only to the lists below.') }}
+    {% if query %}<span>{{ _('Search all lists') }}: <bdi>{{ query }}</bdi></span>{% endif %}
+    {% if supporter_status %}<span>{{ _('Supporter status') }}: {{ _(supporter_status) }}</span>{% endif %}
+    {% if expense_status %}<span>{{ _('Expense status') }}: {{ _(expense_status) }}</span>{% endif %}
+    <span>{{ _('Donation period') }}: {% if date_from or date_to %}<bdi dir="ltr">{{ date_from|american_date if date_from else '…' }} – {{ date_to|american_date if date_to else '…' }}</bdi>{% else %}{{ _('All recorded dates') }}{% endif %}</span>
+  </aside>
+  <section class="report-section" aria-labelledby="financial-heading">
+    <h2 id="financial-heading">{{ _('Financial summary') }}</h2>
+    <div class="report-summary">
+      {% for label,value in [('Monthly income',budget.income),('Monthly expenses',budget.costs),('Assistance applied to expenses',budget.assistance),('Remaining monthly need',budget.shortfall),('Monthly pledged:',pledged),('Net donations recorded',funds.collected)] %}
+      <div><span>{{ _(label) }}</span><strong>{{ money(value) }}</strong></div>{% endfor %}
+    </div>
+    <p>{{ _('Remaining need equals expenses minus income and applicable assistance.') }}</p>
+    <p>{{ _('Pledges are promises, not receipts. They are not deducted again from the budget need.') }}</p>
+    <dl class="report-totals">
+      {% for label,value in [('Gross donations recorded',funds.gross_collected),('Collection fees',funds.collection_fees),('Given out / committed',funds.given_out),('Other ledger adjustments and holds',funds.ledger_adjustments_and_holds),('Available to give out',funds.available)] %}<div><dt>{{ _(label) }}</dt><dd>{{ money(value) }}</dd></div>{% endfor %}
+    </dl>
+    <p class="report-help">{{ _('Cash totals include recorded receipts and imported ABCharity donations across all dates.') }}</p>
+    {% if budget.report.missing %}<p class="report-warning">{{ _('Incomplete plan: enter an amount or choose N/A for each expense.') }}</p>{% endif %}
+    {% if contact_summary.unlinked_paid %}<div class="report-warning"><strong>{{ _('Payment records need review') }}</strong><p>{{ _('These contacts are marked Paid but have no linked positive receipt. A status alone is not proof of payment.') }}</p><ul>{% for row in contact_summary.unlinked_paid %}<li>{{ supporter_name(row) }}{% if row.monthly_cents %} · {{ money(row.monthly_cents) }}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+  </section>
 
-  <section class="report-summary"><div><span>{{ _('Monthly income') }}</span><strong>{{ budget.income|money }}</strong></div><div><span>{{ _('Monthly expenses') }}</span><strong>{{ budget.costs|money }}</strong></div><div><span>{{ _('Monthly shortfall') }}</span><strong>{{ budget.shortfall|money }}</strong></div><div><span>{{ _('Monthly pledged:') }}</span><strong>{{ pledged|money }}</strong></div><div><span>{{ _('Donations shown') }}</span><strong>{{ received|money }}</strong></div></section>
+  {% if section == 'all' %}
+  <section class="report-section"><h2>{{ _('Case overview') }}</h2>
+    <dl class="report-totals"><div><dt>{{ _('Designated askan') }}</dt><dd>{{ family.designated_askan.name if family.designated_askan else missing() }}</dd></div><div><dt>{{ _('Circumstances') }}</dt><dd>{{ family.circumstances or missing() }}</dd></div></dl>
+    <h3>{{ _('Expense breakdown') }}</h3>
+    <table><thead><tr><th>{{ _('Expense') }}</th><th>{{ _('Monthly amount') }}</th><th>{{ _('Source') }}</th></tr></thead><tbody>{% for row in budget.report.rows %}<tr><td>{{ _(row.label) }}</td><td>{{ money(row.amount) if row.amount is not none else (_('N/A') if row.n_a else missing()) }}</td><td>{{ _(row.source) }}</td></tr>{% endfor %}</tbody></table>
+  </section>
+  {% endif %}
+  {% if section in ('all','children') %}<section class="report-section"><h2>{{ _('Children') }} <small>({{ children|length }})</small></h2>
+  {% if children %}<table><thead><tr><th>{{ _('Name') }}</th><th>{{ _('Age') }}</th><th>{{ _('Grade') }}</th><th>{{ _('School') }}</th><th>{{ _('Spouse') }}</th></tr></thead><tbody>{% for row in children %}<tr><td><bdi>{{ row.name }}</bdi></td><td>{{ row.age }}</td><td>{{ row.grade or missing() }}</td><td>{{ row.school or missing() }}</td><td>{{ (row.spouse_name or missing()) if row.married else _('N/A') }}</td></tr>{% endfor %}</tbody></table>{% else %}<p>{{ _('No matching records.') if filtered else _('No records entered.') }}</p>{% endif %}</section>{% endif %}
 
-  {% if section in ('all','children') %}<section class="report-section"><h2>{{ _('Children') }} <small>{{ children|length }}</small></h2><table><thead><tr><th>{{ _('Name') }}</th><th>{{ _('Age') }}</th><th>{{ _('Grade') }}</th><th>{{ _('School') }}</th><th>{{ _('Spouse') }}</th></tr></thead><tbody>{% for row in children %}<tr><td>{{ row.name }}</td><td>{{ row.age }}</td><td>{{ row.grade or '—' }}</td><td>{{ row.school or '—' }}</td><td>{{ row.spouse_name if row.married else '—' }}</td></tr>{% else %}<tr><td colspan="5">{{ _('No matching records.') }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-  {% if section in ('all','supporters') %}<section class="report-section"><h2>{{ _('Supporters') }} <small>{{ contacts|length }}</small></h2><table><thead><tr><th>{{ _('Supporter') }}</th><th>{{ _('Relationship') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Donation commitment') }}</th><th>{{ _('Follow-up status') }}</th></tr></thead><tbody>{% for row in contacts %}<tr><td>{{ row.name }}</td><td>{{ _(row.relationship) }}</td><td>{{ row.phone|phone if row.phone else '—' }}</td><td>{{ row.monthly_cents|money }} · {{ _(row.pledge_frequency) }}</td><td>{{ _(row.status) }}</td></tr>{% else %}<tr><td colspan="5">{{ _('No matching records.') }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-  {% if section in ('all','donations') %}<section class="report-section"><h2>{{ _('Donation history') }} <small>{{ receipts|length }}</small></h2><table><thead><tr><th>{{ _('Received on') }}</th><th>{{ _('Supporter') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Reference') }}</th><th>{{ _('Notes') }}</th></tr></thead><tbody>{% for row in receipts %}<tr><td>{{ row.received_on|american_date }}</td><td>{{ row.contact.name }}</td><td>{{ row.amount_cents|money }}</td><td>{{ row.reference or '—' }}</td><td>{{ row.note or '—' }}</td></tr>{% else %}<tr><td colspan="5">{{ _('No matching records.') }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-  {% if section in ('all','expenses') %}<section class="report-section"><h2>{{ _('Expense requests') }} <small>{{ expenses|length }}</small></h2><table><thead><tr><th>{{ _('Month') }}</th><th>{{ _('Category') }}</th><th>{{ _('Payee') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Status') }}</th><th>{{ _('Reference') }}</th></tr></thead><tbody>{% for row in expenses %}<tr><td>{{ row.month }}</td><td>{{ _(row.category) }}</td><td>{{ row.payee }}</td><td>{{ row.amount_cents|money }}</td><td>{{ _(row.status) }}</td><td>{{ row.payment_reference or '—' }}</td></tr>{% else %}<tr><td colspan="6">{{ _('No matching records.') }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-  {% if section in ('all','documents') %}<section class="report-section"><h2>{{ _('Documents') }} <small>{{ documents|length }}</small></h2><table><thead><tr><th>{{ _('File') }}</th><th>{{ _('Type') }}</th><th>{{ _('Uploaded') }}</th></tr></thead><tbody>{% for row in documents %}<tr><td>{{ row.filename }}</td><td>{{ row.content_type }}</td><td>{{ row.uploaded_at|american_date }}</td></tr>{% else %}<tr><td colspan="3">{{ _('No matching records.') }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-  {% if section in ('all','activity') %}<section class="report-section"><h2>{{ _('Case activity') }} <small>{{ activity|length }}</small></h2><table><thead><tr><th>{{ _('Date') }}</th><th>{{ _('Activity') }}</th><th>{{ _('Staff') }}</th></tr></thead><tbody>{% for row in activity %}<tr><td>{{ row.at|eastern_time('%m/%d/%Y %I:%M %p %Z') }}</td><td>{{ _audit(row.action) }}</td><td>{{ row.actor }}</td></tr>{% else %}<tr><td colspan="3">{{ _('No matching records.') }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-  <footer class="report-footer">YZ-{{ '%04d'|format(family.id) }} · {{ family.name }}</footer>
+  {% if section in ('all','supporters') %}<section class="report-section"><h2>{{ _('Case contacts') }} <small>({{ contacts|length }})</small></h2>
+    <p class="report-help">{{ _('Case-wide contact status counts') }}: {% for status,count in contact_summary.statuses %}{{ _(status) }}: {{ count }}{{ ' · ' if not loop.last }}{% endfor %}</p>
+    {% if contact_summary.missing_phone %}<p>{{ _('Contacts without a phone number') }}: {{ contact_summary.missing_phone }}</p>{% endif %}
+    <p class="report-help">{{ _('Next steps are suggestions, not assigned tasks or scheduled callbacks.') }}</p>
+    {% if contacts %}<table class="report-contacts"><thead><tr><th>{{ _('Name') }} / {{ _('Relationship') }}</th><th>{{ _('Phone') }}</th><th>{{ _('Donation commitment') }}</th><th>{{ _('Supporter status') }}</th><th>{{ _('Suggested next step') }}</th></tr></thead><tbody>{% for row in contacts %}<tr>
+      <td><strong>{{ supporter_name(row) }}</strong><small>{{ _(row.relationship) }}</small>{% if row.parent_supporter and row.parent_supporter.family_id == family.id %}<small>{{ _('Connected through') }}: {{ supporter_name(row.parent_supporter) }}</small>{% endif %}{% for child in row.children %}<small>{{ _('Supporter’s child') }}: <bdi>{{ child.name }}</bdi>{% if child.phone %} · <bdi dir="ltr">{{ child.phone|phone }}</bdi>{% endif %}</small>{% endfor %}</td>
+      <td>{% if row.phone %}<bdi dir="ltr" class="report-phone">{{ row.phone|phone }}</bdi>{% else %}{{ missing() }}{% endif %}</td>
+      <td>{% if row.monthly_cents > 0 %}{{ money(row.monthly_cents) }}<small>{{ _(row.pledge_frequency) }}</small>{% else %}{{ _('No amount recorded') }}{% endif %}</td>
+      <td>{{ _(row.status) }}{% if row.decline_reason %}<small>{{ row.decline_reason }}</small>{% endif %}</td>
+      <td>{{ _(contact_summary.next_actions[row.id]) }}{% if row.notes %}<small>{{ row.notes }}</small>{% endif %}</td>
+    </tr>{% endfor %}</tbody></table>{% else %}<p>{{ _('No matching records.') if filtered else _('No records entered.') }}</p>{% endif %}
+  </section>{% endif %}
+
+  {% if section in ('all','donations') %}<section class="report-section"><h2>{{ _('Donation history') }} <small>({{ payments|length }})</small></h2>
+    <p>{{ _('Net donations in this list') }}: <strong>{{ money(received) }}</strong></p>
+    {% if payments %}<table><thead><tr><th>{{ _('Received on') }}</th><th>{{ _('Supporter') }}</th><th>{{ _('Source') }} / {{ _('Reference') }}</th><th>{{ _('Gross') }}</th><th>{{ _('Fees') }}</th><th>{{ _('Net') }}</th></tr></thead><tbody>{% for row in payments %}<tr><td><bdi dir="ltr">{{ row.received_on|american_date }}</bdi></td><td><bdi>{{ row.name or missing() }}</bdi>{% if row.note %}<small>{{ row.note }}</small>{% endif %}</td><td>{{ _(row.source) }}<small><bdi>{{ row.reference or '—' }}</bdi></small></td><td>{{ money(row.gross) }}</td><td>{{ money(row.fees) }}</td><td>{{ money(row.net) }}</td></tr>{% endfor %}</tbody></table>{% else %}<p>{{ _('No matching records.') if filtered else _('No records entered.') }}</p>{% endif %}
+  </section>{% endif %}
+
+  {% if section in ('all','expenses') %}<section class="report-section"><h2>{{ _('Expense requests') }} <small>({{ expenses|length }})</small></h2>
+    {% if expenses %}<table><thead><tr><th>{{ _('Month') }}</th><th>{{ _('Category') }}</th><th>{{ _('Payee') }}</th><th>{{ _('Amount') }}</th><th>{{ _('Status') }}</th><th>{{ _('Reference') }}</th></tr></thead><tbody>{% for row in expenses %}<tr><td><bdi dir="ltr">{{ row.month }}</bdi></td><td>{{ _(row.category) }}</td><td>{{ row.payee }}</td><td>{{ money(row.amount_cents) }}</td><td>{{ _(row.status) }}</td><td><bdi>{{ row.payment_reference or '—' }}</bdi></td></tr>{% endfor %}</tbody></table>{% else %}<p>{{ _('No matching records.') if filtered else _('No records entered.') }}</p>{% endif %}
+    <p class="report-help">{{ _('Expense requests are separate from household budget estimates and direct payouts.') }}</p>
+  </section>{% endif %}
+  {% if section in ('all','documents') %}<section class="report-section"><h2>{{ _('Documents') }} <small>({{ documents|length }})</small></h2>
+    {% if documents %}<table><thead><tr><th>{{ _('File') }}</th><th>{{ _('Type') }}</th><th>{{ _('Uploaded') }}</th></tr></thead><tbody>{% for row in documents %}<tr><td><bdi>{{ row.filename }}</bdi></td><td><bdi>{{ row.content_type }}</bdi></td><td><bdi dir="ltr">{{ row.uploaded_at|american_date }}</bdi></td></tr>{% endfor %}</tbody></table>{% else %}<p>{{ _('No matching records.') if filtered else _('No records entered.') }}</p>{% endif %}
+  </section>{% endif %}
+  {% if include_activity and section in ('all','activity') %}<section class="report-section report-appendix"><h2>{{ _('Activity appendix') }} <small>({{ activity|length }})</small></h2>
+    <p class="report-help">{{ _('Administrative history is not a count of assistance delivered.') }}</p>
+    {% if activity %}<table><thead><tr><th>{{ _('Date') }}</th><th>{{ _('Activity') }}</th><th>{{ _('Staff') }}</th></tr></thead><tbody>{% for row in activity %}<tr><td><bdi dir="ltr">{{ row.at|eastern_time('%m/%d/%Y %I:%M %p %Z') }}</bdi></td><td><bdi dir="auto">{{ _audit(row.action) }}</bdi></td><td><bdi>{{ row.actor }}</bdi></td></tr>{% endfor %}</tbody></table>{% else %}<p>{{ _('No matching records.') }}</p>{% endif %}
+  </section>{% endif %}
+  <footer class="report-footer"><bdi dir="ltr">YZ-{{ '%04d'|format(family.id) }}</bdi> · <bdi>{{ family.name }}</bdi> · {{ _('Internal use only') }}{% if not include_activity %}<p>{{ _('Full activity history is available using the report filters.') }}</p>{% endif %}</footer>
 </main><script src="{{ url_for('static', filename='pages.js') }}" defer></script></body></html>

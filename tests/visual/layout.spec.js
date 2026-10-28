@@ -65,3 +65,26 @@ test('communications search filters rendered supporter rows', async ({ page }) =
   await page.getByRole('searchbox', { name: /search supporters/i }).fill('__no_match__');
   await expect(page.locator('#communications-supporters-table tbody tr:visible')).toHaveCount(0);
 });
+
+for (const locale of ['en', 'he', 'yi']) {
+  test(`${locale} family report screen and print layout`, async ({ page }, testInfo) => {
+    await page.goto(`/language/${locale}?next=/families/1/print`);
+    await expect(page.locator('.report-logo')).toBeVisible();
+    await expect(page.locator('.report-appendix')).toHaveCount(0);
+    for (const width of [1440, 720, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth -
+        document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    }
+    await page.emulateMedia({ media: 'print' });
+    await page.setViewportSize({ width: 816, height: 1056 });
+    await expect(page.locator('.report-actions')).toBeHidden();
+    await expect(page.locator('.report-filters')).toBeHidden();
+    const columns = await page.locator('.report-summary').evaluate(el =>
+      getComputedStyle(el).gridTemplateColumns.split(' ').length);
+    expect(columns).toBe(3);
+    expect(await page.locator('thead').first().evaluate(el =>
+      getComputedStyle(el).display)).toBe('table-header-group');
+    await page.screenshot({ path: testInfo.outputPath(`family-report-${locale}.png`), fullPage: true });
+  });
+}
